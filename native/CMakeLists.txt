@@ -14,7 +14,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   target_compile_options(NeonNative PRIVATE -fobjc-arc -Wall -Wextra)
   set_target_properties(NeonNative PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER com.johnhenning.neon.nativeprototype
-    MACOSX_BUNDLE_BUNDLE_NAME "Neon Native"
+    MACOSX_BUNDLE_BUNDLE_NAME "Neon"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/macos/Info.plist")
   enable_testing()
   add_test(NAME native_ui COMMAND NeonNative --smoke-test)

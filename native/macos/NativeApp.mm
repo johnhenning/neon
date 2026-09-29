@@ -100,12 +100,13 @@ NSUInteger words(NSString* text) {
     [[NSColor colorWithSRGBRed:0.84 green:0.81 blue:0.72 alpha:1] setFill];
     NSRectFill(self.bounds);
     [[NSColor colorWithSRGBRed:0.24 green:0.37 blue:0.39 alpha:1] setFill];
-    NSRectFill(NSMakeRect(0, 0, self.bounds.size.width, self.bounds.size.height * 0.28));
+    NSRectFill(NSMakeRect(0, self.bounds.size.height * 0.72, self.bounds.size.width,
+                          self.bounds.size.height * 0.28));
     [[NSColor colorWithSRGBRed:0.13 green:0.26 blue:0.29 alpha:1] setFill];
-    [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(-30, -50, 230, 100)] fill];
-    [self.titleText drawInRect:NSInsetRect(NSMakeRect(0, 70, self.bounds.size.width,
-                                                      self.bounds.size.height - 80),
-                                           18, 12)
+    [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(-30, self.bounds.size.height - 22, 170, 60)]
+        fill];
+    [self.titleText drawInRect:NSMakeRect(12, 14, self.bounds.size.width - 24,
+                                          self.bounds.size.height * 0.68 - 18)
                 withAttributes:@{
                     NSFontAttributeName : NeonSerif(15),
                     NSForegroundColorAttributeName : NSColor.blackColor
