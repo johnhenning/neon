@@ -16,6 +16,15 @@
     return YES;
 }
 @end
+// A temporary visual snapshot must never intercept editing or navigation.
+@interface NeonTransitionOverlay : NSImageView
+@end
+@implementation NeonTransitionOverlay
+- (NSView*)hitTest:(NSPoint)point {
+    (void)point;
+    return nil;
+}
+@end
 @interface NeonChapterRow : NSStackView
 @property(nonatomic) BOOL currentChapter;
 @end
@@ -211,6 +220,7 @@ NSUInteger words(NSString* text) {
 @property(nonatomic, strong) NSTimer* timer;
 @property(nonatomic, strong) NSPopover* typography;
 @property(nonatomic, strong) NSPanel* settings;
+@property(nonatomic, strong) NSImageView* transitionOverlay;
 @property(nonatomic, strong) NSWindow* historyWindow;
 @property(nonatomic, strong) NSTextField* presetDescription;
 @property(nonatomic, strong) NSLayoutConstraint* measureConstraint;
@@ -549,7 +559,51 @@ NSUInteger words(NSString* text) {
             [stack setCustomSpacing:0 afterView:row];
     }
 }
+- (void)transitionContent:(void (^)(void))changes {
+    [self.transitionOverlay removeFromSuperview];
+    self.transitionOverlay = nil;
+    NSView* host = self.content.view;
+    if (!self.window.visible || !host.subviews.count ||
+        NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) {
+        changes();
+        return;
+    }
+    NSBitmapImageRep* bitmap = [host bitmapImageRepForCachingDisplayInRect:host.bounds];
+    if (!bitmap) {
+        changes();
+        return;
+    }
+    [host cacheDisplayInRect:host.bounds toBitmapImageRep:bitmap];
+    NSImage* image = [[NSImage alloc] initWithSize:host.bounds.size];
+    [image addRepresentation:bitmap];
+    changes();
+    [host layoutSubtreeIfNeeded];
+    NeonTransitionOverlay* overlay = [[NeonTransitionOverlay alloc] initWithFrame:host.bounds];
+    overlay.image = image;
+    overlay.imageScaling = NSImageScaleAxesIndependently;
+    overlay.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    overlay.accessibilityElement = NO;
+    [host addSubview:overlay];
+    self.transitionOverlay = overlay;
+    [NSAnimationContext
+        runAnimationGroup:^(NSAnimationContext* context) {
+          context.duration = 0.18;
+          context.timingFunction =
+              [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+          overlay.animator.alphaValue = 0;
+        }
+        completionHandler:^{
+          [overlay removeFromSuperview];
+        }];
+}
 - (void)showLibrary:(id)sender {
+    if (![self flush])
+        return;
+    [self transitionContent:^{
+      [self renderLibrary:sender];
+    }];
+}
+- (void)renderLibrary:(id)sender {
     if (sender != self)
         self.trashMode = NO;
     if (![self flush])
@@ -661,6 +715,11 @@ NSUInteger words(NSString* text) {
     [self showEditor];
 }
 - (void)showEditor {
+    [self transitionContent:^{
+      [self renderEditor];
+    }];
+}
+- (void)renderEditor {
     self.editor = nil;
     [self clear:self.content.view];
     self.window.title = self.session.title;

@@ -37,6 +37,8 @@
 @property(nonatomic, strong) NeonList* chapterList;
 @property(nonatomic, strong) UINavigationController* navigation;
 @property(nonatomic) BOOL sidebarHidden;
+@property(nonatomic, strong) UIView* navigationSnapshot;
+@property(nonatomic) BOOL renderingNavigation;
 @property(nonatomic, copy) NSString* pendingPreset;
 @property(nonatomic) BOOL smoke;
 @property(nonatomic) BOOL trashMode;
@@ -970,7 +972,48 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                             handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
+- (void)transitionNavigation:(void (^)(void))changes {
+    if (self.renderingNavigation) {
+        changes();
+        return;
+    }
+    [self.navigationSnapshot removeFromSuperview];
+    self.navigationSnapshot = nil;
+    UIView* snapshot = (!UIAccessibilityIsReduceMotionEnabled() && self.view.window)
+                           ? [self.view snapshotViewAfterScreenUpdates:NO]
+                           : nil;
+    self.renderingNavigation = YES;
+    changes();
+    self.renderingNavigation = NO;
+    [self.view layoutIfNeeded];
+    if (!snapshot)
+        return;
+    snapshot.frame = self.view.bounds;
+    snapshot.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    snapshot.userInteractionEnabled = NO;
+    snapshot.accessibilityElementsHidden = YES;
+    [self.view addSubview:snapshot];
+    self.navigationSnapshot = snapshot;
+    [UIView animateWithDuration:0.18
+        delay:0
+        options:UIViewAnimationOptionCurveEaseInOut | UIViewAnimationOptionBeginFromCurrentState |
+                UIViewAnimationOptionAllowUserInteraction
+        animations:^{
+          snapshot.alpha = 0;
+        }
+        completion:^(BOOL finished) {
+          (void)finished;
+          [snapshot removeFromSuperview];
+        }];
+}
 - (void)openProject:(NSInteger)index {
+    if (self.editor && ![self.editor flush])
+        return;
+    [self transitionNavigation:^{
+      [self renderProject:index];
+    }];
+}
+- (void)renderProject:(NSInteger)index {
     if (index < 0 || index >= static_cast<NSInteger>(self.projects.count))
         return;
     if (self.trashMode) {
@@ -999,6 +1042,13 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [self openSection:0];
 }
 - (void)openSection:(NSInteger)index {
+    if (self.editor && ![self.editor flush])
+        return;
+    [self transitionNavigation:^{
+      [self renderSection:index];
+    }];
+}
+- (void)renderSection:(NSInteger)index {
     if (self.session.sections.count &&
         (index < 0 || index >= static_cast<NSInteger>(self.session.sections.count)))
         return;
@@ -1204,6 +1254,13 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     [self askTitle:YES];
 }
 - (void)showLibrary {
+    if (self.editor && ![self.editor flush])
+        return;
+    [self transitionNavigation:^{
+      [self renderLibrary];
+    }];
+}
+- (void)renderLibrary {
     if (self.editor && ![self.editor flush])
         return;
     self.editor.session = nil;
