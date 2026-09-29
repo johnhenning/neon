@@ -81,6 +81,33 @@ int main() {
                   [[store projects:&error] count] == 2,
               "restore project");
         check(![store deleteTrashedProject:created error:&error], "cannot purge active project");
+        NSMutableDictionary* legacy =
+            [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfURL:created]
+                                            options:NSJSONReadingMutableContainers
+                                              error:&error];
+        legacy[@"schema"] = @1;
+        for (NSMutableDictionary* section in legacy[@"documents"][0][@"sections"])
+            [section removeObjectForKey:@"trashed"];
+        NSData* legacyData = [NSJSONSerialization dataWithJSONObject:legacy options:0 error:&error];
+        check([legacyData writeToURL:created atomically:YES], "legacy fixture");
+        NeonDocumentSession* migrated = [store openURL:created error:&error];
+        check([migrated renameProject:@"Migrated" error:&error] && [migrated save:&error],
+              "migrate on edit");
+        NSURL* backup = [created URLByAppendingPathExtension:@"schema1-backup"];
+        check([[NSData dataWithContentsOfURL:backup] isEqualToData:legacyData],
+              "migration backup is original bytes");
+        check([store setProject:created trashed:YES error:&error],
+              "move migrated project to Trash");
+        trashed = [store trashedProjects:&error][0][@"url"];
+        check(
+            [[NSData dataWithContentsOfURL:[trashed URLByAppendingPathExtension:@"schema1-backup"]]
+                isEqualToData:legacyData],
+            "backup follows project");
+        check(
+            [store deleteTrashedProject:trashed error:&error] &&
+                ![[NSFileManager defaultManager]
+                    fileExistsAtPath:[trashed URLByAppendingPathExtension:@"schema1-backup"].path],
+            "permanent delete includes retained backup");
         NSData* data = [NSData dataWithContentsOfURL:file];
         NSMutableDictionary* future = [[NSJSONSerialization JSONObjectWithData:data
                                                                        options:0

@@ -718,6 +718,12 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     }
     self.projects = projects;
     self.libraryList.title = self.trashMode ? @"Trash" : @"Library";
+    self.libraryList.navigationItem.leftBarButtonItem =
+        self.trashMode ? [[UIBarButtonItem alloc] initWithTitle:@"Library"
+                                                          style:UIBarButtonItemStylePlain
+                                                         target:self
+                                                         action:@selector(showLibrary)]
+                       : nil;
     [self.libraryList.tableView reloadData];
 }
 - (void)showProblem:(NSError*)error {

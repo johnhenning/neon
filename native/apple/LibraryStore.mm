@@ -104,10 +104,18 @@
                                                    attributes:nil
                                                         error:error])
         return NO;
-    return [[NSFileManager defaultManager]
-        moveItemAtURL:url
-                toURL:[destination URLByAppendingPathComponent:url.lastPathComponent]
-                error:error];
+    NSFileManager* manager = NSFileManager.defaultManager;
+    NSURL* target = [destination URLByAppendingPathComponent:url.lastPathComponent];
+    NSURL* backup = [url URLByAppendingPathExtension:@"schema1-backup"];
+    NSURL* targetBackup = [target URLByAppendingPathExtension:@"schema1-backup"];
+    BOOL hasBackup = [manager fileExistsAtPath:backup.path];
+    if (![manager moveItemAtURL:url toURL:target error:error])
+        return NO;
+    if (hasBackup && ![manager moveItemAtURL:backup toURL:targetBackup error:error]) {
+        [manager moveItemAtURL:target toURL:url error:nil];
+        return NO;
+    }
+    return YES;
 }
 - (NSURL*)duplicateProject:(NSURL*)url error:(NSError**)error {
     if (![self validURL:url parent:self.directory error:error])
@@ -121,6 +129,10 @@
 - (BOOL)deleteTrashedProject:(NSURL*)url error:(NSError**)error {
     NSURL* trash = [self.directory URLByAppendingPathComponent:@"Trash" isDirectory:YES];
     if (![self validURL:url parent:trash error:error])
+        return NO;
+    NSURL* backup = [url URLByAppendingPathExtension:@"schema1-backup"];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:backup.path] &&
+        ![[NSFileManager defaultManager] removeItemAtURL:backup error:error])
         return NO;
     return [[NSFileManager defaultManager] removeItemAtURL:url error:error];
 }
