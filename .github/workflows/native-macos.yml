@@ -25,7 +25,7 @@ jobs:
       - name: Build native app
         run: cmake --build build-native --parallel 3
       - name: Install UI driver generator
-        run: brew install xcodegen
+        run: brew install xcodegen ffmpeg
       - name: Native tests and desktop captures
         run: ctest --test-dir build-native --output-on-failure
       - name: Package

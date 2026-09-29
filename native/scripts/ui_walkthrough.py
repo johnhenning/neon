@@ -82,6 +82,8 @@ def main():
             target['TestTimeoutsEnabled'] = True
             target['DefaultTestExecutionTimeAllowance'] = 120
             target['MaximumTestExecutionTimeAllowance'] = 180
+            if platform == 'macOS':
+                target['SystemAttachmentLifetime'] = 'keepAlways'
         test_run.write_bytes(plistlib.dumps(config))
         (output / 'test-launch.json').write_text(json.dumps({
             'source_app': str(args.app.resolve()), 'test_app': str(host),
@@ -89,38 +91,42 @@ def main():
             'executable': app_info['CFBundleExecutable']}, indent=2))
         movie = output / f'{args.platform}-walkthrough.mov'
         if platform == 'macOS':
-            record_args = ['/usr/sbin/screencapture', '-v', '-k', '-V', '180', str(movie)]
+            # XCTest already records the real UI session. Keep its recording on
+            # success too, avoiding an independent screencapture process whose
+            # SIGINT shutdown can discard the movie on hosted Mac runners.
+            run('xcodebuild', 'test-without-building', '-xctestrun', str(test_run),
+                '-destination', destination, '-parallel-testing-enabled', 'NO',
+                '-resultBundlePath', str(output / 'walkthrough.xcresult'))
+            result['status'] = 'passed'
         else:
             record_args = ['xcrun', 'simctl', 'io', args.device, 'recordVideo', '--codec=h264', str(movie)]
-        with (output / 'recording.log').open('w') as record_log:
-            recorder = subprocess.Popen(record_args, stdout=record_log, stderr=subprocess.STDOUT)
-            time.sleep(2)
-            if recorder.poll() is not None:
-                raise RuntimeError('Video recorder failed to start; see recording.log')
-            try:
-                run('xcodebuild', 'test-without-building', '-xctestrun', str(test_run),
-                    '-destination', destination, '-parallel-testing-enabled', 'NO',
-                    '-resultBundlePath', str(output / 'walkthrough.xcresult'))
-                result['status'] = 'passed'
-            finally:
-                if recorder.poll() is None:
-                    recorder.send_signal(signal.SIGINT)
+        if platform != 'macOS':
+            with (output / 'recording.log').open('w') as record_log:
+                recorder = subprocess.Popen(record_args, stdout=record_log, stderr=subprocess.STDOUT)
+                time.sleep(2)
+                if recorder.poll() is not None:
+                    raise RuntimeError('Video recorder failed to start; see recording.log')
                 try:
-                    recorder.wait(timeout=30)
-                except subprocess.TimeoutExpired:
-                    recorder.kill()
-                    recorder.wait()
-        if not movie.exists() or movie.stat().st_size < 1024:
+                    run('xcodebuild', 'test-without-building', '-xctestrun', str(test_run),
+                        '-destination', destination, '-parallel-testing-enabled', 'NO',
+                        '-resultBundlePath', str(output / 'walkthrough.xcresult'))
+                    result['status'] = 'passed'
+                finally:
+                    if recorder.poll() is None:
+                        recorder.send_signal(signal.SIGINT)
+                    try:
+                        recorder.wait(timeout=30)
+                    except subprocess.TimeoutExpired:
+                        recorder.kill()
+                        recorder.wait()
+        if platform != 'macOS' and (not movie.exists() or movie.stat().st_size < 1024):
             raise RuntimeError('No usable video was produced')
-        result['video'] = movie.name
     except (subprocess.SubprocessError, RuntimeError, StopIteration) as error:
         result['error'] = str(error)
         result['status'] = 'failed'
     finally:
+        result['ui_status'] = result['status']
         movie = output / f'{args.platform}-walkthrough.mov'
-        if movie.exists() and movie.stat().st_size >= 1024:
-            result['video'] = movie.name
-            result['video_complete'] = result['status'] == 'passed'
         bundle = output / 'walkthrough.xcresult'
         if (bundle / 'Info.plist').exists():
             try:
@@ -128,6 +134,28 @@ def main():
                     '--output-path', str(output / 'attachments'))
             except subprocess.SubprocessError as error:
                 result['attachment_error'] = str(error)
+        if platform == 'macOS':
+            try:
+                recordings = list((output / 'attachments').glob('*.mp4'))
+                if len(recordings) != 1:
+                    raise RuntimeError(f'Expected one XCTest recording, found {len(recordings)}')
+                movie = output / 'macOS-walkthrough.mp4'
+                with (output / 'recording.log').open('w') as record_log:
+                    run('ffmpeg', '-y', '-i', str(recordings[0]), '-an',
+                        '-vf', 'scale=960:-2,fps=24', '-c:v', 'libx264',
+                        '-b:v', '800k', '-maxrate', '1000k', '-bufsize', '2000k',
+                        '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(movie),
+                        stdout=record_log, stderr=subprocess.STDOUT)
+                result['recording_source'] = 'XCTest system attachment'
+            except (OSError, subprocess.SubprocessError, RuntimeError) as error:
+                result['recording_error'] = str(error)
+                result['status'] = 'failed'
+        if movie.exists() and movie.stat().st_size >= 1024:
+            result['video'] = movie.name
+            result['video_complete'] = result['status'] == 'passed'
+        else:
+            result['status'] = 'failed'
+            result['recording_error'] = result.get('recording_error', 'No usable video was produced')
         (output / 'result.json').write_text(json.dumps(result, indent=2))
         shutil.rmtree(work, ignore_errors=True)
     return 0 if result['status'] == 'passed' else 1

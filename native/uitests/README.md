@@ -13,7 +13,9 @@ collapse/expansion. These do not constitute complete app acceptance. Renaming,
 trash/restore, preset selection and cross-process persistence still have internal
 smoke coverage, but are not yet all part of the recorded XCTest journey.
 
-Mac uses screencapture video with the cursor; iPhone/iPad use simctl recordVideo.
+Mac retains XCTest’s native video attachment on both success and failure, then
+creates a compact H.264 preview with FFmpeg for inline upload. The original video
+stays in the artifacts. iPhone/iPad use simctl recordVideo.
 The UI runner emits named screenshot attachments and XCTest action logs. Touch
 indicators are not currently overlaid on mobile video. A recorder or UI assertion
 failure fails the walkthrough and is reported, retaining available failure evidence.
@@ -44,7 +46,7 @@ Each platform replaces its own previous attachment comment by the same author,
 with head-SHA and run-order checks. Bot fallback comments are updated in place.
 Workflow-dispatch builds retain evidence but do not post to an inferred PR.
 
-Run locally (requires Xcode and XcodeGen):
+Run locally (requires Xcode, XcodeGen, and FFmpeg on Mac):
 
 ```
 python3 native/scripts/ui_walkthrough.py macOS build-native/Neon.app build-native/walkthrough
