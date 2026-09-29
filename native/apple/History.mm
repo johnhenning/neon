@@ -12,16 +12,35 @@ NSString* entryDetail(NSDictionary* entry) {
         stringWithFormat:@"%@ · Revision %@ · %@", time, entry[@"revision"], entry[@"actor"]];
 }
 } // namespace
+#if TARGET_OS_OSX
+@interface NeonHistoryBackground : NSView
+@end
+@implementation NeonHistoryBackground
+- (void)drawRect:(NSRect)rect {
+    [NeonPaper() setFill];
+    NSRectFill(rect);
+}
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    self.needsDisplay = YES;
+}
+@end
+#endif
 @implementation NeonHistoryController {
     NSArray<NSDictionary*>* _entries;
     NSString* _selected;
     NSString* _query;
+    BOOL _checkpointsOnly;
 #if TARGET_OS_OSX
+    NSSearchField* _search;
+    NSTextField* _previewTitle;
     NSTableView* _table;
     NSTextView* _preview;
     NSButton* _restore;
     NSTextField* _detail;
 #else
+    UISearchBar* _search;
+    UILabel* _previewTitle;
     UITableView* _table;
     UITextView* _preview;
     UIButton* _restore;
@@ -30,12 +49,26 @@ NSString* entryDetail(NSDictionary* entry) {
 }
 - (void)loadView {
 #if TARGET_OS_OSX
-    self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 740, 640)];
-    self.view.wantsLayer = YES;
-    self.view.layer.backgroundColor = NeonPaper().CGColor;
+    self.view = [[NeonHistoryBackground alloc] initWithFrame:NSMakeRect(0, 0, 740, 640)];
+    NSTextField* title = [NSTextField labelWithString:@"Version History"];
+    title.font = NeonSerif(26);
+    title.textColor = NeonInk();
+    NSSegmentedControl* scope =
+        [NSSegmentedControl segmentedControlWithLabels:@[ @"All Versions", @"Checkpoints" ]
+                                          trackingMode:NSSegmentSwitchTrackingSelectOne
+                                                target:self
+                                                action:@selector(scopeChanged:)];
+    scope.selectedSegment = 0;
+    NSButton* searchButton = [NSButton buttonWithTitle:@"Search History"
+                                                target:self
+                                                action:@selector(toggleSearch)];
+    NSStackView* filters = [NSStackView stackViewWithViews:@[ scope, searchButton ]];
+    filters.spacing = 12;
     NSSearchField* search = [NSSearchField new];
     search.placeholderString = @"Search checkpoints, revisions, or authors";
     search.delegate = self;
+    _search = search;
+    search.hidden = YES;
     _detail = [NSTextField
         wrappingLabelWithString:
             @"Automatic snapshots are captured while saving, at most once a minute. Checkpoints "
@@ -48,13 +81,18 @@ NSString* entryDetail(NSDictionary* entry) {
     column.width = 660;
     [_table addTableColumn:column];
     _table.headerView = nil;
-    _table.rowHeight = 52;
+    _table.rowHeight = 64;
+    _table.style = NSTableViewStyleFullWidth;
+    _table.gridStyleMask = NSTableViewSolidHorizontalGridLineMask;
+    _table.gridColor = [NeonMuted() colorWithAlphaComponent:0.18];
+    _table.accessibilityLabel = @"Saved versions, newest first";
     _table.delegate = self;
     _table.dataSource = self;
     _table.backgroundColor = NeonPanel();
     NSScrollView* list = [NSScrollView new];
     list.documentView = _table;
     list.hasVerticalScroller = YES;
+    list.drawsBackground = NO;
     _preview = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 680, 200)];
     _preview.editable = NO;
     _preview.font = NeonSerif(16);
@@ -65,6 +103,10 @@ NSString* entryDetail(NSDictionary* entry) {
     NSScrollView* preview = [NSScrollView new];
     preview.documentView = _preview;
     preview.hasVerticalScroller = YES;
+    preview.drawsBackground = NO;
+    _previewTitle = [NSTextField wrappingLabelWithString:@"Version Preview"];
+    _previewTitle.font = NeonUI(14);
+    _previewTitle.textColor = NeonMuted();
     NSButton* checkpoint = [NSButton buttonWithTitle:@"New Checkpoint…"
                                               target:self
                                               action:@selector(checkpoint)];
@@ -74,8 +116,9 @@ NSString* entryDetail(NSDictionary* entry) {
     NSButton* done = [NSButton buttonWithTitle:@"Done" target:self action:@selector(close)];
     NSStackView* buttons = [NSStackView stackViewWithViews:@[ checkpoint, _restore, done ]];
     buttons.spacing = 12;
-    NSStackView* stack =
-        [NSStackView stackViewWithViews:@[ search, _detail, list, preview, buttons ]];
+    NSStackView* stack = [NSStackView stackViewWithViews:@[
+        title, _detail, filters, search, list, _previewTitle, preview, buttons
+    ]];
     stack.orientation = NSUserInterfaceLayoutOrientationVertical;
     stack.alignment = NSLayoutAttributeLeading;
     stack.spacing = 14;
@@ -86,16 +129,27 @@ NSString* entryDetail(NSDictionary* entry) {
         [stack.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-24],
         [stack.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:24],
         [stack.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-24],
-        [list.heightAnchor constraintEqualToConstant:180],
-        [preview.heightAnchor constraintGreaterThanOrEqualToConstant:180]
+        [list.heightAnchor constraintEqualToConstant:160],
+        [preview.heightAnchor constraintGreaterThanOrEqualToConstant:100]
     ]];
-    for (NSView* child in @[ search, _detail, list, preview ])
+    for (NSView* child in @[ search, _detail, list, _previewTitle, preview ])
         [child.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
 #else
     self.view = [UIView new];
     self.view.backgroundColor = NeonPaper();
     self.view.tintColor = NeonAccent();
-    self.title = @"History";
+    self.title = @"Version History";
+    self.navigationItem.leftBarButtonItem =
+        [[UIBarButtonItem alloc] initWithTitle:@"Search History"
+                                         style:UIBarButtonItemStylePlain
+                                        target:self
+                                        action:@selector(toggleSearch)];
+    UISegmentedControl* scope =
+        [[UISegmentedControl alloc] initWithItems:@[ @"All Versions", @"Checkpoints" ]];
+    scope.selectedSegmentIndex = 0;
+    [scope addTarget:self
+                  action:@selector(scopeChanged:)
+        forControlEvents:UIControlEventValueChanged];
     self.navigationItem.rightBarButtonItem =
         [[UIBarButtonItem alloc] initWithTitle:@"Done"
                                          style:UIBarButtonItemStyleDone
@@ -104,6 +158,8 @@ NSString* entryDetail(NSDictionary* entry) {
     UISearchBar* search = [UISearchBar new];
     search.placeholder = @"Search local history";
     search.delegate = self;
+    _search = search;
+    search.hidden = YES;
     search.searchBarStyle = UISearchBarStyleMinimal;
     _detail = [UILabel new];
     _detail.text = @"Automatic snapshots: at most once a minute while saving. Checkpoints capture "
@@ -117,6 +173,12 @@ NSString* entryDetail(NSDictionary* entry) {
     _table.backgroundColor = NeonPanel();
     _table.rowHeight = UITableViewAutomaticDimension;
     _table.estimatedRowHeight = 68;
+    _table.accessibilityLabel = @"Saved versions, newest first";
+    _table.separatorColor = [NeonMuted() colorWithAlphaComponent:0.18];
+    _previewTitle = [UILabel new];
+    _previewTitle.numberOfLines = 0;
+    _previewTitle.font = NeonUI(14);
+    _previewTitle.textColor = NeonMuted();
     _preview = [UITextView new];
     _preview.editable = NO;
     _preview.font = NeonSerif(16);
@@ -135,8 +197,9 @@ NSString* entryDetail(NSDictionary* entry) {
     UIStackView* buttons = [[UIStackView alloc] initWithArrangedSubviews:@[ checkpoint, _restore ]];
     buttons.axis = UILayoutConstraintAxisVertical;
     buttons.spacing = 4;
-    UIStackView* stack = [[UIStackView alloc]
-        initWithArrangedSubviews:@[ search, _detail, _table, _preview, buttons ]];
+    UIStackView* stack = [[UIStackView alloc] initWithArrangedSubviews:@[
+        _detail, scope, search, _table, _previewTitle, _preview, buttons
+    ]];
     stack.axis = UILayoutConstraintAxisVertical;
     stack.spacing = 10;
     stack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -157,9 +220,39 @@ NSString* entryDetail(NSDictionary* entry) {
     _preview.accessibilityLabel = @"Read-only revision preview";
     [self reloadHistory];
 }
+- (void)toggleSearch {
+    _search.hidden = !_search.hidden;
+    if (_search.hidden) {
+        _query = nil;
+#if TARGET_OS_OSX
+        _search.stringValue = @"";
+        [self.view.window makeFirstResponder:_table];
+#else
+        _search.text = @"";
+        [_search resignFirstResponder];
+#endif
+        [self reloadHistory];
+    } else {
+#if TARGET_OS_OSX
+        [self.view.window makeFirstResponder:_search];
+#else
+        [_search becomeFirstResponder];
+#endif
+    }
+}
+- (void)scopeChanged:(id)sender {
+#if TARGET_OS_OSX
+    _checkpointsOnly = [sender selectedSegment] == 1;
+#else
+    _checkpointsOnly = [sender selectedSegmentIndex] == 1;
+#endif
+    [self reloadHistory];
+}
 - (void)reloadHistory {
     NSMutableArray* entries = [NSMutableArray array];
     for (NSDictionary* entry in self.session.history) {
+        if (_checkpointsOnly && ![entry[@"kind"] isEqual:@"checkpoint"])
+            continue;
         NSString* searchable =
             [NSString stringWithFormat:@"%@ %@", entry[@"label"], entryDetail(entry)];
         if (!_query.length || [searchable localizedCaseInsensitiveContainsString:_query])
@@ -167,10 +260,20 @@ NSString* entryDetail(NSDictionary* entry) {
     }
     _entries = entries;
     [_table reloadData];
-    [self selectRevisionAtIndex:0];
+    NSUInteger index =
+        [_entries indexOfObjectPassingTest:^BOOL(NSDictionary* entry, NSUInteger idx, BOOL* stop) {
+          (void)idx;
+          (void)stop;
+          return [entry[@"id"] isEqual:_selected];
+        }];
+    [self selectRevisionAtIndex:index == NSNotFound ? 0 : index];
 }
 - (void)selectRevisionAtIndex:(NSUInteger)index {
     _selected = index < _entries.count ? _entries[index][@"id"] : nil;
+    NSString* heading = _selected ? [NSString stringWithFormat:@"%@ — Read-only preview\n%@",
+                                                               _entries[index][@"label"],
+                                                               entryDetail(_entries[index])]
+                                  : @"Version Preview";
     NSError* error = nil;
     NSString* preview =
         _selected
@@ -178,10 +281,13 @@ NSString* entryDetail(NSDictionary* entry) {
             : (_query.length ? @"No matching revisions."
                              : @"No snapshots yet. Create a checkpoint to preserve this version.");
 #if TARGET_OS_OSX
+    _previewTitle.stringValue = heading;
     _preview.string = preview ?: error.localizedDescription;
+    _preview.textColor = NeonInk();
     if (_selected)
         [_table selectRowIndexes:[NSIndexSet indexSetWithIndex:index] byExtendingSelection:NO];
 #else
+    _previewTitle.text = heading;
     _preview.text = preview ?: error.localizedDescription;
     if (_selected)
         [_table selectRowAtIndexPath:[NSIndexPath indexPathForRow:index inSection:0]
@@ -306,7 +412,7 @@ NSString* entryDetail(NSDictionary* entry) {
         [NSTextField wrappingLabelWithString:[NSString stringWithFormat:@"%@\n%@", entry[@"label"],
                                                                         entryDetail(entry)]];
     field.font = NeonUI(12);
-    field.textColor = NeonInk();
+    field.textColor = NSColor.labelColor;
     return field;
 }
 - (void)tableViewSelectionDidChange:(NSNotification*)notification {

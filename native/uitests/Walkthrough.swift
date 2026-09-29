@@ -88,7 +88,18 @@ final class Walkthrough: XCTestCase {
         #endif
         activate(app.buttons["History"])
         XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.searchFields.firstMatch.isHittable)
         capture("06-history")
+        activate(app.buttons["Search History"])
+        let historySearch = app.searchFields.firstMatch
+        XCTAssertTrue(historySearch.waitForExistence(timeout: 5))
+        activate(historySearch)
+        historySearch.typeText("NoSuchRevisionForWalkthrough")
+        let revisionPreview = element("Read-only revision preview")
+        XCTAssertTrue((revisionPreview.value as? String ?? "").contains("No matching revisions"))
+        activate(app.buttons["Search History"])
+        XCTAssertFalse(historySearch.isHittable)
+        XCTAssertFalse((revisionPreview.value as? String ?? "").contains("No matching revisions"))
         activate(app.buttons["Done"])
         #if os(macOS)
         app.typeKey(",", modifierFlags: .command)

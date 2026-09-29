@@ -49,7 +49,7 @@ jobs:
             build-native/native-typography.png
             build-native/native-context-menu.png
             build-native/native-settings.png
-            build-native/native-history.png
+            build-native/native-history*.png
             build-native/native-research.png
             build-native/walkthrough
             build-native/dependencies.txt

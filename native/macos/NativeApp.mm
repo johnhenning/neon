@@ -1015,9 +1015,9 @@ NSUInteger words(NSString* text) {
                                                      styleMask:NSWindowStyleMaskTitled
                                                        backing:NSBackingStoreBuffered
                                                          defer:NO];
-    self.historyWindow.title = @"History";
-    self.historyWindow.contentViewController = controller;
+    self.historyWindow.title = @"Version History";
     self.historyWindow.appearance = self.window.effectiveAppearance;
+    self.historyWindow.contentViewController = controller;
     [self.window beginSheet:self.historyWindow completionHandler:nil];
 }
 - (void)newSection:(id)sender {
@@ -1525,6 +1525,11 @@ NSUInteger words(NSString* text) {
     NeonHistoryController* controller = (id)self.historyWindow.contentViewController;
     [controller selectRevisionAtIndex:1];
     [self capture:@"native-history.png"];
+    self.historyWindow.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    [self performSelector:@selector(captureHistoryDark) withObject:nil afterDelay:1];
+}
+- (void)captureHistoryDark {
+    [self capture:@"native-history-dark.png"];
     [self.window endSheet:self.historyWindow];
     NSError* error = nil;
     NSURL* url = [self.library createProject:@"The tidal study" preset:@"research" error:&error];

@@ -1267,6 +1267,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     UINavigationController* navigation =
         [[UINavigationController alloc] initWithRootViewController:controller];
     navigation.modalPresentationStyle = UIModalPresentationPageSheet;
+    navigation.overrideUserInterfaceStyle = self.overrideUserInterfaceStyle;
     [self presentViewController:navigation animated:YES completion:nil];
 }
 - (void)newSection {
