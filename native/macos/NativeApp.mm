@@ -1074,7 +1074,9 @@ NSUInteger words(NSString* text) {
 }
 - (void)captureDark {
     [self capture:@"native-editor-dark.png"];
-    [self showTypography:self.content.view];
+    for (NSToolbarItem* item in self.window.toolbar.items)
+        if ([item.itemIdentifier isEqual:@"type"])
+            [self showTypography:item.view];
     [self performSelector:@selector(captureTypography) withObject:nil afterDelay:1];
 }
 - (void)captureTypography {

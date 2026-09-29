@@ -353,7 +353,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                          [textView selectAll:nil];
                        })
         ]);
-    return nil;
+    // An empty menu suppresses UIKit actions; nil would request the stock menu.
+    return [UIMenu menuWithTitle:@"" children:@[]];
 }
 @end
 @implementation NeonTypography

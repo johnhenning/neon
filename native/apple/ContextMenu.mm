@@ -24,6 +24,7 @@ void NeonDismissMenu() {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = NeonPanel();
+    self.view.tintColor = NeonAccent();
     self.view.accessibilityViewIsModal = YES;
     UIStackView* stack = [UIStackView new];
     stack.axis = UILayoutConstraintAxisVertical;
@@ -31,7 +32,9 @@ void NeonDismissMenu() {
     for (NeonMenuAction* item in self.actions) {
         UIButton* row = [UIButton buttonWithType:UIButtonTypeSystem];
         UIButtonConfiguration* config = [UIButtonConfiguration plainButtonConfiguration];
-        config.title = item.title;
+        config.attributedTitle =
+            [[NSAttributedString alloc] initWithString:item.title
+                                            attributes:@{NSFontAttributeName : NeonUI(16)}];
         config.image = [UIImage systemImageNamed:item.symbol];
         config.imagePadding = 12;
         config.contentInsets = NSDirectionalEdgeInsetsMake(8, 12, 8, 12);
@@ -71,6 +74,14 @@ void NeonDismissMenu() {
         [stack.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor]
     ]];
 }
+- (NSArray<UIKeyCommand*>*)keyCommands {
+    return @[ [UIKeyCommand keyCommandWithInput:UIKeyInputEscape
+                                  modifierFlags:0
+                                         action:@selector(closeMenu)] ];
+}
+- (void)closeMenu {
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
 - (UIModalPresentationStyle)
     adaptivePresentationStyleForPresentationController:(UIPresentationController*)controller
                                        traitCollection:(UITraitCollection*)traits {
@@ -102,14 +113,39 @@ void NeonDismissMenu() {
 }
 @interface NeonMenuButton : NSButton
 @property(nonatomic, strong) NeonMenuAction* command;
+@property(nonatomic, strong) NSTrackingArea* hoverArea;
+@property(nonatomic) BOOL hovered;
 @end
 @implementation NeonMenuButton
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+    if (self.hoverArea)
+        [self removeTrackingArea:self.hoverArea];
+    self.hoverArea =
+        [[NSTrackingArea alloc] initWithRect:self.bounds
+                                     options:NSTrackingMouseEnteredAndExited |
+                                             NSTrackingActiveAlways | NSTrackingInVisibleRect
+                                       owner:self
+                                    userInfo:nil];
+    [self addTrackingArea:self.hoverArea];
+}
+- (void)mouseEntered:(NSEvent*)event {
+    (void)event;
+    self.hovered = YES;
+    self.needsDisplay = YES;
+}
+- (void)mouseExited:(NSEvent*)event {
+    (void)event;
+    self.hovered = NO;
+    self.needsDisplay = YES;
+}
 - (BOOL)acceptsFirstResponder {
     return YES;
 }
 - (void)drawRect:(NSRect)rect {
     (void)rect;
-    BOOL highlighted = self.highlighted || self.window.firstResponder == self;
+    BOOL highlighted =
+        self.enabled && (self.hovered || self.highlighted || self.window.firstResponder == self);
     if (highlighted) {
         [[NeonAccent() colorWithAlphaComponent:0.16] setFill];
         [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:6 yRadius:6] fill];
