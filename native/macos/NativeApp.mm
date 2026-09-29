@@ -475,8 +475,6 @@ NSUInteger words(NSString* text) {
             chapter.edgeInsets = NSEdgeInsetsMake(5, 10, 5, 8);
             chapter.accessibilityLabel = section[@"title"];
             chapter.accessibilityValue = selected ? @"Current chapter" : @"Chapter";
-            [chapter.widthAnchor constraintEqualToAnchor:self.sidebarBody.widthAnchor constant:-28]
-                .active = YES;
             [rows addObject:chapter];
         }
         [rows addObject:button(@"New Chapter", @"plus", self, @selector(newSection:))];
@@ -497,6 +495,9 @@ NSUInteger words(NSString* text) {
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     scroll.documentView = stack;
     [stack.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor].active = YES;
+    for (NSView* row in rows)
+        if ([row isKindOfClass:NeonChapterRow.class])
+            [row.widthAnchor constraintEqualToAnchor:stack.widthAnchor constant:-36].active = YES;
 }
 - (void)showLibrary:(id)sender {
     if (sender != self)
