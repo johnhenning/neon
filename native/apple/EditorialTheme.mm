@@ -123,13 +123,26 @@ BOOL NeonWritingPreference(NSString* key) {
 }
 
 #if !TARGET_OS_IPHONE
+@interface NeonPillTrack : NSStackView
+@end
+@implementation NeonPillTrack
+- (void)drawRect:(NSRect)rect {
+    (void)rect;
+    [NeonPanel() setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:18 yRadius:18] fill];
+}
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    self.needsDisplay = YES;
+}
+@end
 @interface NeonPillButton : NSButton
 @end
 @implementation NeonPillButton
 - (void)drawRect:(NSRect)rect {
     (void)rect;
     BOOL selected = self.state == NSControlStateValueOn;
-    [(selected ? [NeonAccent() colorWithAlphaComponent:0.22] : NeonPanel()) setFill];
+    [(selected ? [NeonAccent() colorWithAlphaComponent:0.22] : NSColor.clearColor) setFill];
     [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 1, 1) xRadius:16
                                      yRadius:16] fill];
     NSDictionary* attributes = @{
@@ -150,14 +163,18 @@ BOOL NeonWritingPreference(NSString* key) {
 #if TARGET_OS_IPHONE
 UIView* NeonPillSelector(NSArray<NSString*>* titles, NSInteger selected, id target, SEL action) {
     UIStackView* stack = [UIStackView new];
-    stack.spacing = 4;
+    stack.backgroundColor = NeonPanel();
+    stack.layer.cornerRadius = 18;
+    stack.layoutMargins = UIEdgeInsetsMake(2, 2, 2, 2);
+    stack.layoutMarginsRelativeArrangement = YES;
+    stack.spacing = 0;
     for (NSUInteger i = 0; i < titles.count; ++i) {
         UIButton* button = [UIButton buttonWithType:UIButtonTypeSystem];
         UIButtonConfiguration* config = UIButtonConfiguration.filledButtonConfiguration;
         config.title = titles[i];
         config.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
         config.baseBackgroundColor =
-            i == selected ? [NeonAccent() colorWithAlphaComponent:0.22] : NeonPanel();
+            i == selected ? [NeonAccent() colorWithAlphaComponent:0.22] : UIColor.clearColor;
         config.baseForegroundColor = i == selected ? NeonAccent() : NeonMuted();
         config.contentInsets = NSDirectionalEdgeInsetsMake(7, 16, 7, 16);
         button.configuration = config;
@@ -171,8 +188,9 @@ UIView* NeonPillSelector(NSArray<NSString*>* titles, NSInteger selected, id targ
 }
 #else
 NSView* NeonPillSelector(NSArray<NSString*>* titles, NSInteger selected, id target, SEL action) {
-    NSStackView* stack = [NSStackView new];
-    stack.spacing = 4;
+    NSStackView* stack = [NeonPillTrack new];
+    stack.edgeInsets = NSEdgeInsetsMake(2, 2, 2, 2);
+    stack.spacing = 0;
     for (NSUInteger i = 0; i < titles.count; ++i) {
         NeonPillButton* button = [NeonPillButton new];
         button.title = titles[i];

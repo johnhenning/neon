@@ -64,8 +64,6 @@ NSString* entryDetail(NSDictionary* entry) {
     NSTextField* title = [NSTextField labelWithString:@"Version History"];
     title.font = NeonSerif(26);
     title.textColor = NeonInk();
-    NSView* workspace =
-        NeonPillSelector(@[ @"Editor", @"History" ], 1, self, @selector(workspaceChanged:));
     NSView* scope =
         NeonPillSelector(@[ @"All Versions", @"Checkpoints" ], 0, self, @selector(scopeChanged:));
     NSButton* searchButton = [NSButton buttonWithTitle:@"Search History"
@@ -125,7 +123,7 @@ NSString* entryDetail(NSDictionary* entry) {
     NSStackView* buttons = [NSStackView stackViewWithViews:@[ checkpoint, _restore ]];
     buttons.spacing = 12;
     NSStackView* stack = [NSStackView stackViewWithViews:@[
-        workspace, title, _detail, filters, search, list, _previewTitle, preview, buttons
+        title, _detail, filters, search, list, _previewTitle, preview, buttons
     ]];
     stack.orientation = NSUserInterfaceLayoutOrientationVertical;
     stack.alignment = NSLayoutAttributeLeading;
@@ -154,6 +152,7 @@ NSString* entryDetail(NSDictionary* entry) {
                                         action:@selector(toggleSearch)];
     UIView* workspace =
         NeonPillSelector(@[ @"Editor", @"History" ], 1, self, @selector(workspaceChanged:));
+    self.navigationItem.titleView = workspace;
     UIView* scope =
         NeonPillSelector(@[ @"All Versions", @"Checkpoints" ], 0, self, @selector(scopeChanged:));
     UISearchBar* search = [UISearchBar new];
@@ -199,7 +198,7 @@ NSString* entryDetail(NSDictionary* entry) {
     buttons.axis = UILayoutConstraintAxisVertical;
     buttons.spacing = 4;
     UIStackView* stack = [[UIStackView alloc] initWithArrangedSubviews:@[
-        workspace, _detail, scope, search, _table, _previewTitle, _preview, buttons
+        _detail, scope, search, _table, _previewTitle, _preview, buttons
     ]];
     stack.axis = UILayoutConstraintAxisVertical;
     stack.spacing = 10;
@@ -261,7 +260,7 @@ NSString* entryDetail(NSDictionary* entry) {
             continue;
         UIButtonConfiguration* config = button.configuration;
         config.baseBackgroundColor =
-            button == sender ? [NeonAccent() colorWithAlphaComponent:0.22] : NeonPanel();
+            button == sender ? [NeonAccent() colorWithAlphaComponent:0.22] : UIColor.clearColor;
         config.baseForegroundColor = button == sender ? NeonAccent() : NeonMuted();
         button.configuration = config;
         button.accessibilityTraits =

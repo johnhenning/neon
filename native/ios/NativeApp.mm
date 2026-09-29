@@ -141,7 +141,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.bookTitle.commitTitle = ^BOOL(NSString* title) {
       return [weakSelf.coordinator renameInline:title section:nil];
     };
-    self.navigationItem.titleView = self.bookTitle;
+    self.navigationItem.titleView =
+        NeonPillSelector(@[ @"Editor", @"History" ], 0, self, @selector(workspaceChanged:));
     self.view.backgroundColor = NeonPaper();
     self.view.tintColor = NeonAccent();
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
@@ -195,10 +196,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.heading.textAlignment = kicker.textAlignment;
     UIView* rule = [UIView new];
     rule.backgroundColor = [NeonAccent() colorWithAlphaComponent:0.5];
-    UIView* workspace =
-        NeonPillSelector(@[ @"Editor", @"History" ], 0, self, @selector(workspaceChanged:));
     NSMutableArray* headerViews =
-        [NSMutableArray arrayWithArray:@[ workspace, kicker, self.heading, rule ]];
+        [NSMutableArray arrayWithArray:@[ self.bookTitle, kicker, self.heading, rule ]];
     if (!self.session.text.length && self.session.sectionGuidance.length) {
         self.guidance = label(self.session.sectionGuidance, NeonUI(12), NeonMuted());
         [headerViews addObject:self.guidance];

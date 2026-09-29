@@ -213,6 +213,7 @@ NSUInteger words(NSString* text) {
 @property(nonatomic, strong) NSTextField* status;
 @property(nonatomic, strong) NSTextField* guidance;
 @property(nonatomic, strong) NeonInlineTitle* windowTitle;
+@property(nonatomic, strong) NSToolbarItem* workspaceItem;
 @property(nonatomic, strong) NeonInlineTitle* chapterTitle;
 @property(nonatomic, strong) NSView* sidebarBody;
 @property(nonatomic, strong) NSView* sidebarMaterial;
@@ -268,6 +269,7 @@ NSUInteger words(NSString* text) {
     toolbar.delegate = self;
     toolbar.displayMode = NSToolbarDisplayModeIconOnly;
     self.window.toolbar = toolbar;
+    toolbar.centeredItemIdentifiers = [NSSet setWithObject:@"workspace"];
     self.split = [NSSplitViewController new];
     self.sidebar = [NSViewController new];
     self.sidebar.view = [NSView new];
@@ -388,8 +390,8 @@ NSUInteger words(NSString* text) {
 - (NSArray*)toolbarDefaultItemIdentifiers:(NSToolbar*)toolbar {
     (void)toolbar;
     return @[
-        @"projectTitle", @"sidebar", @"library", NSToolbarFlexibleSpaceItemIdentifier, @"type",
-        @"more", @"new"
+        @"projectTitle", @"sidebar", @"library", NSToolbarFlexibleSpaceItemIdentifier, @"workspace",
+        NSToolbarFlexibleSpaceItemIdentifier, @"type", @"more", @"new", NSToolbarSpaceItemIdentifier
     ];
 }
 - (NSArray*)toolbarAllowedItemIdentifiers:(NSToolbar*)toolbar {
@@ -400,6 +402,13 @@ NSUInteger words(NSString* text) {
     willBeInsertedIntoToolbar:(BOOL)flag {
     (void)toolbar;
     (void)flag;
+    if ([identifier isEqual:@"workspace"]) {
+        self.workspaceItem = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
+        self.workspaceItem.label = @"Workspace view";
+        self.workspaceItem.visibilityPriority = NSToolbarItemVisibilityPriorityHigh;
+        [self updateWorkspacePill];
+        return self.workspaceItem;
+    }
     if ([identifier isEqual:@"projectTitle"]) {
         NSToolbarItem* titleItem = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
         self.windowTitle = [[NeonInlineTitle alloc] initWithFrame:NSMakeRect(0, 0, 210, 26)];
@@ -413,7 +422,7 @@ NSUInteger words(NSString* text) {
         titleItem.label = @"Project title";
         titleItem.navigational = YES;
         titleItem.view = self.windowTitle;
-        [self.windowTitle.widthAnchor constraintEqualToConstant:210].active = YES;
+        [self.windowTitle.widthAnchor constraintEqualToConstant:150].active = YES;
         return titleItem;
     }
     NSDictionary* config = @{
@@ -612,6 +621,7 @@ NSUInteger words(NSString* text) {
         return;
     self.editor = nil;
     self.session = nil;
+    [self updateWorkspacePill];
     self.selectedURL = nil;
     self.status = nil;
     self.window.title = @"Neon";
@@ -725,6 +735,7 @@ NSUInteger words(NSString* text) {
 - (void)renderEditor {
     [self.historyController removeFromParentViewController];
     self.historyController = nil;
+    [self updateWorkspacePill];
     self.editor = nil;
     [self clear:self.content.view];
     self.window.title = self.session.title;
@@ -774,9 +785,7 @@ NSUInteger words(NSString* text) {
       return [weakSelf renameInline:title section:identifier];
     };
     heading.alignment = kicker.alignment;
-    NSView* workspace =
-        NeonPillSelector(@[ @"Editor", @"History" ], 0, self, @selector(workspaceChanged:));
-    NSMutableArray* header = [NSMutableArray arrayWithArray:@[ workspace, kicker, heading ]];
+    NSMutableArray* header = [NSMutableArray arrayWithArray:@[ kicker, heading ]];
     if (!self.session.text.length && self.session.sectionGuidance.length) {
         NSTextField* guidance = [NSTextField wrappingLabelWithString:self.session.sectionGuidance];
         self.guidance = guidance;
@@ -1003,6 +1012,12 @@ NSUInteger words(NSString* text) {
         [NSString stringWithFormat:@"%@\n\n%@", preset[@"description"],
                                    [titles componentsJoinedByString:@" · "]];
 }
+- (void)updateWorkspacePill {
+    self.workspaceItem.view =
+        NeonPillSelector(@[ @"Editor", @"History" ], self.historyController ? 1 : 0, self,
+                         @selector(workspaceChanged:));
+    self.workspaceItem.view.hidden = self.session == nil;
+}
 - (void)workspaceChanged:(id)sender {
     if ([sender tag] == 1)
         [self showHistory:nil];
@@ -1032,6 +1047,7 @@ NSUInteger words(NSString* text) {
         [weakSelf buildSidebar];
       };
       self.historyController = controller;
+      [self updateWorkspacePill];
       [self.content addChildViewController:controller];
       pin(controller.view, self.content.view);
     }];
