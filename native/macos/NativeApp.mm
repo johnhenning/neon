@@ -215,6 +215,7 @@ NSUInteger words(NSString* text) {
 @property(nonatomic, strong) NeonInlineTitle* windowTitle;
 @property(nonatomic, strong) NSToolbarItem* workspaceItem;
 @property(nonatomic, strong) NSLayoutConstraint* workspaceSpacing;
+@property(nonatomic, strong) NSToolbarItem* workspaceSpacerItem;
 @property(nonatomic, strong) NSLayoutConstraint* toolbarTitleWidth;
 @property(nonatomic) BOOL aligningWorkspace;
 @property(nonatomic, strong) NeonInlineTitle* chapterTitle;
@@ -411,6 +412,7 @@ NSUInteger words(NSString* text) {
     (void)flag;
     if ([identifier isEqual:@"workspaceSpacing"]) {
         NSToolbarItem* spacer = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
+        self.workspaceSpacerItem = spacer;
         spacer.view = [NSView new];
         self.workspaceSpacing = [spacer.view.widthAnchor constraintEqualToConstant:0];
         self.workspaceSpacing.active = YES;
@@ -1057,6 +1059,11 @@ NSUInteger words(NSString* text) {
         } else {
             self.workspaceSpacing.constant = MAX(0, gap);
         }
+        NSSize spacing = NSMakeSize(self.workspaceSpacing.constant, 1);
+        [self.workspaceSpacerItem.view setFrameSize:spacing];
+        self.workspaceSpacerItem.minSize = spacing;
+        self.workspaceSpacerItem.maxSize = spacing;
+        [self.workspaceSpacerItem.view invalidateIntrinsicContentSize];
     }
     [self.window.contentView.superview layoutSubtreeIfNeeded];
     self.aligningWorkspace = NO;
