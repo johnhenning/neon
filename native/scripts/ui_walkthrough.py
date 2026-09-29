@@ -29,7 +29,7 @@ def main():
     source = pathlib.Path(__file__).resolve().parents[1] / 'uitests/Walkthrough.swift'
     shutil.copy(source, work / source.name)
     # Xcode requires a host target to generate its UI runner. This build-only shell
-    # is never launched: UITargetAppPath below points to the real CMake product.
+    # is replaced with the real CMake product before running any tests.
     (work / 'Host.swift').write_text('@main struct Host { static func main() {} }\n')
     bundle_id = ('com.johnhenning.neon.nativeprototype' if platform == 'macOS'
                  else 'com.johnhenning.neon.applepreview')
@@ -57,20 +57,36 @@ def main():
     recorder = None
     try:
         run('xcodegen', 'generate', '--spec', str(work / 'project.json'), '--project', str(work))
-        destination = 'platform=macOS' if platform == 'macOS' else f'platform=iOS Simulator,id={args.device}'
+        destination = 'platform=macOS,arch=arm64' if platform == 'macOS' else f'platform=iOS Simulator,id={args.device}'
         derived = work / 'DerivedData'
         run('xcodebuild', 'build-for-testing', '-project', str(work / 'NeonWalkthrough.xcodeproj'),
             '-scheme', 'Walkthrough', '-destination', destination, '-derivedDataPath', str(derived))
         test_run = next(derived.glob('Build/Products/*.xctestrun'))
         config = plistlib.loads(test_run.read_bytes())
-        # Xcode builds the UI runner; install/launch the exact app produced by CMake.
+        # XCTest has additional bundle-ID and dependency mappings beyond UITargetAppPath.
+        # Keep the generated mappings consistent by replacing the host bundle in place.
+        hosts = list(derived.glob('Build/Products/*/NeonHost.app'))
+        if len(hosts) != 1:
+            raise RuntimeError(f'Expected one UI host bundle, found {len(hosts)}')
+        host = hosts[0]
+        shutil.rmtree(host)
+        shutil.copytree(args.app.resolve(), host, symlinks=True)
+        info_path = host / ('Contents/Info.plist' if platform == 'macOS' else 'Info.plist')
+        app_info = plistlib.loads(info_path.read_bytes())
+        if app_info['CFBundleIdentifier'] != bundle_id or app_info['CFBundleExecutable'] != 'Neon':
+            raise RuntimeError('UI host does not contain the expected CMake-built Neon app')
         targets = [t for c in config.get('TestConfigurations', []) for t in c['TestTargets']]
         if not targets:
             targets = [v for k, v in config.items() if not k.startswith('__') and isinstance(v, dict)]
         for target in targets:
-            target['UITargetAppPath'] = str(args.app.resolve())
-            target['UITargetAppBundleIdentifier'] = bundle_id
+            target['TestTimeoutsEnabled'] = True
+            target['DefaultTestExecutionTimeAllowance'] = 120
+            target['MaximumTestExecutionTimeAllowance'] = 180
         test_run.write_bytes(plistlib.dumps(config))
+        (output / 'test-launch.json').write_text(json.dumps({
+            'source_app': str(args.app.resolve()), 'test_app': str(host),
+            'bundle_id': app_info['CFBundleIdentifier'],
+            'executable': app_info['CFBundleExecutable']}, indent=2))
         movie = output / f'{args.platform}-walkthrough.mov'
         if platform == 'macOS':
             record_args = ['/usr/sbin/screencapture', '-v', '-k', '-V', '180', str(movie)]
@@ -101,8 +117,12 @@ def main():
         result['error'] = str(error)
         result['status'] = 'failed'
     finally:
+        movie = output / f'{args.platform}-walkthrough.mov'
+        if movie.exists() and movie.stat().st_size >= 1024:
+            result['video'] = movie.name
+            result['video_complete'] = result['status'] == 'passed'
         bundle = output / 'walkthrough.xcresult'
-        if bundle.exists():
+        if (bundle / 'Info.plist').exists():
             try:
                 run('xcrun', 'xcresulttool', 'export', 'attachments', '--path', str(bundle),
                     '--output-path', str(output / 'attachments'))

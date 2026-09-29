@@ -4,7 +4,8 @@ The Apple workflow runs a separate XCTest walkthrough against the exact CMake-bu
 Neon.app, using accessibility clicks/taps and typing. `--ui-testing` seeds an
 isolated fixture library and does not run internal smoke actions. No user library
 is read or modified. XcodeGen generates a disposable test runner; its placeholder
-host exists only to satisfy Xcode's build graph and is never launched.
+host satisfies Xcode's build graph and is replaced with a copy of the CMake-built
+Neon.app before testing, preserving every generated bundle-ID/path mapping.
 
 Current assertions cover opening a project, chapter changes, typing and reading
 back saved text after navigation, history/settings presentation, and Mac sidebar
