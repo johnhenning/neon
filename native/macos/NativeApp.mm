@@ -1,5 +1,6 @@
 #import "ContextMenu.h"
 #import "EditorialTheme.h"
+#import "InlineTitle.h"
 #import "LibraryStore.h"
 #import <QuartzCore/QuartzCore.h>
 #include <cstdio>
@@ -198,6 +199,11 @@ NSUInteger words(NSString* text) {
 @property(nonatomic, strong) NSURL* selectedURL;
 @property(nonatomic, strong) NSTextView* editor;
 @property(nonatomic, strong) NSTextField* status;
+@property(nonatomic, strong) NeonInlineTitle* windowTitle;
+@property(nonatomic, strong) NeonInlineTitle* chapterTitle;
+@property(nonatomic, strong) NSView* sidebarBody;
+@property(nonatomic, strong) NSView* sidebarMaterial;
+- (BOOL)renameInline:(NSString*)title section:(NSString*)identifier;
 @property(nonatomic, strong) NSTimer* timer;
 @property(nonatomic, strong) NSPopover* typography;
 @property(nonatomic, strong) NSPanel* settings;
@@ -235,6 +241,8 @@ NSUInteger words(NSString* text) {
                     backing:NSBackingStoreBuffered
                       defer:NO];
     self.window.title = @"Neon";
+    self.window.titleVisibility = NSWindowTitleHidden;
+    self.window.titlebarAppearsTransparent = YES;
     self.window.minSize = NSMakeSize(760, 560);
     self.window.delegate = self;
     self.window.toolbarStyle = NSWindowToolbarStyleUnified;
@@ -244,9 +252,9 @@ NSUInteger words(NSString* text) {
     self.window.toolbar = toolbar;
     self.split = [NSSplitViewController new];
     self.sidebar = [NSViewController new];
-    NeonSurface* panel = [NeonSurface new];
-    panel.panel = YES;
-    self.sidebar.view = panel;
+    self.sidebar.view = [NSView new];
+    self.sidebarBody = [NSView new];
+    pin(self.sidebarBody, self.sidebar.view);
     NSSplitViewItem* side = [NSSplitViewItem splitViewItemWithViewController:self.sidebar];
     side.minimumThickness = 220;
     side.maximumThickness = 290;
@@ -256,6 +264,11 @@ NSUInteger words(NSString* text) {
     self.content.view = [NeonSurface new];
     [self.split addSplitViewItem:[NSSplitViewItem splitViewItemWithViewController:self.content]];
     self.window.contentViewController = self.split;
+    [NSWorkspace.sharedWorkspace.notificationCenter
+        addObserver:self
+           selector:@selector(accessibilityChanged:)
+               name:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification
+             object:nil];
     [self applyAppearance];
     [self installMenu];
     [self showLibrary:nil];
@@ -266,12 +279,37 @@ NSUInteger words(NSString* text) {
     if (self.smoke)
         [self performSelector:@selector(captureLibrary) withObject:nil afterDelay:2];
 }
+- (void)accessibilityChanged:(NSNotification*)note {
+    (void)note;
+    [self applyAppearance];
+}
 - (void)applyAppearance {
     self.window.appearance =
         NeonAppearance() == 1   ? [NSAppearance appearanceNamed:NSAppearanceNameAqua]
         : NeonAppearance() == 2 ? [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua]
                                 : nil;
     self.window.backgroundColor = NeonPaper();
+    [self.sidebarMaterial removeFromSuperview];
+    if (NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceTransparency) {
+        NeonSurface* opaque = [NeonSurface new];
+        opaque.panel = YES;
+        self.sidebarMaterial = opaque;
+    } else if (@available(macOS 26.0, *)) {
+        NSGlassEffectView* glass = [NSGlassEffectView new];
+        glass.tintColor = [NeonPanel() colorWithAlphaComponent:0.25];
+        glass.cornerRadius = 12;
+        self.sidebarMaterial = glass;
+    } else {
+        NSVisualEffectView* material = [NSVisualEffectView new];
+        material.material = NSVisualEffectMaterialSidebar;
+        material.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+        material.state = NSVisualEffectStateFollowsWindowActiveState;
+        self.sidebarMaterial = material;
+    }
+    pin(self.sidebarMaterial, self.sidebar.view);
+    [self.sidebar.view addSubview:self.sidebarBody
+                       positioned:NSWindowAbove
+                       relativeTo:self.sidebarMaterial];
     [self.sidebar.view setNeedsDisplay:YES];
     [self.content.view setNeedsDisplay:YES];
     if (self.editor) {
@@ -328,8 +366,10 @@ NSUInteger words(NSString* text) {
 }
 - (NSArray*)toolbarDefaultItemIdentifiers:(NSToolbar*)toolbar {
     (void)toolbar;
-    return
-        @[ @"sidebar", @"library", NSToolbarFlexibleSpaceItemIdentifier, @"type", @"more", @"new" ];
+    return @[
+        @"projectTitle", @"sidebar", @"library", NSToolbarFlexibleSpaceItemIdentifier, @"type",
+        @"more", @"new"
+    ];
 }
 - (NSArray*)toolbarAllowedItemIdentifiers:(NSToolbar*)toolbar {
     return [self toolbarDefaultItemIdentifiers:toolbar];
@@ -339,6 +379,22 @@ NSUInteger words(NSString* text) {
     willBeInsertedIntoToolbar:(BOOL)flag {
     (void)toolbar;
     (void)flag;
+    if ([identifier isEqual:@"projectTitle"]) {
+        NSToolbarItem* titleItem = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
+        self.windowTitle = [[NeonInlineTitle alloc] initWithFrame:NSMakeRect(0, 0, 210, 26)];
+        self.windowTitle.font = NeonUI(17);
+        self.windowTitle.stringValue = @"Neon";
+        self.windowTitle.accessibilityLabel = @"Project title";
+        __weak NeonApp* weakSelf = self;
+        self.windowTitle.commitTitle = ^BOOL(NSString* title) {
+          return [weakSelf renameInline:title section:nil];
+        };
+        titleItem.label = @"Project title";
+        titleItem.navigational = YES;
+        titleItem.view = self.windowTitle;
+        [self.windowTitle.widthAnchor constraintEqualToConstant:210].active = YES;
+        return titleItem;
+    }
     NSDictionary* config = @{
         @"sidebar" : @[ @"Toggle sidebar", @"sidebar.left", @"toggleSidebar:" ],
         @"library" : @[ @"Library", @"books.vertical", @"showLibrary:" ],
@@ -356,6 +412,8 @@ NSUInteger words(NSString* text) {
     result.image = [NSImage imageWithSystemSymbolName:item[1] accessibilityDescription:item[0]];
     result.view = button(item[0], item[1], self, NSSelectorFromString(item[2]));
     ((NSButton*)result.view).title = @"";
+    ((NSButton*)result.view).bordered = YES;
+    ((NSButton*)result.view).bezelStyle = NSBezelStyleRounded;
     result.view.accessibilityLabel = item[0];
     return result;
 }
@@ -367,31 +425,51 @@ NSUInteger words(NSString* text) {
         [child removeFromSuperview];
 }
 - (void)buildSidebar {
-    [self clear:self.sidebar.view];
+    [self clear:self.sidebarBody];
     NSMutableArray* rows = [NSMutableArray
         arrayWithObjects:label(@"NEON", NeonUI(12), NeonMuted()),
                          button(@"Library", @"books.vertical", self, @selector(showLibrary:)), nil];
     [rows addObject:button(@"Trash", @"trash", self, @selector(showTrash:))];
     if (self.session) {
-        [rows addObject:label(self.session.title, NeonSerif(23), NeonInk())];
+        __weak NeonApp* weakSelf = self;
+        NeonInlineTitle* book = [NeonInlineTitle new];
+        book.stringValue = self.session.title;
+        book.font = NeonSerif(23);
+        book.accessibilityLabel = @"Project title";
+        book.commitTitle = ^BOOL(NSString* title) {
+          return [weakSelf renameInline:title section:nil];
+        };
+        [rows addObject:book];
         [rows addObject:label(@"MANUSCRIPT", NeonUI(11), NeonMuted())];
         NSInteger index = 0;
         for (NSDictionary* section in self.session.sections) {
-            NeonChapterButton* row = [NeonChapterButton
-                buttonWithTitle:[NSString stringWithFormat:@"%ld   %@", ++index, section[@"title"]]
-                         target:self
-                         action:@selector(selectSection:)];
-            __weak NeonApp* weakSelf = self;
+            NeonInlineTitle* row = [NeonInlineTitle new];
+            row.stringValue = section[@"title"];
+            row.font = NeonUI(15);
+            row.accessibilityLabel = @"Chapter title";
+            row.tag = index++;
             NSString* identifier = section[@"id"];
+            row.commitTitle = ^BOOL(NSString* title) {
+              return [weakSelf renameInline:title section:identifier];
+            };
+            row.activateTitle = ^{
+              NeonApp* app = weakSelf;
+              if (![app flush])
+                  return;
+              NSError* error = nil;
+              if (![app.session selectSection:identifier error:&error]) {
+                  [app showError:error];
+                  return;
+              }
+              [app showEditor];
+            };
             row.contextAction = ^(NSView* anchor, NSRect rect) {
               [weakSelf sectionMenu:identifier anchor:anchor rect:rect];
             };
-            row.tag = index - 1;
-            row.alignment = NSTextAlignmentLeft;
-            row.buttonType = NSButtonTypePushOnPushOff;
-            row.state = [section[@"id"] isEqualToString:self.session.selectedSectionID]
-                            ? NSControlStateValueOn
-                            : NSControlStateValueOff;
+            row.textColor =
+                [identifier isEqual:self.session.selectedSectionID] ? NeonAccent() : NeonInk();
+            [row.widthAnchor constraintEqualToConstant:142].active = YES;
+            [row.heightAnchor constraintGreaterThanOrEqualToConstant:32].active = YES;
             NSButton* more = button(@"", @"ellipsis", self, @selector(chapterActions:));
             more.tag = index - 1;
             [rows addObject:[NSStackView stackViewWithViews:@[ row, more ]]];
@@ -408,7 +486,7 @@ NSUInteger words(NSString* text) {
     scroll.hasVerticalScroller = YES;
     scroll.autohidesScrollers = YES;
     scroll.scrollerStyle = NSScrollerStyleOverlay;
-    pin(scroll, self.sidebar.view);
+    pin(scroll, self.sidebarBody);
     NSStackView* stack = column(rows, 22);
     stack.edgeInsets = NSEdgeInsetsMake(28, 20, 28, 16);
     stack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -425,7 +503,9 @@ NSUInteger words(NSString* text) {
     self.selectedURL = nil;
     self.status = nil;
     self.window.title = @"Neon";
-    self.window.subtitle = @"Library";
+    self.window.subtitle = @"";
+    self.windowTitle.stringValue = @"Neon";
+    self.chapterTitle = nil;
     [self buildSidebar];
     [self clear:self.content.view];
     NSError* error = nil;
@@ -524,7 +604,9 @@ NSUInteger words(NSString* text) {
     self.editor = nil;
     [self clear:self.content.view];
     self.window.title = self.session.title;
-    self.window.subtitle = @"Manuscript";
+    self.window.subtitle = @"";
+    self.windowTitle.stringValue = self.session.title;
+    self.chapterTitle = nil;
     [self buildSidebar];
     if (!self.session.sections.count) {
         NSStackView* empty = column(
@@ -550,7 +632,16 @@ NSUInteger words(NSString* text) {
     NSTextField* kicker =
         label([NSString stringWithFormat:@"CHAPTER %lu", number], NeonUI(12), NeonMuted());
     kicker.alignment = NSTextAlignmentCenter;
-    NSTextField* heading = label(self.session.sectionTitle, NeonSerif(38), NeonInk());
+    NeonInlineTitle* heading = [NeonInlineTitle new];
+    heading.stringValue = self.session.sectionTitle;
+    heading.font = NeonSerif(38);
+    heading.accessibilityLabel = @"Chapter title";
+    self.chapterTitle = heading;
+    __weak NeonApp* weakSelf = self;
+    NSString* identifier = self.session.selectedSectionID;
+    heading.commitTitle = ^BOOL(NSString* title) {
+      return [weakSelf renameInline:title section:identifier];
+    };
     heading.alignment = NSTextAlignmentCenter;
     NSStackView* stack = column(@[ kicker, heading ], 18);
     stack.edgeInsets = NSEdgeInsetsMake(46, 44, 18, 44);
@@ -596,6 +687,25 @@ NSUInteger words(NSString* text) {
     [stack addArrangedSubview:self.status];
     [self.window makeFirstResponder:self.editor];
     [self updateStatus:YES];
+}
+- (BOOL)renameInline:(NSString*)title section:(NSString*)identifier {
+    if (!self.session || ![self flush])
+        return NO;
+    NSError* error = nil;
+    BOOL changed = identifier ? [self.session renameSection:identifier title:title error:&error]
+                              : [self.session renameProject:title error:&error];
+    if (!changed || ![self.session save:&error]) {
+        [self showError:error];
+        return NO;
+    }
+    self.window.title = self.session.title;
+    // Defer label refresh until the field editor has finished committing.
+    dispatch_async(dispatch_get_main_queue(), ^{
+      self.windowTitle.stringValue = self.session ? self.session.title : @"Neon";
+      self.chapterTitle.stringValue = self.session.sectionTitle ?: @"";
+      [self buildSidebar];
+    });
+    return YES;
 }
 - (void)styleEditor {
     if (!self.editor)
@@ -1090,6 +1200,36 @@ NSUInteger words(NSString* text) {
 - (void)captureActions {
     [self capture:@"native-context-menu.png"];
     NeonDismissMenu();
+    NSTextView* originalEditor = self.editor;
+    NSString* draft = self.editor.string;
+    NSRange selection = self.editor.selectedRange;
+    NSString* projectTitle = self.session.title;
+    NSString* chapterTitle = self.session.sectionTitle;
+    [self.windowTitle beginRenaming];
+    self.windowTitle.stringValue = @"Renamed in title bar";
+    if (![self.windowTitle finishRenaming:YES] ||
+        ![self.session.title isEqual:@"Renamed in title bar"])
+        exit(7);
+    [self.chapterTitle beginRenaming];
+    self.chapterTitle.stringValue = @"Renamed in manuscript";
+    if (![self.chapterTitle finishRenaming:YES] ||
+        ![self.session.sectionTitle isEqual:@"Renamed in manuscript"])
+        exit(7);
+    [self.chapterTitle beginRenaming];
+    self.chapterTitle.stringValue = @"Cancelled title";
+    [self.chapterTitle finishRenaming:NO];
+    if (![self.chapterTitle.stringValue isEqual:@"Renamed in manuscript"] ||
+        self.editor != originalEditor || ![self.editor.string isEqual:draft] ||
+        !NSEqualRanges(selection, self.editor.selectedRange))
+        exit(7);
+    NSError* error = nil;
+    NeonDocumentSession* reopened = [self.library openURL:self.selectedURL error:&error];
+    if (![reopened.title isEqual:@"Renamed in title bar"] ||
+        ![reopened.sectionTitle isEqual:@"Renamed in manuscript"])
+        exit(7);
+    if (![self renameInline:projectTitle section:nil] ||
+        ![self renameInline:chapterTitle section:self.session.selectedSectionID])
+        exit(7);
     NSString* identifier = self.session.selectedSectionID;
     [self sectionCommand:@"Duplicate" identifier:identifier];
     if (self.session.sections.count != 3)

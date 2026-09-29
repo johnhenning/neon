@@ -1,5 +1,6 @@
 #import "ContextMenu.h"
 #import "EditorialTheme.h"
+#import "InlineTitle.h"
 #import "LibraryStore.h"
 #import <UIKit/UIKit.h>
 
@@ -7,7 +8,8 @@
 @interface NeonEditor : UIViewController <UITextViewDelegate>
 @property(nonatomic, strong) UITextView* editor;
 @property(nonatomic, strong) UILabel* status;
-@property(nonatomic, strong) UILabel* heading;
+@property(nonatomic, strong) NeonInlineTitle* heading;
+@property(nonatomic, strong) NeonInlineTitle* bookTitle;
 @property(nonatomic, strong) NeonDocumentSession* session;
 @property(nonatomic, weak) NeonCoordinator* coordinator;
 @property(nonatomic, strong) NSTimer* saveTimer;
@@ -56,6 +58,7 @@
 - (void)toggleChapters;
 - (void)showProblem:(NSError*)error;
 - (void)applyAppearance;
+- (BOOL)renameInline:(NSString*)title section:(NSString*)identifier;
 @end
 namespace {
 UIFont* scaledSerif(CGFloat size) {
@@ -109,6 +112,16 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = self.session.title;
+    __weak NeonEditor* weakSelf = self;
+    self.bookTitle = [[NeonInlineTitle alloc] initWithFrame:CGRectMake(0, 0, 180, 36)];
+    self.bookTitle.text = self.session.title;
+    self.bookTitle.font = NeonUI(18);
+    self.bookTitle.textAlignment = NSTextAlignmentCenter;
+    self.bookTitle.accessibilityLabel = @"Project title";
+    self.bookTitle.commitTitle = ^BOOL(NSString* title) {
+      return [weakSelf.coordinator renameInline:title section:nil];
+    };
+    self.navigationItem.titleView = self.bookTitle;
     self.view.backgroundColor = NeonPaper();
     self.view.tintColor = NeonAccent();
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
@@ -145,7 +158,16 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                           : @"MANUSCRIPT",
               NeonUI(12), NeonMuted());
     kicker.textAlignment = NSTextAlignmentCenter;
-    self.heading = label(self.session.sectionTitle, scaledSerif(32), NeonInk());
+    self.heading = [NeonInlineTitle new];
+    self.heading.text = self.session.sectionTitle;
+    self.heading.font = scaledSerif(32);
+    self.heading.adjustsFontForContentSizeCategory = YES;
+    self.heading.accessibilityLabel = @"Chapter title";
+    NSString* identifier = self.session.selectedSectionID;
+    if (identifier.length)
+        self.heading.commitTitle = ^BOOL(NSString* title) {
+          return [weakSelf.coordinator renameInline:title section:identifier];
+        };
     self.heading.textAlignment = NSTextAlignmentCenter;
     UIView* rule = [UIView new];
     rule.backgroundColor = [NeonAccent() colorWithAlphaComponent:0.5];
@@ -154,6 +176,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     header.axis = UILayoutConstraintAxisVertical;
     header.alignment = UIStackViewAlignmentCenter;
     header.spacing = 20;
+    [self.heading.widthAnchor constraintEqualToAnchor:header.widthAnchor].active = YES;
     self.editor = [UITextView new];
     self.editor.delegate = self;
     self.editor.backgroundColor = NeonPaper();
@@ -540,6 +563,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     if (!cell)
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
                                       reuseIdentifier:@"project"];
+    [[cell.contentView viewWithTag:901] removeFromSuperview];
     UIListContentConfiguration* content = [cell defaultContentConfiguration];
     if (self.chapters) {
         NSDictionary* section = self.coordinator.session.sections[path.row];
@@ -566,8 +590,48 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     content.textToSecondaryTextVerticalPadding = 8;
     content.imageToTextPadding = 18;
     content.imageProperties.tintColor = NeonAccent();
-    cell.contentConfiguration = content;
-    cell.backgroundColor = NeonPanel();
+    cell.contentConfiguration = self.chapters ? nil : content;
+    if (self.chapters) {
+        NSDictionary* section = self.coordinator.session.sections[path.row];
+        NSString* identifier = section[@"id"];
+        NeonInlineTitle* title = [NeonInlineTitle new];
+        title.text = section[@"title"];
+        title.font = NeonUI(18);
+        title.accessibilityLabel = @"Chapter title";
+        __weak NeonList* weakSelf = self;
+        title.commitTitle = ^BOOL(NSString* value) {
+          return [weakSelf.coordinator renameInline:value section:identifier];
+        };
+        title.activateTitle = ^{
+          NSArray* sections = weakSelf.coordinator.session.sections;
+          NSUInteger index = [sections
+              indexOfObjectPassingTest:^BOOL(NSDictionary* item, NSUInteger i, BOOL* stop) {
+                (void)i;
+                (void)stop;
+                return [item[@"id"] isEqual:identifier];
+              }];
+          if (index != NSNotFound)
+              [weakSelf.coordinator openSection:index];
+        };
+        UILabel* subtitle = label([NSString stringWithFormat:@"Chapter %ld", path.row + 1],
+                                  NeonUI(13), NeonMuted());
+        UIStackView* row = [[UIStackView alloc] initWithArrangedSubviews:@[ title, subtitle ]];
+        row.axis = UILayoutConstraintAxisVertical;
+        row.spacing = 4;
+        row.tag = 901;
+        row.translatesAutoresizingMaskIntoConstraints = NO;
+        [cell.contentView addSubview:row];
+        [NSLayoutConstraint activateConstraints:@[
+            [row.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:20],
+            [row.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor
+                                               constant:-8],
+            [row.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:10],
+            [row.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-10],
+            [title.heightAnchor constraintGreaterThanOrEqualToConstant:44]
+        ]];
+    }
+    cell.backgroundColor =
+        UIAccessibilityIsReduceTransparencyEnabled() ? NeonPanel() : UIColor.clearColor;
     UIButton* more = [UIButton buttonWithType:UIButtonTypeSystem];
     [more setImage:[UIImage systemImageNamed:@"ellipsis"] forState:UIControlStateNormal];
     more.frame = CGRectMake(0, 0, 44, 44);
@@ -678,12 +742,21 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [hint.trailingAnchor constraintEqualToAnchor:welcome.view.trailingAnchor constant:-32]
     ]];
     [self setViewController:welcome forColumn:UISplitViewControllerColumnSecondary];
+    [NSNotificationCenter.defaultCenter
+        addObserver:self
+           selector:@selector(accessibilityChanged:)
+               name:UIAccessibilityReduceTransparencyStatusDidChangeNotification
+             object:nil];
     [self reloadLibrary];
     [self applyAppearance];
     if (self.smoke || reopen)
         dispatch_async(dispatch_get_main_queue(), ^{
           [self runSmoke:args support:support];
         });
+}
+- (void)accessibilityChanged:(NSNotification*)note {
+    (void)note;
+    [self applyAppearance];
 }
 - (void)applyAppearance {
     UIUserInterfaceStyle style = NeonAppearance() == 1   ? UIUserInterfaceStyleLight
@@ -692,8 +765,33 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.view.window.overrideUserInterfaceStyle = style;
     self.overrideUserInterfaceStyle = style;
     UINavigationBarAppearance* appearance = [UINavigationBarAppearance new];
-    [appearance configureWithOpaqueBackground];
-    appearance.backgroundColor = NeonPaper();
+    BOOL opaque = UIAccessibilityIsReduceTransparencyEnabled();
+    self.view.backgroundColor = NeonPaper();
+    if (opaque) {
+        [appearance configureWithOpaqueBackground];
+        appearance.backgroundColor = NeonPaper();
+    } else if (@available(iOS 26.0, *)) {
+        // Leave native Liquid Glass navigation backgrounds unmodified. The paper
+        // beneath supplies the warm hue without covering the system material.
+    } else {
+        [appearance configureWithDefaultBackground];
+        appearance.backgroundColor = [NeonPaper() colorWithAlphaComponent:0.25];
+    }
+    for (NeonList* list in
+         @[ self.libraryList ?: (id)NSNull.null, self.chapterList ?: (id)NSNull.null ]) {
+        if (![list isKindOfClass:NeonList.class])
+            continue;
+        list.tableView.backgroundColor = opaque ? NeonPanel() : UIColor.clearColor;
+        if (opaque)
+            list.tableView.backgroundView = nil;
+        else {
+            UIVisualEffectView* material = [[UIVisualEffectView alloc]
+                initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterial]];
+            material.contentView.backgroundColor = [NeonPanel() colorWithAlphaComponent:0.18];
+            list.tableView.backgroundView = material;
+        }
+        [list.tableView reloadData];
+    }
     appearance.titleTextAttributes =
         @{NSFontAttributeName : NeonUI(18), NSForegroundColorAttributeName : NeonInk()};
     appearance.largeTitleTextAttributes =
@@ -708,6 +806,25 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         detail.navigationBar.scrollEdgeAppearance = appearance;
         detail.navigationBar.tintColor = NeonAccent();
     }
+}
+- (BOOL)renameInline:(NSString*)title section:(NSString*)identifier {
+    if (!self.session || (self.editor && ![self.editor flush]))
+        return NO;
+    NSError* error = nil;
+    BOOL changed = identifier ? [self.session renameSection:identifier title:title error:&error]
+                              : [self.session renameProject:title error:&error];
+    if (!changed || ![self.session save:&error]) {
+        [self showProblem:error];
+        return NO;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+      self.editor.title = self.session.title;
+      self.editor.bookTitle.text = self.session.title;
+      self.editor.heading.text = self.session.sectionTitle;
+      self.chapterList.title = self.session.title;
+      [self.chapterList.tableView reloadData];
+    });
+    return YES;
 }
 - (void)reloadLibrary {
     NSError* error = nil;
@@ -1160,6 +1277,28 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         valid = valid && [self.editor.editor.text containsString:@"By noon"];
         [self openSection:0];
         valid = valid && [self.editor.editor.text containsString:@"A native Apple draft."];
+        UITextView* originalEditor = self.editor.editor;
+        NSString* draft = originalEditor.text;
+        NSRange selection = originalEditor.selectedRange;
+        NSString* projectTitle = self.session.title;
+        NSString* chapterTitle = self.session.sectionTitle;
+        [self.editor.bookTitle beginRenaming];
+        self.editor.bookTitle.text = @"Renamed in navigation";
+        valid = [self.editor.bookTitle finishRenaming:YES] && valid;
+        [self.editor.heading beginRenaming];
+        self.editor.heading.text = @"Renamed in manuscript";
+        valid = [self.editor.heading finishRenaming:YES] && valid;
+        [self.editor.heading beginRenaming];
+        self.editor.heading.text = @"Cancelled title";
+        [self.editor.heading finishRenaming:NO];
+        reopened = [self.library openURL:self.selectedURL error:&error];
+        valid = valid && [reopened.title isEqual:@"Renamed in navigation"] &&
+                [reopened.sectionTitle isEqual:@"Renamed in manuscript"] &&
+                [self.editor.heading.text isEqual:@"Renamed in manuscript"] &&
+                self.editor.editor == originalEditor && [originalEditor.text isEqual:draft] &&
+                NSEqualRanges(selection, originalEditor.selectedRange);
+        valid = [self renameInline:projectTitle section:nil] && valid;
+        valid = [self renameInline:chapterTitle section:self.session.selectedSectionID] && valid;
         marker(support, @"smoke-result.txt", valid);
     } else if ([args containsObject:@"--smoke-typography"]) {
         [self.editor typography];
