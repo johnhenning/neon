@@ -686,11 +686,17 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         background.backgroundColor =
             current ? [NeonAccent() colorWithAlphaComponent:0.16] : UIColor.clearColor;
         if (current) {
-            UIView* marker =
-                [[UIView alloc] initWithFrame:CGRectMake(0, 0, 3, cell.bounds.size.height)];
+            UIView* marker = [UIView new];
             marker.backgroundColor = NeonAccent();
-            marker.autoresizingMask = UIViewAutoresizingFlexibleHeight;
+            marker.translatesAutoresizingMaskIntoConstraints = NO;
+            background.clipsToBounds = YES;
             [background addSubview:marker];
+            [NSLayoutConstraint activateConstraints:@[
+                [marker.leadingAnchor constraintEqualToAnchor:background.leadingAnchor],
+                [marker.topAnchor constraintEqualToAnchor:background.topAnchor],
+                [marker.bottomAnchor constraintEqualToAnchor:background.bottomAnchor],
+                [marker.widthAnchor constraintEqualToConstant:3]
+            ]];
         }
         cell.backgroundView = background;
         title.accessibilityLabel =
