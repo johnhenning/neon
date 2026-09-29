@@ -124,6 +124,61 @@ Select CMake implementations with explicit Windows/macOS/Linux/iOS/Android branc
 
 Release policy is separate from OS adapters: macOS signing/notarization, Windows signing/installer, Linux package and sandbox choices, and iOS/Android store signing each need their own jobs. Store-distributed mobile updates use the store. Do not add a universal self-updater. Include Qt/third-party license notices and review static/mobile distribution obligations before release.
 
+## Version history and optional Git integration
+
+Status: proposed product extension requested during review. Git is the first version-control backend; it is not implemented and does not expand the initial Neo-parity release gate automatically.
+
+### Editor experience
+
+Add a History view alongside manuscript navigation. All users can create named checkpoints, browse revisions, compare a chapter or whole book, and restore a chapter/book as a new current revision. Show readable word/paragraph changes, formatting changes and chapter moves; raw HTML diffs belong in an optional technical view. Historical previews are read-only. Restore first preserves the current draft and never rewrites earlier history.
+
+When Git is enabled, expose repository status, commit message/author/date, changed chapters and the active branch in the same view, with source labels distinguishing local checkpoints from Git commits. Start with local commits and history; later add branches for alternate drafts, remote fetch/push and conflict resolution. Use conventional Git terminology in advanced controls, with writer-friendly explanations. Git support must work without GitHub and without a remote.
+
+Desktop can use a resizable history/compare panel; iPad a sidebar/detail view; iPhone a history list and full-screen comparison. Home pages may show versioned projects, pending changes and conflicts, without putting Git controls on projects that do not use it. Mobile Git feature exposure follows capability and validation, not desktop assumptions.
+
+### Separate responsibilities
+
+| Mechanism | Purpose | Policy |
+| --- | --- | --- |
+| Undo/redo | Immediate editing operations | Preserve document-session semantics; not durable version history |
+| Autosave/recovery | Protect the current draft | Frequent durable saves; do not commit on every keystroke |
+| Local checkpoints | Durable writer-facing milestones | Available without Git; named snapshots plus a configurable automatic retention policy |
+| Git | Portable repository history and optional remote collaboration | Explicit commits, branches and remote operations; normal Git interoperability |
+| iCloud sync | Replicate library state across Apple devices | Separate sync status and conflict handling; not an independent backup |
+
+Introduce a `RevisionService` for immutable manuscript snapshots, comparison and restore, and a separate `VersionControlProvider` for repository discovery/status/history/commit/read-revision, with branch/remote/merge capabilities added as needed. A `GitProvider` implements the latter. A revision reference records its source and stable ID; do not pretend the checkpoint history is a Git DAG. Both feed a shared `HistoryModel`. Design for another VCS through explicit capabilities, without implementing speculative backends now.
+
+Prefer evaluating **libgit2** as an embedded C/C++ Git implementation, so desktop/mobile need not launch an installed Git executable. Validate platform builds, licensing, HTTPS/SSH dependencies, credentials, signing requirements and compatibility before committing to the dependency. Do not promise every Git feature: hooks, filters, LFS, submodules, worktrees, signing and advanced repository states need explicit support decisions. Unsupported states should remain readable where safe and block incompatible writes with an explanation.
+
+### Repository and serialization rules
+
+- Recommend one book/project per repository for the first release. Attaching an existing repository requires an explicit root and a preview of managed paths; never initialize or commit an enclosing unrelated repository automatically.
+- Use stable chapter IDs and deterministic, readable serialization with consistent UTF-8/newlines and metadata ordering. Preserve rich formatting, annotations and unknown Neo markup. Plain Markdown alone is not a lossless representation of every editor feature. Current QTextDocument HTML normalization needs review before promising useful Git diffs.
+- Keep book content, notes, outline, intended metadata and selected assets under version control. Exclude credentials, machine paths, UI/session state, lock/journal files, caches, temporary exports and automatic backup archives. Avoid changing volatile word-count/timestamp metadata in every content commit; separate derived data where compatibility allows.
+- Commit a consistent saved snapshot and capture its revision. Edits made after the snapshot remain uncommitted. Serialize repository mutations and library writes; coordinate with external Git tools by rechecking HEAD, index and working state before applying changes.
+- Do not consume or replace an external user's staged changes. Initially block commits with unrelated staged changes; show the reason and let the user resolve them. Commit only the reviewed managed paths. Never reset/clean the repository to make an operation succeed.
+- Restore selected content as a new working change, followed by an optional explicit commit. Branch switches and remote integration preserve the current draft before loading replacement content. Detect detached HEAD, merge/rebase conflicts and external changes; do not silently repair them.
+- Keep repository jobs off the GUI thread with progress/cancellation and owned repository handles. Use the secret-storage adapter for remote credentials; credentials never enter project files or logs. Remote operations require explicit user action initially; no automatic push or force push.
+- Generic line-based Git merges can produce valid-looking but damaged rich text or metadata. Validate merged documents, chapter-order references and annotations before making them current. Show base/ours/theirs with a readable manuscript comparison and preserve conflicting alternatives.
+
+### Coexistence with iCloud
+
+Never sync `.git`, its index, locks or refs through CloudKit or iCloud Drive as ordinary manuscript data. For the first implementation, each project explicitly selects a managed mode: local/checkpoint, iCloud-synced, or Git-backed. Local checkpoints can apply to all modes. Mixed iCloud and Git writes to the same live project are deferred until a reconciliation design is proven; attaching Git to an iCloud book initially creates a separate versioned copy with an explained relationship.
+
+Future export of iCloud revisions into a local Git repository can use explicit immutable snapshots. This must not create an automatic loop where a Git update becomes an iCloud edit and vice versa. Checkpoint synchronization/retention is a separate schema decision; do not upload unbounded history by default.
+
+### Delivery and evidence
+
+1. Define stable revision IDs and snapshot/restore contracts during the current storage refactor. Establish lossless, deterministic serialization fixtures first.
+2. Add non-Git History, named checkpoints, manuscript-aware comparison and safe restore after the macOS editing/persistence baseline is reliable.
+3. Prototype libgit2 on desktop and mobile build targets. Deliver local repository attachment/init, status, explicit commits, history and comparison on macOS first.
+4. Add branch workflows and remote operations after credentials, index preservation and conflict handling are validated. Port through the existing provider contract; keep mobile capabilities honest.
+5. Test against the Git CLI using real temporary repositories: no repository, unborn branch, clean/dirty/staged state, non-ASCII paths, external commits, interrupted operations, concurrent edits during commit, renamed/deleted chapters, detached HEAD and conflicts. Verify restore preserves both the previous and restored drafts. Test that secrets and device-only files never enter generated commits.
+
+These features add storage/performance costs. Measure history size, snapshot/diff latency and repository growth on long manuscripts and covers. Set bounded automatic-checkpoint retention; never prune named checkpoints or Git history implicitly.
+
+References: [libgit2 project and compatibility notes](https://github.com/libgit2/libgit2), [libgit2 API](https://libgit2.org/docs/reference/), [Git worktrees](https://git-scm.com/docs/git-worktree). Backend selection remains provisional until the interoperability prototype passes.
+
 ## Ordered implementation work
 
 | Step | Scope | Completion evidence |
