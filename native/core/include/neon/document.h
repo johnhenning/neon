@@ -16,6 +16,7 @@ struct Section {
     std::string id;
     std::string title;
     std::vector<TextBlock> blocks;
+    bool trashed = false;
 };
 struct Document {
     std::string id;
@@ -33,6 +34,9 @@ struct Project {
 Result validate(const Project& project);
 Result renameProject(Project* project, const std::string& title);
 Result addSection(Project* project, const std::string& documentId, Section section);
+Result renameSection(Project* project, const std::string& sectionId, const std::string& title);
+Result trashSection(Project* project, const std::string& sectionId, bool trashed);
+Result moveSection(Project* project, const std::string& sectionId, int direction);
 // Whole-block UTF-8 replacement avoids mixing UIKit UTF-16 offsets with core offsets.
 // No-op edits do not advance revision. Failed commands leave the project untouched.
 Result replaceText(Project* project, const std::string& blockId, const std::string& text,

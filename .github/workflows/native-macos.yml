@@ -41,6 +41,8 @@ jobs:
             build-native/native-bookshelf.png
             build-native/native-editor.png
             build-native/native-editor-dark.png
+            build-native/native-typography.png
+            build-native/native-context-menu.png
             build-native/dependencies.txt
             build-native/Testing/Temporary/LastTest.log
 

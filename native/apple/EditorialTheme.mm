@@ -73,3 +73,24 @@ CGFloat NeonLineSpacing() {
 NSInteger NeonAppearance() {
     return [NSUserDefaults.standardUserDefaults integerForKey:@"appearance"];
 }
+
+NSString* NeonFontChoice() {
+    return [NSUserDefaults.standardUserDefaults stringForKey:@"manuscriptFont"] ?: @"Literata";
+}
+NeonFont* NeonManuscriptFont(CGFloat size) {
+    NSString* choice = NeonFontChoice();
+    if ([choice isEqualToString:@"Source Sans 3"])
+        return NeonUI(size);
+    if ([choice isEqualToString:@"System Serif"]) {
+#if TARGET_OS_IPHONE
+        UIFontDescriptor* descriptor = [[UIFont systemFontOfSize:size].fontDescriptor
+            fontDescriptorWithDesign:UIFontDescriptorSystemDesignSerif];
+        return [UIFont fontWithDescriptor:descriptor size:size];
+#else
+        NSFontDescriptor* descriptor = [[NSFont systemFontOfSize:size].fontDescriptor
+            fontDescriptorWithDesign:NSFontDescriptorSystemDesignSerif];
+        return [NSFont fontWithDescriptor:descriptor size:size];
+#endif
+    }
+    return NeonSerif(size);
+}

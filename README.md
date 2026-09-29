@@ -6,16 +6,24 @@ adapter. No account is required for local writing.
 
 ## Current implementation
 
-- Local project library; create projects and sections, navigate and resume writing.
+- Local project library; create, rename and duplicate projects, move them to Trash,
+  restore them, or confirm permanent deletion from Trash.
+- Create, rename, duplicate, reorder, trash and restore chapters; valid empty state
+  after removing the final chapter.
 - Stable project/document/section/block IDs with creator and last-editor metadata.
 - Native text input, selection and per-section undo, debounced local save and reopen.
 - Collapsible iPad chapter sidebar for full-width focus; compact iPhone navigation.
 - Warm parchment/charcoal palette, bronze accents, bundled Literata manuscript font
   and Source Sans 3 controls. Adjustable text size/spacing and System/Light/Dark.
+- Custom project/chapter/text action popovers, available from context and overflow menus.
+- Font selection, live typography popovers/sheets and device-level reset controls.
 - Visible save errors; unsupported files are left unchanged.
 
 This is a plain-text preview. Rich formatting/media, durable history, journaled
 async storage, full accessibility/device acceptance and iCloud remain in progress.
+Full searchable settings, structural undo and exact design acceptance remain open.
+Schema 2 retains trashed chapters; schema 1 is read and backed up before its first
+updated save. Earlier builds refuse schema 2 instead of dropping retained content.
 Typography controls affect presentation, not semantic document formatting. The
 Mac app is ad-hoc signed, not a notarized release. No performance claims are made.
 

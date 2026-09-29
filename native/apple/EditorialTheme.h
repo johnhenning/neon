@@ -20,3 +20,6 @@ NeonFont* NeonUI(CGFloat size);
 CGFloat NeonTextSize();
 CGFloat NeonLineSpacing();
 NSInteger NeonAppearance();
+
+NeonFont* NeonManuscriptFont(CGFloat size);
+NSString* NeonFontChoice();

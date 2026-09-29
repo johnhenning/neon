@@ -51,11 +51,41 @@ int main() {
         check(created && [[store projects:&error] count] == 1, "project title never becomes path");
         check(![store createProject:@"  " error:&error] && [[store projects:&error] count] == 1,
               "empty title creates no file");
+        NSString* secondID = multi.selectedSectionID;
+        check([multi renameSection:secondID title:@"Renamed chapter" error:&error] &&
+                  [multi moveSection:secondID direction:-1 error:&error],
+              "rename and reorder");
+        check([multi setSection:secondID trashed:YES error:&error] && [multi save:&error],
+              "trash section");
+        check(multi.sections.count == 1 && multi.trashedSections.count == 1, "trash keeps section");
+        check([multi setSection:multi.selectedSectionID trashed:YES error:&error] &&
+                  multi.sections.count == 0 && multi.selectedSectionID.length == 0 &&
+                  [multi save:&error],
+              "last section empty state");
+        multi = [[NeonDocumentSession alloc] initWithURL:file actor:@"author" error:&error];
+        check(multi.sections.count == 0 && multi.trashedSections.count == 2,
+              "empty document reopens");
+        check([multi setSection:secondID trashed:NO error:&error] &&
+                  [multi.text isEqualToString:@"Separate text"],
+              "restore retains text");
+        check([multi duplicateSection:secondID error:&error] && multi.sections.count == 2 &&
+                  [multi save:&error],
+              "duplicate section");
+        NSURL* copied = [store duplicateProject:created error:&error];
+        check(copied && [[store projects:&error] count] == 2, "duplicate project");
+        check([store setProject:created trashed:YES error:&error] &&
+                  [[store projects:&error] count] == 1,
+              "trash project");
+        NSURL* trashed = [store trashedProjects:&error][0][@"url"];
+        check([store setProject:trashed trashed:NO error:&error] &&
+                  [[store projects:&error] count] == 2,
+              "restore project");
+        check(![store deleteTrashedProject:created error:&error], "cannot purge active project");
         NSData* data = [NSData dataWithContentsOfURL:file];
         NSMutableDictionary* future = [[NSJSONSerialization JSONObjectWithData:data
                                                                        options:0
                                                                          error:&error] mutableCopy];
-        future[@"schema"] = @2;
+        future[@"schema"] = @3;
         NSData* unknown = [NSJSONSerialization dataWithJSONObject:future options:0 error:&error];
         check([unknown writeToURL:file atomically:YES], "write future schema fixture");
         check(![[NeonDocumentSession alloc] initWithURL:file actor:@"author" error:&error],

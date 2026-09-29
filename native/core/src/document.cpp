@@ -42,7 +42,7 @@ bool validUTF8(const std::string& text) {
 }
 } // namespace
 Result validate(const Project& project) {
-    if (project.schemaVersion != 1)
+    if (project.schemaVersion != 1 && project.schemaVersion != 2)
         return Result::failure("Unsupported project schema; do not overwrite this file.");
     std::set<std::string> ids;
     auto id = [&](const std::string& value) {
@@ -122,5 +122,66 @@ Result addSection(Project* project, const std::string& documentId, Section secti
         return Result::success();
     }
     return Result::failure("Document does not exist.");
+}
+namespace {
+template <typename Mutation>
+Result changeSection(Project* project, const std::string& id, Mutation mutation) {
+    if (!project)
+        return Result::failure("Project is required.");
+    auto result = validate(*project);
+    if (!result.ok)
+        return result;
+    if (project->revision == std::numeric_limits<std::uint64_t>::max())
+        return Result::failure("Revision limit reached.");
+    auto candidate = *project;
+    for (auto& document : candidate.documents) {
+        for (std::size_t i = 0; i < document.sections.size(); ++i) {
+            if (document.sections[i].id != id)
+                continue;
+            result = mutation(document, i);
+            if (!result.ok)
+                return result;
+            candidate.schemaVersion = 2;
+            ++candidate.revision;
+            result = validate(candidate);
+            if (!result.ok)
+                return result;
+            *project = std::move(candidate);
+            return Result::success();
+        }
+    }
+    return Result::failure("Section does not exist.");
+}
+} // namespace
+Result renameSection(Project* project, const std::string& id, const std::string& title) {
+    if (title.empty() || !validUTF8(title))
+        return Result::failure("A valid title is required.");
+    return changeSection(project, id, [&](Document& document, std::size_t i) {
+        document.sections[i].title = title;
+        return Result::success();
+    });
+}
+Result trashSection(Project* project, const std::string& id, bool trashed) {
+    return changeSection(project, id, [&](Document& document, std::size_t i) {
+        document.sections[i].trashed = trashed;
+        return Result::success();
+    });
+}
+Result moveSection(Project* project, const std::string& id, int direction) {
+    if (direction != -1 && direction != 1)
+        return Result::failure("Invalid move direction.");
+    return changeSection(project, id, [&](Document& document, std::size_t i) {
+        if (document.sections[i].trashed)
+            return Result::failure("Restore this section first.");
+        auto target = static_cast<std::ptrdiff_t>(i) + direction;
+        while (target >= 0 && target < static_cast<std::ptrdiff_t>(document.sections.size())) {
+            if (!document.sections[target].trashed) {
+                std::swap(document.sections[i], document.sections[target]);
+                return Result::success();
+            }
+            target += direction;
+        }
+        return Result::failure("The section is already at the edge.");
+    });
 }
 } // namespace neon::core

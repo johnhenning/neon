@@ -1,3 +1,4 @@
+#import "ContextMenu.h"
 #import "EditorialTheme.h"
 #import "LibraryStore.h"
 #import <UIKit/UIKit.h>
@@ -17,8 +18,9 @@
 @property(nonatomic, weak) NeonCoordinator* coordinator;
 @property(nonatomic) BOOL chapters;
 @end
-@interface NeonTypography : UIViewController
+@interface NeonTypography : UIViewController <UIPopoverPresentationControllerDelegate>
 @property(nonatomic, weak) NeonEditor* editor;
+@property(nonatomic) BOOL advanced;
 @end
 @interface NeonCoordinator : UISplitViewController <UISplitViewControllerDelegate>
 @property(nonatomic, strong) NeonLibraryStore* library;
@@ -31,6 +33,21 @@
 @property(nonatomic, strong) UINavigationController* navigation;
 @property(nonatomic) BOOL sidebarHidden;
 @property(nonatomic) BOOL smoke;
+@property(nonatomic) BOOL trashMode;
+- (void)showLibrary;
+- (void)showTrash;
+- (void)projectMenu:(NSInteger)index
+               host:(UIViewController*)host
+             anchor:(UIView*)anchor
+               rect:(CGRect)rect;
+- (void)sectionMenu:(NSInteger)index
+               host:(UIViewController*)host
+             anchor:(UIView*)anchor
+               rect:(CGRect)rect;
+- (void)sectionCommand:(NSString*)command identifier:(NSString*)identifier;
+- (void)projectCommand:(NSString*)command url:(NSURL*)url title:(NSString*)title;
+- (void)showSectionTrash:(UIViewController*)host anchor:(UIView*)anchor;
+
 - (void)reloadLibrary;
 - (void)openProject:(NSInteger)index;
 - (void)openSection:(NSInteger)index;
@@ -109,11 +126,24 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                         action:@selector(typography)];
     typography.accessibilityLabel = @"Typography";
     self.navigationItem.rightBarButtonItems = @[
-        typography, [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave
-                                                                  target:self
-                                                                  action:@selector(save)]
+        [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis"]
+                                         style:UIBarButtonItemStylePlain
+                                        target:self
+                                        action:@selector(actions)],
+        typography
     ];
-    UILabel* kicker = label(@"MANUSCRIPT", NeonUI(12), NeonMuted());
+    NSUInteger number =
+        [self.session.sections
+            indexOfObjectPassingTest:^BOOL(NSDictionary* item, NSUInteger i, BOOL* stop) {
+              (void)i;
+              (void)stop;
+              return [item[@"id"] isEqual:self.session.selectedSectionID];
+            }] +
+        1;
+    UILabel* kicker =
+        label(self.session.sections.count ? [NSString stringWithFormat:@"CHAPTER %lu", number]
+                                          : @"MANUSCRIPT",
+              NeonUI(12), NeonMuted());
     kicker.textAlignment = NSTextAlignmentCenter;
     self.heading = label(self.session.sectionTitle, scaledSerif(32), NeonInk());
     self.heading.textAlignment = NSTextAlignmentCenter;
@@ -129,6 +159,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.editor.backgroundColor = NeonPaper();
     self.editor.textColor = NeonInk();
     self.editor.text = self.session.text;
+    self.editor.editable = self.session.selectedSectionID.length > 0;
     self.editor.accessibilityLabel = @"Manuscript";
     self.editor.accessibilityIdentifier = @"manuscript";
     self.editor.adjustsFontForContentSizeCategory = YES;
@@ -141,12 +172,12 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     }
     UILayoutGuide* safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [header.topAnchor constraintEqualToAnchor:safe.topAnchor constant:28],
+        [header.topAnchor constraintEqualToAnchor:safe.topAnchor constant:54],
         [header.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:24],
         [header.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-24],
         [rule.widthAnchor constraintEqualToConstant:130],
         [rule.heightAnchor constraintEqualToConstant:1],
-        [self.editor.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:20],
+        [self.editor.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:28],
         [self.editor.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
         [self.editor.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
         [self.editor.bottomAnchor constraintEqualToAnchor:self.status.topAnchor constant:-8],
@@ -179,14 +210,16 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     style.lineSpacing = NeonLineSpacing();
     style.paragraphSpacing = 18;
     NSDictionary* attrs = @{
-        NSFontAttributeName : scaledSerif(NeonTextSize()),
+        NSFontAttributeName : [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+            scaledFontForFont:NeonManuscriptFont(NeonTextSize())],
         NSForegroundColorAttributeName : NeonInk(),
         NSParagraphStyleAttributeName : style
     };
     [self.editor.textStorage addAttributes:attrs range:NSMakeRange(0, self.editor.text.length)];
     self.editor.typingAttributes = attrs;
     self.editor.selectedRange = selection;
-    self.editor.font = scaledSerif(NeonTextSize());
+    self.editor.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+        scaledFontForFont:NeonManuscriptFont(NeonTextSize())];
 }
 - (void)textViewDidChange:(UITextView*)view {
     if (view.markedTextRange)
@@ -232,19 +265,101 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     controller.editor = self;
     UINavigationController* nav =
         [[UINavigationController alloc] initWithRootViewController:controller];
-    nav.modalPresentationStyle = UIModalPresentationPageSheet;
-    nav.sheetPresentationController.detents = @[
-        UISheetPresentationControllerDetent.mediumDetent,
-        UISheetPresentationControllerDetent.largeDetent
-    ];
+    nav.modalPresentationStyle =
+        self.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassRegular
+            ? UIModalPresentationPopover
+            : UIModalPresentationPageSheet;
+    nav.preferredContentSize = CGSizeMake(340, 560);
+    nav.popoverPresentationController.barButtonItem =
+        self.navigationItem.rightBarButtonItems.lastObject;
+    nav.popoverPresentationController.delegate = controller;
+    nav.sheetPresentationController.prefersGrabberVisible = YES;
+    nav.sheetPresentationController.detents = @[ UISheetPresentationControllerDetent.largeDetent ];
     nav.view.tintColor = NeonAccent();
     [self presentViewController:nav animated:YES completion:nil];
+}
+- (void)actions {
+    NeonShowMenu(
+        self, self.view,
+        CGRectMake(self.view.bounds.size.width - 44, self.view.safeAreaInsets.top, 1, 1), @[
+            NeonAction(@"Rename Project…", @"pencil", YES, NO,
+                       ^{
+                         [self.coordinator projectCommand:@"Rename…"
+                                                      url:self.coordinator.selectedURL
+                                                    title:self.session.title];
+                       }),
+            NeonAction(@"New Chapter…", @"plus", YES, NO,
+                       ^{
+                         [self.coordinator newSection];
+                       }),
+            NeonAction(
+                @"Chapter Actions…", @"doc.text", self.session.sections.count > 0, NO,
+                ^{
+                  NSUInteger i = [self.session.sections
+                      indexOfObjectPassingTest:^BOOL(NSDictionary* item, NSUInteger n, BOOL* stop) {
+                        (void)n;
+                        (void)stop;
+                        return [item[@"id"] isEqual:self.session.selectedSectionID];
+                      }];
+                  [self.coordinator sectionMenu:i
+                                           host:self
+                                         anchor:self.view
+                                           rect:CGRectMake(self.view.bounds.size.width - 44,
+                                                           self.view.safeAreaInsets.top, 1, 1)];
+                }),
+            NeonAction(@"Deleted Chapters", @"arrow.uturn.backward",
+                       self.session.trashedSections.count > 0, NO,
+                       ^{
+                         [self.coordinator showSectionTrash:self anchor:self.view];
+                       }),
+            NeonAction(@"Move Project to Trash…", @"trash", YES, YES,
+                       ^{
+                         [self.coordinator projectCommand:@"Move to Trash…"
+                                                      url:self.coordinator.selectedURL
+                                                    title:self.session.title];
+                       })
+        ]);
+}
+- (UIMenu*)textView:(UITextView*)textView
+    editMenuForTextInRange:(NSRange)range
+          suggestedActions:(NSArray<UIMenuElement*>*)suggestedActions {
+    (void)suggestedActions;
+    BOOL selected = range.length > 0;
+    NeonShowMenu(
+        self, textView, [textView caretRectForPosition:textView.selectedTextRange.start], @[
+            NeonAction(@"Undo", @"arrow.uturn.backward", textView.undoManager.canUndo, NO,
+                       ^{
+                         [textView.undoManager undo];
+                       }),
+            NeonAction(@"Redo", @"arrow.uturn.forward", textView.undoManager.canRedo, NO,
+                       ^{
+                         [textView.undoManager redo];
+                       }),
+            NeonAction(@"Cut", @"scissors", selected && textView.editable, NO,
+                       ^{
+                         [textView cut:nil];
+                       }),
+            NeonAction(@"Copy", @"doc.on.doc", selected, NO,
+                       ^{
+                         [textView copy:nil];
+                       }),
+            NeonAction(@"Paste", @"doc.on.clipboard",
+                       UIPasteboard.generalPasteboard.hasStrings && textView.editable, NO,
+                       ^{
+                         [textView paste:nil];
+                       }),
+            NeonAction(@"Select All", @"selection.pin.in.out", textView.text.length > 0, NO,
+                       ^{
+                         [textView selectAll:nil];
+                       })
+        ]);
+    return nil;
 }
 @end
 @implementation NeonTypography
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"Typography";
+    self.title = self.advanced ? @"Writing Settings" : @"Typography";
     self.view.backgroundColor = NeonPanel();
     self.navigationItem.rightBarButtonItem =
         [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
@@ -272,11 +387,40 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     [appearance addTarget:self
                    action:@selector(appearanceChanged:)
          forControlEvents:UIControlEventValueChanged];
+    NSMutableArray* fontRows = [NSMutableArray array];
+    for (NSString* name in @[ @"Literata", @"Source Sans 3", @"System Serif" ]) {
+        UIButton* row = [UIButton buttonWithType:UIButtonTypeSystem];
+        row.accessibilityIdentifier = name;
+        [row setTitle:[NSString stringWithFormat:@"%@   %@", name,
+                                                 [NeonFontChoice() isEqual:name] ? @"✓" : @""]
+             forState:UIControlStateNormal];
+        row.titleLabel.font = scaledSerif(20);
+        row.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+        row.backgroundColor = [NeonInk() colorWithAlphaComponent:0.06];
+        row.layer.cornerRadius = 8;
+        [row.heightAnchor constraintEqualToConstant:44].active = YES;
+        [row addTarget:self
+                      action:@selector(fontChanged:)
+            forControlEvents:UIControlEventTouchUpInside];
+        [fontRows addObject:row];
+    }
+    UIStackView* fonts = [[UIStackView alloc] initWithArrangedSubviews:fontRows];
+    fonts.axis = UILayoutConstraintAxisVertical;
+    fonts.spacing = 1;
+    UIButton* more = [UIButton buttonWithType:UIButtonTypeSystem];
+    [more setTitle:self.advanced ? @"Reset Writing Preferences" : @"More Options  ›"
+          forState:UIControlStateNormal];
+    more.titleLabel.font = NeonUI(17);
+    [more addTarget:self
+                  action:@selector(moreOptions)
+        forControlEvents:UIControlEventTouchUpInside];
     UIStackView* stack = [[UIStackView alloc] initWithArrangedSubviews:@[
-        label(@"Literata", scaledSerif(25), NeonInk()),
-        label(@"Text size", NeonUI(15), NeonMuted()), size,
+        label(self.advanced ? @"Applies to this device. Document content stays unchanged."
+                            : @"Font",
+              NeonUI(15), NeonMuted()),
+        fonts, label(@"Text size", NeonUI(15), NeonMuted()), size,
         label(@"Line spacing", NeonUI(15), NeonMuted()), spacing,
-        label(@"Appearance", NeonUI(15), NeonMuted()), appearance
+        label(@"Appearance", NeonUI(15), NeonMuted()), appearance, more
     ]];
     stack.axis = UILayoutConstraintAxisVertical;
     stack.spacing = 12;
@@ -290,6 +434,38 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [stack.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor
                                         constant:20]
     ]];
+}
+- (void)fontChanged:(UIButton*)sender {
+    [NSUserDefaults.standardUserDefaults setObject:sender.accessibilityIdentifier
+                                            forKey:@"manuscriptFont"];
+    for (UIButton* row in ((UIStackView*)sender.superview).arrangedSubviews)
+        [row setTitle:[NSString
+                          stringWithFormat:@"%@   %@", row.accessibilityIdentifier,
+                                           [NeonFontChoice() isEqual:row.accessibilityIdentifier]
+                                               ? @"✓"
+                                               : @""]
+             forState:UIControlStateNormal];
+    [self.editor applyTypography];
+}
+- (void)moreOptions {
+    if (!self.advanced) {
+        NeonTypography* detail = [NeonTypography new];
+        detail.advanced = YES;
+        detail.editor = self.editor;
+        [self.navigationController pushViewController:detail animated:YES];
+    } else {
+        for (NSString* key in
+             @[ @"manuscriptFont", @"manuscriptSize", @"manuscriptSpacing", @"appearance" ])
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
+        [self.editor applyTypography];
+        [self.editor.coordinator applyAppearance];
+        [self.navigationController popViewControllerAnimated:YES];
+    }
+}
+- (UIModalPresentationStyle)adaptivePresentationStyleForPresentationController:
+    (UIPresentationController*)controller {
+    (void)controller;
+    return UIModalPresentationNone;
 }
 - (void)sizeChanged:(UISlider*)sender {
     [NSUserDefaults.standardUserDefaults setDouble:sender.value forKey:@"manuscriptSize"];
@@ -318,10 +494,22 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = self.chapters ? 72 : 142;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
-    self.navigationItem.rightBarButtonItem =
+    self.navigationItem.rightBarButtonItems = @[
         [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
                                                       target:self
-                                                      action:@selector(create)];
+                                                      action:@selector(create)],
+        [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"trash"]
+                                         style:UIBarButtonItemStylePlain
+                                        target:self
+                                        action:@selector(trash)]
+    ];
+    UILongPressGestureRecognizer* hold =
+        [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(context:)];
+    [self.tableView addGestureRecognizer:hold];
+    UITapGestureRecognizer* secondary =
+        [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(context:)];
+    secondary.buttonMaskRequired = UIEventButtonMaskSecondary;
+    [self.tableView addGestureRecognizer:secondary];
     if (self.chapters)
         self.navigationItem.leftBarButtonItem =
             [[UIBarButtonItem alloc] initWithTitle:@"Library"
@@ -379,7 +567,13 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     content.imageProperties.tintColor = NeonAccent();
     cell.contentConfiguration = content;
     cell.backgroundColor = NeonPanel();
-    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    UIButton* more = [UIButton buttonWithType:UIButtonTypeSystem];
+    [more setImage:[UIImage systemImageNamed:@"ellipsis"] forState:UIControlStateNormal];
+    more.frame = CGRectMake(0, 0, 44, 44);
+    more.tag = path.row;
+    more.accessibilityLabel = self.chapters ? @"Chapter actions" : @"Project actions";
+    [more addTarget:self action:@selector(more:) forControlEvents:UIControlEventTouchUpInside];
+    cell.accessoryView = more;
     UIView* selected = [UIView new];
     selected.backgroundColor = [NeonAccent() colorWithAlphaComponent:0.12];
     cell.selectedBackgroundView = selected;
@@ -401,10 +595,35 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [self.coordinator newProject];
 }
 - (void)library {
-    if (![self.coordinator.editor flush])
+    [self.coordinator showLibrary];
+}
+- (void)trash {
+    if (self.chapters)
+        [self.coordinator showSectionTrash:self anchor:self.view];
+    else if (self.coordinator.trashMode)
+        [self.coordinator showLibrary];
+    else
+        [self.coordinator showTrash];
+}
+- (void)more:(UIButton*)sender {
+    if (self.chapters)
+        [self.coordinator sectionMenu:sender.tag host:self anchor:sender rect:sender.bounds];
+    else
+        [self.coordinator projectMenu:sender.tag host:self anchor:sender rect:sender.bounds];
+}
+- (void)context:(UIGestureRecognizer*)gesture {
+    if (gesture.state != UIGestureRecognizerStateBegan &&
+        ![gesture isKindOfClass:UITapGestureRecognizer.class])
         return;
-    [self.coordinator.navigation popToRootViewControllerAnimated:YES];
-    [self.coordinator reloadLibrary];
+    CGPoint point = [gesture locationInView:self.tableView];
+    NSIndexPath* path = [self.tableView indexPathForRowAtPoint:point];
+    if (!path)
+        return;
+    CGRect rect = CGRectMake(point.x, point.y, 1, 1);
+    if (self.chapters)
+        [self.coordinator sectionMenu:path.row host:self anchor:self.tableView rect:rect];
+    else
+        [self.coordinator projectMenu:path.row host:self anchor:self.tableView rect:rect];
 }
 @end
 @implementation NeonCoordinator
@@ -425,9 +644,10 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.view.tintColor = NeonAccent();
     NSArray* args = NSProcessInfo.processInfo.arguments;
     self.smoke = [args containsObject:@"--smoke-test"];
-    BOOL reopen = [args containsObject:@"--smoke-reopen"] ||
-                  [args containsObject:@"--smoke-library"] ||
-                  [args containsObject:@"--smoke-focus"];
+    BOOL reopen =
+        [args containsObject:@"--smoke-reopen"] || [args containsObject:@"--smoke-library"] ||
+        [args containsObject:@"--smoke-focus"] || [args containsObject:@"--smoke-typography"] ||
+        [args containsObject:@"--smoke-menu"];
     NSURL* support = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
                                                             inDomains:NSUserDomainMask]
                          .firstObject;
@@ -490,12 +710,14 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 }
 - (void)reloadLibrary {
     NSError* error = nil;
-    NSArray* projects = [self.library projects:&error];
+    NSArray* projects =
+        self.trashMode ? [self.library trashedProjects:&error] : [self.library projects:&error];
     if (!projects) {
         [self showProblem:error];
         return;
     }
     self.projects = projects;
+    self.libraryList.title = self.trashMode ? @"Trash" : @"Library";
     [self.libraryList.tableView reloadData];
 }
 - (void)showProblem:(NSError*)error {
@@ -511,6 +733,13 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 - (void)openProject:(NSInteger)index {
     if (index < 0 || index >= static_cast<NSInteger>(self.projects.count))
         return;
+    if (self.trashMode) {
+        [self projectMenu:index
+                     host:self.libraryList
+                   anchor:self.libraryList.view
+                     rect:CGRectMake(40, 80, 1, 1)];
+        return;
+    }
     if (self.editor && ![self.editor flush])
         return;
     NSError* error = nil;
@@ -530,14 +759,16 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [self openSection:0];
 }
 - (void)openSection:(NSInteger)index {
-    if (index < 0 || index >= static_cast<NSInteger>(self.session.sections.count))
+    if (self.session.sections.count &&
+        (index < 0 || index >= static_cast<NSInteger>(self.session.sections.count)))
         return;
     if (self.editor && ![self.editor flush])
         return;
     NSError* error = nil;
     self.editor.session = nil;
     self.editor = nil;
-    if (![self.session selectSection:self.session.sections[index][@"id"] error:&error]) {
+    if (self.session.sections.count &&
+        ![self.session selectSection:self.session.sections[index][@"id"] error:&error]) {
         [self showProblem:error];
         return;
     }
@@ -675,6 +906,226 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 - (void)newSection {
     [self askTitle:YES];
 }
+- (void)showLibrary {
+    if (self.editor && ![self.editor flush])
+        return;
+    self.editor.session = nil;
+    self.editor = nil;
+    self.session = nil;
+    self.selectedURL = nil;
+    self.trashMode = NO;
+    [self.navigation setViewControllers:@[ self.libraryList ] animated:NO];
+    UIViewController* blank = [UIViewController new];
+    blank.view.backgroundColor = NeonPaper();
+    [self setViewController:blank forColumn:UISplitViewControllerColumnSecondary];
+    [self showColumn:UISplitViewControllerColumnPrimary];
+    [self reloadLibrary];
+}
+- (void)showTrash {
+    [self showLibrary];
+    if (self.session)
+        return;
+    self.trashMode = YES;
+    [self reloadLibrary];
+}
+- (void)projectMenu:(NSInteger)index
+               host:(UIViewController*)host
+             anchor:(UIView*)anchor
+               rect:(CGRect)rect {
+    if (index < 0 || index >= static_cast<NSInteger>(self.projects.count))
+        return;
+    NSDictionary* project = self.projects[index];
+    NSMutableArray* actions = [NSMutableArray array];
+    for (NSString* command in self.trashMode ? @[ @"Restore", @"Delete Permanently…" ]
+                                             : @[ @"Rename…", @"Duplicate", @"Move to Trash…" ])
+        [actions
+            addObject:NeonAction(command,
+                                 [command containsString:@"Trash"] || [command hasPrefix:@"Delete"]
+                                     ? @"trash"
+                                     : @"pencil",
+                                 YES,
+                                 [command containsString:@"Trash"] || [command hasPrefix:@"Delete"],
+                                 ^{
+                                   [self projectCommand:command
+                                                    url:project[@"url"]
+                                                  title:project[@"title"]];
+                                 })];
+    NeonShowMenu(host, anchor, rect, actions);
+}
+- (void)prompt:(NSString*)title value:(NSString*)value completion:(void (^)(NSString*))completion {
+    UIAlertController* alert =
+        [UIAlertController alertControllerWithTitle:title
+                                            message:nil
+                                     preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField* field) {
+      field.text = value;
+    }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                              style:UIAlertActionStyleCancel
+                                            handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Rename"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction* action) {
+                                              (void)action;
+                                              completion(alert.textFields.firstObject.text);
+                                            }]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+- (void)projectCommand:(NSString*)command url:(NSURL*)url title:(NSString*)title {
+    if (self.editor && ![self.editor flush])
+        return;
+    if ([command hasPrefix:@"Rename"]) {
+        [self prompt:@"Rename Project"
+                 value:title
+            completion:^(NSString* value) {
+              NSError* error = nil;
+              NeonDocumentSession* session = [url isEqual:self.selectedURL]
+                                                 ? self.session
+                                                 : [self.library openURL:url error:&error];
+              if (!session || ![session renameProject:value error:&error] ||
+                  ![session save:&error]) {
+                  [self showProblem:error];
+                  return;
+              }
+              self.editor.title = self.session.title;
+              self.chapterList.title = self.session.title;
+              [self reloadLibrary];
+            }];
+        return;
+    }
+    void (^perform)(void) = ^{
+      NSError* error = nil;
+      BOOL success = NO;
+      if ([command isEqual:@"Duplicate"])
+          success = [self.library duplicateProject:url error:&error] != nil;
+      else if ([command hasPrefix:@"Delete"])
+          success = [self.library deleteTrashedProject:url error:&error];
+      else
+          success = [self.library setProject:url
+                                     trashed:![command isEqual:@"Restore"]
+                                       error:&error];
+      if (!success) {
+          [self showProblem:error];
+          return;
+      }
+      if ([url isEqual:self.selectedURL] && ![command isEqual:@"Duplicate"]) {
+          self.editor.session = nil;
+          self.editor = nil;
+          [self showLibrary];
+      } else
+          [self reloadLibrary];
+    };
+    if ([command isEqual:@"Restore"] || [command isEqual:@"Duplicate"]) {
+        perform();
+        return;
+    }
+    UIAlertController* alert = [UIAlertController
+        alertControllerWithTitle:[NSString stringWithFormat:@"%@ %@", command, title]
+                         message:[command hasPrefix:@"Delete"]
+                                     ? @"This permanently deletes the project file and cannot be "
+                                       @"undone."
+                                     : @"You can restore this project from Trash."
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                              style:UIAlertActionStyleCancel
+                                            handler:nil]];
+    [alert addAction:[UIAlertAction
+                         actionWithTitle:[command hasPrefix:@"Delete"] ? @"Delete Permanently"
+                                                                       : @"Move to Trash"
+                                   style:UIAlertActionStyleDestructive
+                                 handler:^(UIAlertAction* action) {
+                                   (void)action;
+                                   perform();
+                                 }]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+- (void)sectionMenu:(NSInteger)index
+               host:(UIViewController*)host
+             anchor:(UIView*)anchor
+               rect:(CGRect)rect {
+    if (index < 0 || index >= static_cast<NSInteger>(self.session.sections.count))
+        return;
+    NSString* identifier = self.session.sections[index][@"id"];
+    NSMutableArray* actions = [NSMutableArray array];
+    for (NSString* command in
+         @[ @"Rename…", @"Duplicate", @"Move Up", @"Move Down", @"Move to Trash…" ]) {
+        BOOL enabled = !([command isEqual:@"Move Up"] && index == 0) &&
+                       !([command isEqual:@"Move Down"] &&
+                         index + 1 == static_cast<NSInteger>(self.session.sections.count));
+        [actions
+            addObject:NeonAction(command, [command containsString:@"Trash"] ? @"trash" : @"pencil",
+                                 enabled, [command containsString:@"Trash"], ^{
+                                   [self sectionCommand:command identifier:identifier];
+                                 })];
+    }
+    NeonShowMenu(host, anchor, rect, actions);
+}
+- (void)showSectionTrash:(UIViewController*)host anchor:(UIView*)anchor {
+    NSMutableArray* actions = [NSMutableArray array];
+    for (NSDictionary* section in self.session.trashedSections)
+        [actions addObject:NeonAction([@"Restore " stringByAppendingString:section[@"title"]],
+                                      @"arrow.uturn.backward", YES, NO, ^{
+                                        [self sectionCommand:@"Restore" identifier:section[@"id"]];
+                                      })];
+    if (!actions.count)
+        [actions addObject:NeonAction(@"No deleted chapters", @"trash", NO, NO,
+                                      ^{
+                                      })];
+    NeonShowMenu(host, anchor, CGRectMake(40, anchor.safeAreaInsets.top + 20, 1, 1), actions);
+}
+- (void)refreshAfterStructure {
+    NSString* selected = self.session.selectedSectionID;
+    self.editor.session = nil;
+    self.editor = nil;
+    NSUInteger index = [self.session.sections
+        indexOfObjectPassingTest:^BOOL(NSDictionary* item, NSUInteger i, BOOL* stop) {
+          (void)i;
+          (void)stop;
+          return [item[@"id"] isEqual:selected];
+        }];
+    [self openSection:index == NSNotFound ? 0 : index];
+    NSError* error = nil;
+    if (![self.session save:&error])
+        [self showProblem:error];
+}
+- (void)sectionCommand:(NSString*)command identifier:(NSString*)identifier {
+    if (self.editor && ![self.editor flush])
+        return;
+    if ([command hasPrefix:@"Rename"]) {
+        NSString* title = @"";
+        for (NSDictionary* section in self.session.sections)
+            if ([section[@"id"] isEqual:identifier])
+                title = section[@"title"];
+        [self prompt:@"Rename Chapter"
+                 value:title
+            completion:^(NSString* value) {
+              NSError* error = nil;
+              if (![self.session renameSection:identifier title:value error:&error]) {
+                  [self showProblem:error];
+                  return;
+              }
+              [self refreshAfterStructure];
+            }];
+        return;
+    }
+    NSError* error = nil;
+    BOOL success = NO;
+    if ([command isEqual:@"Duplicate"])
+        success = [self.session duplicateSection:identifier error:&error];
+    else if ([command isEqual:@"Move Up"] || [command isEqual:@"Move Down"])
+        success = [self.session moveSection:identifier
+                                  direction:[command isEqual:@"Move Up"] ? -1 : 1
+                                      error:&error];
+    else
+        success = [self.session setSection:identifier
+                                   trashed:![command isEqual:@"Restore"]
+                                     error:&error];
+    if (!success) {
+        [self showProblem:error];
+        return;
+    }
+    [self refreshAfterStructure];
+}
 - (void)runSmoke:(NSArray*)args support:(NSURL*)support {
     if ([args containsObject:@"--smoke-library"]) {
         marker(support, @"smoke-library.txt", self.projects.count == 3);
@@ -702,6 +1153,15 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [self openSection:0];
         valid = valid && [self.editor.editor.text containsString:@"A native Apple draft."];
         marker(support, @"smoke-result.txt", valid);
+    } else if ([args containsObject:@"--smoke-typography"]) {
+        [self.editor typography];
+        marker(support, @"smoke-typography.txt", YES);
+    } else if ([args containsObject:@"--smoke-menu"]) {
+        [self sectionMenu:0
+                     host:self.editor
+                   anchor:self.editor.view
+                     rect:CGRectMake(40, 100, 1, 1)];
+        marker(support, @"smoke-menu.txt", YES);
     } else if ([args containsObject:@"--smoke-focus"]) {
         [self toggleChapters];
         marker(support, @"smoke-focus.txt",

@@ -2,6 +2,7 @@
 """Boot an available iPhone and iPad; exercise native edit/save/reopen and capture."""
 import json
 import pathlib
+import re
 import subprocess
 import sys
 import time
@@ -13,22 +14,23 @@ bundle = 'com.johnhenning.neon.applepreview'
 
 
 def run(*args):
+    print('simctl', *args, flush=True)
     return subprocess.check_output(['xcrun', 'simctl', *args], text=True, timeout=300).strip()
 
 
-devices = json.loads(run('list', 'devices', 'available', '-j'))['devices']
+runtimes = json.loads(run('list', 'runtimes', '-j'))['runtimes']
+runtime = max((item for item in runtimes if item.get('isAvailable') and 'iOS' in item['name']),
+              key=lambda item: tuple(int(v) for v in re.findall(r'\d+', item['version'])))
+types = json.loads(run('list', 'devicetypes', '-j'))['devicetypes']
 for family in ['iPhone', 'iPad']:
-    choices = [device for runtime, items in devices.items() if '.iOS-' in runtime
-               for device in items if device.get('isAvailable') and family in device['name']]
-    if not choices:
-        raise SystemExit(f'No available {family} simulator')
-    device = choices[0]
-    udid = device['udid']
-    booted_here = device['state'] != 'Booted'
+    kind = next(item for item in reversed(types) if family in item['name'])
+    udid = run('create', f'Neon CI {family}', kind['identifier'], runtime['identifier'])
+    device = {'name': kind['name'], 'udid': udid}
+    booted_here = True
     try:
         if booted_here:
             run('boot', udid)
-        run('bootstatus', udid, '-b')
+        subprocess.run(['xcrun', 'simctl', 'bootstatus', udid, '-b'], check=True, timeout=300)
         run('install', udid, str(app))
         container = pathlib.Path(run('get_app_container', udid, bundle, 'data'))
         marker = container / 'Library/Application Support/smoke-result.txt'
@@ -53,7 +55,7 @@ for family in ['iPhone', 'iPad']:
             raise SystemExit(f'{family}: process relaunch lost document text')
         run('io', udid, 'screenshot', str(output / f'{family}-reopened.png'))
         run('terminate', udid, bundle)
-        for mode in ['library', 'focus']:
+        for mode in ['library', 'focus', 'typography', 'menu']:
             if mode == 'focus' and family != 'iPad':
                 continue
             mode_marker = marker.with_name(f'smoke-{mode}.txt')
@@ -76,3 +78,4 @@ for family in ['iPhone', 'iPad']:
     finally:
         if booted_here:
             run('shutdown', udid)
+            run('delete', udid)

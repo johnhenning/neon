@@ -76,6 +76,54 @@
         return nil;
     return file;
 }
+- (NSArray<NSDictionary*>*)trashedProjects:(NSError**)error {
+    NeonLibraryStore* trash = [[NeonLibraryStore alloc]
+        initWithDirectory:[self.directory URLByAppendingPathComponent:@"Trash" isDirectory:YES]];
+    return [trash projects:error];
+}
+- (BOOL)validURL:(NSURL*)url parent:(NSURL*)parent error:(NSError**)error {
+    if (url.isFileURL &&
+        [url.URLByDeletingLastPathComponent.URLByStandardizingPath
+            isEqual:parent.URLByStandardizingPath] &&
+        [url.pathExtension isEqualToString:@"json"])
+        return YES;
+    if (error)
+        *error = [NSError
+            errorWithDomain:@"NeonLibrary"
+                       code:2
+                   userInfo:@{NSLocalizedDescriptionKey : @"The item is outside this library."}];
+    return NO;
+}
+- (BOOL)setProject:(NSURL*)url trashed:(BOOL)trashed error:(NSError**)error {
+    NSURL* trash = [self.directory URLByAppendingPathComponent:@"Trash" isDirectory:YES];
+    if (![self validURL:url parent:trashed ? self.directory : trash error:error])
+        return NO;
+    NSURL* destination = trashed ? trash : self.directory;
+    if (![[NSFileManager defaultManager] createDirectoryAtURL:destination
+                                  withIntermediateDirectories:YES
+                                                   attributes:nil
+                                                        error:error])
+        return NO;
+    return [[NSFileManager defaultManager]
+        moveItemAtURL:url
+                toURL:[destination URLByAppendingPathComponent:url.lastPathComponent]
+                error:error];
+}
+- (NSURL*)duplicateProject:(NSURL*)url error:(NSError**)error {
+    if (![self validURL:url parent:self.directory error:error])
+        return nil;
+    NeonDocumentSession* session = [self openURL:url error:error];
+    NSURL* destination =
+        [self.directory URLByAppendingPathComponent:[NSUUID.UUID.UUIDString
+                                                        stringByAppendingPathExtension:@"json"]];
+    return session && [session duplicateToURL:destination error:error] ? destination : nil;
+}
+- (BOOL)deleteTrashedProject:(NSURL*)url error:(NSError**)error {
+    NSURL* trash = [self.directory URLByAppendingPathComponent:@"Trash" isDirectory:YES];
+    if (![self validURL:url parent:trash error:error])
+        return NO;
+    return [[NSFileManager defaultManager] removeItemAtURL:url error:error];
+}
 - (BOOL)seedPreview:(NSError**)error {
     NSArray* existing = [self projects:error];
     if (!existing)

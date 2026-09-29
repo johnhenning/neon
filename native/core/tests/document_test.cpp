@@ -52,7 +52,20 @@ int main() {
     check(project.documents[0].sections.size() == 2 &&
               project.documents[0].sections[0].id == "section",
           "order preserved");
-    project.schemaVersion = 2;
+    check(neon::core::renameSection(&project, "section2", "Renamed").ok, "rename section");
+    check(neon::core::moveSection(&project, "section2", -1).ok &&
+              project.documents[0].sections[0].id == "section2",
+          "move preserves identity");
+    before = project.revision;
+    check(!neon::core::moveSection(&project, "section2", -1).ok && project.revision == before,
+          "edge move atomic");
+    check(neon::core::trashSection(&project, "section2", true).ok &&
+              project.documents[0].sections[0].trashed,
+          "trash preserves content");
+    check(neon::core::trashSection(&project, "section2", false).ok &&
+              project.documents[0].sections[0].title == "Renamed",
+          "restore title");
+    project.schemaVersion = 3;
     check(!replaceText(&project, "block", "bad", "editor").ok, "future schema read-only");
     project.schemaVersion = 1;
     project.revision = std::numeric_limits<std::uint64_t>::max();
