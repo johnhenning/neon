@@ -23,12 +23,14 @@ runtime = max((item for item in runtimes if item.get('isAvailable') and 'iOS' in
               key=lambda item: tuple(int(v) for v in re.findall(r'\d+', item['version'])))
 types = json.loads(run('list', 'devicetypes', '-j'))['devicetypes']
 devices = json.loads(run('list', 'devices', 'available', '-j'))['devices']
+failures = []
 for family in ['iPhone', 'iPad']:
     existing = next(item for item in devices[runtime['identifier']] if family in item['name'])
     kind = next(item for item in types if item['name'] == existing['name'])
     udid = run('create', f'Neon CI {family}', kind['identifier'], runtime['identifier'])
     device = {'name': kind['name'], 'udid': udid}
     booted_here = True
+    container = None
     try:
         if booted_here:
             run('boot', udid)
@@ -91,17 +93,24 @@ for family in ['iPhone', 'iPad']:
         time.sleep(2)
         run('io', udid, 'screenshot', str(output / f'{family}-research.png'))
         run('terminate', udid, bundle)
-    except (SystemExit, subprocess.SubprocessError):
+        subprocess.run([sys.executable, str(pathlib.Path(__file__).with_name('ui_walkthrough.py')),
+                        family, str(app), str(output / family), '--device', udid],
+                       check=True, timeout=900)
+    except (SystemExit, subprocess.SubprocessError) as error:
+        failures.append(f'{family}: {error}')
+        (output / f'{family}-failure.txt').write_text(str(error))
         # Preserve the failed surface and markers before deleting the disposable simulator.
         try:
             run('io', udid, 'screenshot', str(output / f'{family}-failure.png'))
         except subprocess.SubprocessError as error:
             print(f'Could not capture failed simulator: {error}', flush=True)
-        if 'container' in locals():
+        if container is not None:
             for result in (container / 'Library/Application Support').glob('smoke-*.txt'):
                 (output / f'{family}-{result.name}').write_bytes(result.read_bytes())
-        raise
     finally:
         if booted_here:
             run('shutdown', udid)
             run('delete', udid)
+
+if failures:
+    raise SystemExit('\n'.join(failures))

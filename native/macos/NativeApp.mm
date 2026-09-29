@@ -238,8 +238,9 @@ NSUInteger words(NSString* text) {
     (void)note;
     NeonRegisterFonts();
     self.smoke = [NSProcessInfo.processInfo.arguments containsObject:@"--smoke-test"];
+    BOOL uiTesting = [NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"];
     NSURL* root =
-        self.smoke
+        (self.smoke || uiTesting)
             ? [NSURL fileURLWithPath:[NSTemporaryDirectory()
                                          stringByAppendingPathComponent:NSUUID.UUID.UUIDString]]
             : [[[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
@@ -247,7 +248,7 @@ NSUInteger words(NSString* text) {
                       .firstObject URLByAppendingPathComponent:@"Neon Apple Preview"];
     self.library = [[NeonLibraryStore alloc] initWithDirectory:root];
     NSError* error = nil;
-    if (self.smoke && ![self.library seedPreview:&error]) {
+    if ((self.smoke || uiTesting) && ![self.library seedPreview:&error]) {
         fprintf(stderr, "%s\n", error.localizedDescription.UTF8String);
         exit(2);
     }
@@ -466,6 +467,7 @@ NSUInteger words(NSString* text) {
             row.font = NeonUI(15);
             row.accessibilityLabel =
                 [self.session.preset[@"sectionLabel"] stringByAppendingString:@" title"];
+            row.accessibilityIdentifier = [NSString stringWithFormat:@"section-%ld", index];
             row.tag = index++;
             NSString* identifier = section[@"id"];
             row.commitTitle = ^BOOL(NSString* title) {
@@ -663,6 +665,7 @@ NSUInteger words(NSString* text) {
         [cover.heightAnchor constraintEqualToConstant:150].active = YES;
         NSButton* title = button(project[@"title"], nil, self, @selector(openProject:));
         title.font = NeonSerif(25);
+        title.accessibilityIdentifier = [NSString stringWithFormat:@"project-%ld", index];
         title.tag = index++;
         NSString* detail =
             [project[@"error"] length]
@@ -795,6 +798,7 @@ NSUInteger words(NSString* text) {
     scroll.scrollerStyle = NSScrollerStyleOverlay;
     scroll.drawsBackground = NO;
     self.editor = [[NeonTextView alloc] initWithFrame:NSMakeRect(0, 0, 650, 400)];
+    self.editor.accessibilityIdentifier = @"manuscript";
     self.editor.minSize = NSMakeSize(0, 300);
     self.editor.maxSize = NSMakeSize(CGFLOAT_MAX, CGFLOAT_MAX);
     self.editor.verticallyResizable = YES;

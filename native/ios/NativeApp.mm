@@ -825,6 +825,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.view.tintColor = NeonAccent();
     NSArray* args = NSProcessInfo.processInfo.arguments;
     self.smoke = [args containsObject:@"--smoke-test"];
+    BOOL uiTesting = [args containsObject:@"--ui-testing"];
     BOOL reopen =
         [args containsObject:@"--smoke-reopen"] || [args containsObject:@"--smoke-library"] ||
         [args containsObject:@"--smoke-focus"] || [args containsObject:@"--smoke-typography"] ||
@@ -833,14 +834,14 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     NSURL* support = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
                                                             inDomains:NSUserDomainMask]
                          .firstObject;
-    NSURL* directory =
-        [support URLByAppendingPathComponent:(self.smoke || reopen) ? @"SmokeLibrary"
-                                                                    : @"Neon Apple Preview"];
-    if (self.smoke)
+    NSURL* directory = [support URLByAppendingPathComponent:(self.smoke || reopen || uiTesting)
+                                                                ? @"SmokeLibrary"
+                                                                : @"Neon Apple Preview"];
+    if (self.smoke || uiTesting)
         [[NSFileManager defaultManager] removeItemAtURL:directory error:nil];
     self.library = [[NeonLibraryStore alloc] initWithDirectory:directory];
     NSError* error = nil;
-    if (self.smoke && ![self.library seedPreview:&error])
+    if ((self.smoke || uiTesting) && ![self.library seedPreview:&error])
         [self showProblem:error];
     self.libraryList = [[NeonList alloc] initWithStyle:UITableViewStyleInsetGrouped];
     self.libraryList.coordinator = self;

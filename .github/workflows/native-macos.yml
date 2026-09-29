@@ -24,6 +24,8 @@ jobs:
         run: cmake -S native -B build-native -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
       - name: Build native app
         run: cmake --build build-native --parallel 3
+      - name: Install UI driver generator
+        run: brew install xcodegen
       - name: Native tests and desktop captures
         run: ctest --test-dir build-native --output-on-failure
       - name: Package
@@ -32,6 +34,9 @@ jobs:
           otool -L build-native/Neon.app/Contents/MacOS/Neon > build-native/dependencies.txt
           if rg -i 'Qt|Electron|Chromium' build-native/dependencies.txt; then exit 1; fi
           ditto -c -k --sequesterRsrc --keepParent build-native/Neon.app build-native/Neon.zip
+      - name: Record Mac UI walkthrough
+        if: ${{ !cancelled() && hashFiles('build-native/Neon.app/Contents/MacOS/Neon') != '' }}
+        run: python3 native/scripts/ui_walkthrough.py macOS build-native/Neon.app build-native/walkthrough
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -46,11 +51,12 @@ jobs:
             build-native/native-settings.png
             build-native/native-history.png
             build-native/native-research.png
+            build-native/walkthrough
             build-native/dependencies.txt
             build-native/Testing/Temporary/LastTest.log
 
   ios-native:
-    timeout-minutes: 30
+    timeout-minutes: 50
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
@@ -67,6 +73,8 @@ jobs:
           -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
       - name: Build native mobile app
         run: cmake --build build-ios --config Debug --target NeonMobile
+      - name: Install UI driver generator
+        run: brew install xcodegen
       - name: iPhone and iPad edit-save-reopen smoke
         run: python3 native/scripts/ios_smoke.py build-ios/Debug-iphonesimulator/Neon.app build-ios/evidence
       - uses: actions/upload-artifact@v4
@@ -74,3 +82,35 @@ jobs:
         with:
           name: Neon-Apple-Simulator-Evidence
           path: build-ios/evidence
+
+  report-macos:
+    needs: macos-native
+    if: ${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+      copilot-requests: write
+    uses: ./.github/workflows/apple-report.yml
+    with:
+      platform: macOS
+      build-result: ${{ needs.macos-native.result }}
+      artifact: Neon-Native-macOS
+    secrets:
+      NEON_ATTACHMENT_TOKEN: ${{ secrets.NEON_ATTACHMENT_TOKEN }}
+
+  report-ios:
+    needs: ios-native
+    if: ${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+      copilot-requests: write
+    uses: ./.github/workflows/apple-report.yml
+    with:
+      platform: iOS
+      build-result: ${{ needs.ios-native.result }}
+      artifact: Neon-Apple-Simulator-Evidence
+    secrets:
+      NEON_ATTACHMENT_TOKEN: ${{ secrets.NEON_ATTACHMENT_TOKEN }}
