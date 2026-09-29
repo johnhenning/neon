@@ -16,12 +16,15 @@ adapter. No account is required for local writing.
 - Warm parchment/charcoal palette, bronze accents, bundled Literata manuscript font
   and Source Sans 3 controls. Adjustable text size/spacing and System/Light/Dark.
 - Custom project/chapter/text action popovers, available from context and overflow menus.
-- Font selection, live typography popovers/sheets and device-level reset controls.
+- Font previews and live typography popovers/sheets. Searchable Writing and Appearance
+  settings include paragraph spacing, column width, spelling, smart punctuation and
+  word-count visibility, with confirmed device-preference reset.
 - Visible save errors; unsupported files are left unchanged.
 
 This is a plain-text preview. Rich formatting/media, durable history, journaled
 async storage, full accessibility/device acceptance and iCloud remain in progress.
-Full searchable settings, structural undo and exact design acceptance remain open.
+Additional settings categories and project/export scopes, structural undo and exact
+design acceptance remain open.
 Schema 2 retains trashed chapters; schema 1 is read and backed up before its first
 updated save. Earlier builds refuse schema 2 instead of dropping retained content.
 Typography controls affect presentation, not semantic document formatting. The

@@ -2,6 +2,7 @@
 #import "EditorialTheme.h"
 #import "InlineTitle.h"
 #import "LibraryStore.h"
+#import "Settings.h"
 #import <QuartzCore/QuartzCore.h>
 #include <cstdio>
 #include <cstdlib>
@@ -65,6 +66,16 @@ void pin(NSView* child, NSView* parent) {
         [child.topAnchor constraintEqualToAnchor:parent.topAnchor],
         [child.bottomAnchor constraintEqualToAnchor:parent.bottomAnchor]
     ]];
+}
+NSView* settingControl(NSView* root, NSString* identifier) {
+    if ([root.identifier isEqual:identifier])
+        return root;
+    for (NSView* child in root.subviews) {
+        NSView* match = settingControl(child, identifier);
+        if (match)
+            return match;
+    }
+    return nil;
 }
 NSUInteger words(NSString* text) {
     __block NSUInteger count = 0;
@@ -195,6 +206,7 @@ NSUInteger words(NSString* text) {
 @property(nonatomic, strong) NSTimer* timer;
 @property(nonatomic, strong) NSPopover* typography;
 @property(nonatomic, strong) NSPanel* settings;
+@property(nonatomic, strong) NSLayoutConstraint* measureConstraint;
 @property(nonatomic) BOOL trashMode;
 - (void)projectMenu:(NSURL*)url title:(NSString*)title anchor:(id)anchor rect:(NSRect)rect;
 - (void)sectionMenu:(NSString*)identifier anchor:(NSView*)anchor rect:(NSRect)rect;
@@ -686,7 +698,9 @@ NSUInteger words(NSString* text) {
     [stack addArrangedSubview:scroll];
     [scroll.widthAnchor constraintLessThanOrEqualToAnchor:stack.widthAnchor constant:-88].active =
         YES;
-    [scroll.widthAnchor constraintLessThanOrEqualToConstant:780].active = YES;
+    self.measureConstraint =
+        [scroll.widthAnchor constraintLessThanOrEqualToConstant:NeonTextMeasure()];
+    self.measureConstraint.active = YES;
     NSLayoutConstraint* preferred = [scroll.widthAnchor constraintEqualToAnchor:stack.widthAnchor
                                                                        constant:-88];
     preferred.priority = 750;
@@ -724,7 +738,11 @@ NSUInteger words(NSString* text) {
     self.editor.font = NeonManuscriptFont(NeonTextSize());
     NSMutableParagraphStyle* paragraph = [NSMutableParagraphStyle new];
     paragraph.lineSpacing = NeonLineSpacing();
-    paragraph.paragraphSpacing = 4;
+    paragraph.paragraphSpacing = NeonParagraphSpacing();
+    self.measureConstraint.constant = NeonTextMeasure();
+    self.editor.continuousSpellCheckingEnabled = NeonWritingPreference(@"spellcheck");
+    self.editor.automaticQuoteSubstitutionEnabled = NeonWritingPreference(@"smartQuotes");
+    self.editor.automaticDashSubstitutionEnabled = NeonWritingPreference(@"smartDashes");
     self.editor.defaultParagraphStyle = paragraph;
     [self.editor.textStorage addAttributes:@{
         NSFontAttributeName : NeonManuscriptFont(NeonTextSize()),
@@ -740,9 +758,11 @@ NSUInteger words(NSString* text) {
     self.editor.selectedRange = selection;
 }
 - (void)updateStatus:(BOOL)saved {
+    NSString* state = saved ? @"Saved on this Mac" : @"Unsaved changes";
     self.status.stringValue =
-        [NSString stringWithFormat:@"%lu words  ·  %@", words(self.editor.string),
-                                   saved ? @"Saved on this Mac" : @"Unsaved changes"];
+        NeonWritingPreference(@"showWordCount")
+            ? [NSString stringWithFormat:@"%lu words  ·  %@", words(self.editor.string), state]
+            : state;
 }
 - (void)textDidChange:(NSNotification*)notification {
     (void)notification;
@@ -848,6 +868,7 @@ NSUInteger words(NSString* text) {
                                               [NeonFontChoice() isEqual:name] ? @"✓" : @""],
                    nil, self, @selector(changeFont:));
         choice.identifier = name;
+        choice.font = NeonFontNamed(name, 18);
         choice.font = NeonSerif(19);
         choice.contentTintColor = NeonInk();
         [controls addObject:choice];
@@ -905,50 +926,30 @@ NSUInteger words(NSString* text) {
 - (void)showSettings:(id)sender {
     (void)sender;
     [self.typography close];
-    if (self.settings) {
-        [self.settings makeKeyAndOrderFront:nil];
-        return;
+    if (!self.settings) {
+        self.settings = [[NSPanel alloc]
+            initWithContentRect:NSMakeRect(0, 0, 580, 660)
+                      styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                                NSWindowStyleMaskResizable
+                        backing:NSBackingStoreBuffered
+                          defer:NO];
+        self.settings.title = @"Settings";
+        self.settings.minSize = NSMakeSize(580, 420);
+        self.settings.releasedWhenClosed = NO;
+        NeonSettingsController* controller = [NeonSettingsController new];
+        __weak NeonApp* weakSelf = self;
+        controller.preferencesChanged = ^{
+          [weakSelf applyAppearance];
+          [weakSelf styleEditor];
+          if (weakSelf.editor)
+              [weakSelf updateStatus:!weakSelf.session.dirty];
+        };
+        self.settings.contentViewController = controller;
+        [self.settings center];
     }
-    self.settings = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, 480, 300)
-                                               styleMask:NSWindowStyleMaskTitled
-                                                 backing:NSBackingStoreBuffered
-                                                   defer:NO];
-    self.settings.title = @"Writing Settings";
     self.settings.appearance = self.window.appearance;
-    NeonSurface* surface = [NeonSurface new];
-    surface.panel = YES;
-    self.settings.contentView = surface;
-    NSStackView* stack = column(
-        @[
-            label(@"Writing", NeonSerif(28), NeonInk()),
-            label(@"Typography preferences apply to this Mac. Your document text is unchanged.",
-                  NeonUI(16), NeonMuted()),
-            button(@"Typography…", @"textformat", self, @selector(settingsTypography:)),
-            button(@"Reset Writing Preferences", @"arrow.counterclockwise", self,
-                   @selector(resetPreferences:)),
-            button(@"Done", nil, self, @selector(closeSettings:))
-        ],
-        20);
-    stack.edgeInsets = NSEdgeInsetsMake(24, 24, 24, 24);
-    pin(stack, surface);
-    [self.window beginSheet:self.settings completionHandler:nil];
-}
-- (void)settingsTypography:(id)sender {
-    [self showTypography:sender];
-}
-- (void)resetPreferences:(id)sender {
-    (void)sender;
-    for (NSString* key in
-         @[ @"manuscriptFont", @"manuscriptSize", @"manuscriptSpacing", @"appearance" ])
-        [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
-    [self applyAppearance];
-    [self styleEditor];
-}
-- (void)closeSettings:(id)sender {
-    (void)sender;
-    [self.typography close];
-    [self.window endSheet:self.settings];
-    self.settings = nil;
+    self.settings.backgroundColor = NeonPanel();
+    [self.settings makeKeyAndOrderFront:nil];
 }
 - (void)changeSize:(NSSlider*)sender {
     [NSUserDefaults.standardUserDefaults setDouble:sender.doubleValue forKey:@"manuscriptSize"];
@@ -1280,7 +1281,42 @@ NSUInteger words(NSString* text) {
     [self sectionCommand:@"Restore" identifier:identifier];
     if (self.session.sections.count != 3 || self.session.trashedSections.count)
         exit(6);
-    printf("Shared Mac editor/navigation/reopen and command workflows passed\n");
+    [self showSettings:nil];
+    [self performSelector:@selector(captureSettings) withObject:nil afterDelay:1];
+}
+- (void)captureSettings {
+    NeonSettingsController* controller = (id)self.settings.contentViewController;
+    if (controller.visibleSettingCount != 10)
+        exit(10);
+    [controller filterSettings:@"PARAGRAPH"];
+    if (controller.visibleSettingCount != 1)
+        exit(10);
+    NSStepper* control = (id)settingControl(controller.view, @"paragraphSpacing");
+    if (![control isKindOfClass:NSStepper.class])
+        exit(10);
+    NSString* draft = self.editor.string;
+    NSRange selection = self.editor.selectedRange;
+    id original = [NSUserDefaults.standardUserDefaults objectForKey:@"paragraphSpacing"];
+    control.doubleValue = 12;
+    [NSApp sendAction:control.action to:control.target from:control];
+    if (NeonParagraphSpacing() != 12 || self.editor.defaultParagraphStyle.paragraphSpacing != 12 ||
+        ![draft isEqual:self.editor.string] || !NSEqualRanges(selection, self.editor.selectedRange))
+        exit(10);
+    if (original)
+        [NSUserDefaults.standardUserDefaults setObject:original forKey:@"paragraphSpacing"];
+    else
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"paragraphSpacing"];
+    controller.preferencesChanged();
+    [controller filterSettings:@"no matching setting"];
+    if (controller.visibleSettingCount)
+        exit(10);
+    [controller filterSettings:@""];
+    [self performSelector:@selector(finishSettingsSmoke) withObject:nil afterDelay:1];
+}
+- (void)finishSettingsSmoke {
+    [self capture:@"native-settings.png"];
+    [self.settings close];
+    printf("Shared Mac editor/navigation/reopen, commands and settings passed\n");
     [NSApp terminate:nil];
 }
 @end

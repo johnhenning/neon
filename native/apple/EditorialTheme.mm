@@ -89,8 +89,7 @@ NSInteger NeonAppearance() {
 NSString* NeonFontChoice() {
     return [NSUserDefaults.standardUserDefaults stringForKey:@"manuscriptFont"] ?: @"Literata";
 }
-NeonFont* NeonManuscriptFont(CGFloat size) {
-    NSString* choice = NeonFontChoice();
+NeonFont* NeonFontNamed(NSString* choice, CGFloat size) {
     if ([choice isEqualToString:@"Source Sans 3"])
         return NeonUI(size);
     if ([choice isEqualToString:@"System Serif"]) {
@@ -105,4 +104,20 @@ NeonFont* NeonManuscriptFont(CGFloat size) {
 #endif
     }
     return NeonSerif(size);
+}
+
+NeonFont* NeonManuscriptFont(CGFloat size) {
+    return NeonFontNamed(NeonFontChoice(), size);
+}
+CGFloat NeonParagraphSpacing() {
+    NSNumber* value = [NSUserDefaults.standardUserDefaults objectForKey:@"paragraphSpacing"];
+    return value && value.doubleValue >= 0 && value.doubleValue <= 24 ? value.doubleValue : 4;
+}
+CGFloat NeonTextMeasure() {
+    double value = [NSUserDefaults.standardUserDefaults doubleForKey:@"textMeasure"];
+    return value >= 480 && value <= 960 ? value : 780;
+}
+BOOL NeonWritingPreference(NSString* key) {
+    NSNumber* value = [NSUserDefaults.standardUserDefaults objectForKey:key];
+    return value ? value.boolValue : YES;
 }

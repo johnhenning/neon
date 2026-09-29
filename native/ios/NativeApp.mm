@@ -2,6 +2,7 @@
 #import "EditorialTheme.h"
 #import "InlineTitle.h"
 #import "LibraryStore.h"
+#import "Settings.h"
 #import <UIKit/UIKit.h>
 
 @class NeonCoordinator;
@@ -22,7 +23,7 @@
 @end
 @interface NeonTypography : UIViewController <UIPopoverPresentationControllerDelegate>
 @property(nonatomic, weak) NeonEditor* editor;
-@property(nonatomic) BOOL advanced;
+
 @end
 @interface NeonCoordinator : UISplitViewController <UISplitViewControllerDelegate>
 @property(nonatomic, strong) NeonLibraryStore* library;
@@ -58,6 +59,7 @@
 - (void)toggleChapters;
 - (void)showProblem:(NSError*)error;
 - (void)applyAppearance;
+- (void)showSettings;
 - (BOOL)renameInline:(NSString*)title section:(NSString*)identifier;
 @end
 namespace {
@@ -73,6 +75,16 @@ UILabel* label(NSString* text, UIFont* font, UIColor* color) {
     label.numberOfLines = 0;
     label.adjustsFontForContentSizeCategory = YES;
     return label;
+}
+UIView* settingControl(UIView* root, NSString* identifier) {
+    if ([root.accessibilityIdentifier isEqual:identifier])
+        return root;
+    for (UIView* child in root.subviews) {
+        UIView* match = settingControl(child, identifier);
+        if (match)
+            return match;
+    }
+    return nil;
 }
 NSUInteger wordCount(NSString* text) {
     __block NSUInteger count = 0;
@@ -213,7 +225,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-    CGFloat margin = MAX(24, (self.editor.bounds.size.width - 700) / 2);
+    CGFloat margin = MAX(24, (self.editor.bounds.size.width - NeonTextMeasure()) / 2);
     self.editor.textContainerInset = UIEdgeInsetsMake(12, margin, 30, margin);
 }
 - (void)viewWillAppear:(BOOL)animated {
@@ -231,7 +243,15 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     NSRange selection = self.editor.selectedRange;
     NSMutableParagraphStyle* style = [NSMutableParagraphStyle new];
     style.lineSpacing = NeonLineSpacing();
-    style.paragraphSpacing = 4;
+    style.paragraphSpacing = NeonParagraphSpacing();
+    self.editor.spellCheckingType = NeonWritingPreference(@"spellcheck")
+                                        ? UITextSpellCheckingTypeYes
+                                        : UITextSpellCheckingTypeNo;
+    self.editor.smartQuotesType =
+        NeonWritingPreference(@"smartQuotes") ? UITextSmartQuotesTypeYes : UITextSmartQuotesTypeNo;
+    self.editor.smartDashesType =
+        NeonWritingPreference(@"smartDashes") ? UITextSmartDashesTypeYes : UITextSmartDashesTypeNo;
+    [self.view setNeedsLayout];
     NSDictionary* attrs = @{
         NSFontAttributeName : [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
             scaledFontForFont:NeonManuscriptFont(NeonTextSize())],
@@ -271,9 +291,12 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     NSError* error = nil;
     BOOL saved =
         [self.session replaceText:self.editor.text error:&error] && [self.session save:&error];
-    self.status.text = saved ? [NSString stringWithFormat:@"%lu words  ·  Saved on this device",
-                                                          wordCount(self.editor.text)]
-                             : error.localizedDescription;
+    self.status.text =
+        saved ? (NeonWritingPreference(@"showWordCount")
+                     ? [NSString stringWithFormat:@"%lu words  ·  Saved on this device",
+                                                  wordCount(self.editor.text)]
+                     : @"Saved on this device")
+              : error.localizedDescription;
     return saved;
 }
 - (void)save {
@@ -383,7 +406,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 @implementation NeonTypography
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = self.advanced ? @"Writing Settings" : @"Typography";
+    self.title = @"Typography";
     self.view.backgroundColor = NeonPanel();
     self.navigationItem.rightBarButtonItem =
         [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
@@ -418,7 +441,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [row setTitle:[NSString stringWithFormat:@"%@   %@", name,
                                                  [NeonFontChoice() isEqual:name] ? @"✓" : @""]
              forState:UIControlStateNormal];
-        row.titleLabel.font = scaledSerif(20);
+        row.titleLabel.font = NeonFontNamed(name, 20);
         row.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
         row.backgroundColor = [NeonInk() colorWithAlphaComponent:0.06];
         row.layer.cornerRadius = 8;
@@ -432,17 +455,14 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     fonts.axis = UILayoutConstraintAxisVertical;
     fonts.spacing = 1;
     UIButton* more = [UIButton buttonWithType:UIButtonTypeSystem];
-    [more setTitle:self.advanced ? @"Reset Writing Preferences" : @"More Options  ›"
-          forState:UIControlStateNormal];
+    [more setTitle:@"More Options  ›" forState:UIControlStateNormal];
     more.titleLabel.font = NeonUI(17);
     [more addTarget:self
                   action:@selector(moreOptions)
         forControlEvents:UIControlEventTouchUpInside];
     UIStackView* stack = [[UIStackView alloc] initWithArrangedSubviews:@[
-        label(self.advanced ? @"Applies to this device. Document content stays unchanged."
-                            : @"Font",
-              NeonUI(15), NeonMuted()),
-        fonts, label(@"Text size", NeonUI(15), NeonMuted()), size,
+        label(@"Font", NeonUI(15), NeonMuted()), fonts,
+        label(@"Text size", NeonUI(15), NeonMuted()), size,
         label(@"Line spacing", NeonUI(15), NeonMuted()), spacing,
         label(@"Appearance", NeonUI(15), NeonMuted()), appearance, more
     ]];
@@ -472,19 +492,11 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     [self.editor applyTypography];
 }
 - (void)moreOptions {
-    if (!self.advanced) {
-        NeonTypography* detail = [NeonTypography new];
-        detail.advanced = YES;
-        detail.editor = self.editor;
-        [self.navigationController pushViewController:detail animated:YES];
-    } else {
-        for (NSString* key in
-             @[ @"manuscriptFont", @"manuscriptSize", @"manuscriptSpacing", @"appearance" ])
-            [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
-        [self.editor applyTypography];
-        [self.editor.coordinator applyAppearance];
-        [self.navigationController popViewControllerAnimated:YES];
-    }
+    NeonCoordinator* coordinator = self.editor.coordinator;
+    [self dismissViewControllerAnimated:YES
+                             completion:^{
+                               [coordinator showSettings];
+                             }];
 }
 - (UIModalPresentationStyle)adaptivePresentationStyleForPresentationController:
     (UIPresentationController*)controller {
@@ -519,6 +531,10 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.tableView.estimatedRowHeight = self.chapters ? 72 : 142;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.navigationItem.rightBarButtonItems = @[
+        [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"gearshape"]
+                                         style:UIBarButtonItemStylePlain
+                                        target:self
+                                        action:@selector(settings)],
         [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
                                                       target:self
                                                       action:@selector(create)],
@@ -527,6 +543,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                         target:self
                                         action:@selector(trash)]
     ];
+    self.navigationItem.rightBarButtonItems.firstObject.accessibilityLabel = @"Settings";
     UILongPressGestureRecognizer* hold =
         [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(context:)];
     [self.tableView addGestureRecognizer:hold];
@@ -540,6 +557,9 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                              style:UIBarButtonItemStylePlain
                                             target:self
                                             action:@selector(library)];
+}
+- (void)settings {
+    [self.coordinator showSettings];
 }
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
@@ -712,7 +732,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     BOOL reopen =
         [args containsObject:@"--smoke-reopen"] || [args containsObject:@"--smoke-library"] ||
         [args containsObject:@"--smoke-focus"] || [args containsObject:@"--smoke-typography"] ||
-        [args containsObject:@"--smoke-menu"];
+        [args containsObject:@"--smoke-menu"] || [args containsObject:@"--smoke-settings"];
     NSURL* support = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
                                                             inDomains:NSUserDomainMask]
                          .firstObject;
@@ -825,6 +845,25 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
       [self.chapterList.tableView reloadData];
     });
     return YES;
+}
+- (void)showSettings {
+    NeonSettingsController* controller = [NeonSettingsController new];
+    __weak NeonCoordinator* weakSelf = self;
+    controller.preferencesChanged = ^{
+      [weakSelf applyAppearance];
+      [weakSelf.editor applyTypography];
+      if ([weakSelf.editor.status.text containsString:@"Saved on this device"])
+          weakSelf.editor.status.text =
+              NeonWritingPreference(@"showWordCount")
+                  ? [NSString stringWithFormat:@"%lu words  ·  Saved on this device",
+                                               wordCount(weakSelf.editor.editor.text)]
+                  : @"Saved on this device";
+    };
+    UINavigationController* nav =
+        [[UINavigationController alloc] initWithRootViewController:controller];
+    nav.overrideUserInterfaceStyle = self.overrideUserInterfaceStyle;
+    nav.modalPresentationStyle = UIModalPresentationPageSheet;
+    [self presentViewController:nav animated:YES completion:nil];
 }
 - (void)reloadLibrary {
     NSError* error = nil;
@@ -1300,6 +1339,36 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         valid = [self renameInline:projectTitle section:nil] && valid;
         valid = [self renameInline:chapterTitle section:self.session.selectedSectionID] && valid;
         marker(support, @"smoke-result.txt", valid);
+    } else if ([args containsObject:@"--smoke-settings"]) {
+        [self showSettings];
+        UINavigationController* navigation = (id)self.presentedViewController;
+        NeonSettingsController* controller = (id)navigation.topViewController;
+        [controller loadViewIfNeeded];
+        BOOL valid = controller.visibleSettingCount == 10;
+        [controller filterSettings:@"PARAGRAPH"];
+        valid = valid && controller.visibleSettingCount == 1;
+        UITableViewCell* cell = [controller tableView:controller.tableView
+                                cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+        UIStepper* stepper = (id)settingControl(cell, @"paragraphSpacing");
+        NSString* draft = self.editor.editor.text;
+        NSRange selection = self.editor.editor.selectedRange;
+        id original = [NSUserDefaults.standardUserDefaults objectForKey:@"paragraphSpacing"];
+        stepper.value = 12;
+        [stepper sendActionsForControlEvents:UIControlEventValueChanged];
+        NSParagraphStyle* paragraph =
+            self.editor.editor.typingAttributes[NSParagraphStyleAttributeName];
+        valid = valid && stepper && NeonParagraphSpacing() == 12 &&
+                paragraph.paragraphSpacing == 12 && [self.editor.editor.text isEqual:draft] &&
+                NSEqualRanges(selection, self.editor.editor.selectedRange);
+        if (original)
+            [NSUserDefaults.standardUserDefaults setObject:original forKey:@"paragraphSpacing"];
+        else
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:@"paragraphSpacing"];
+        controller.preferencesChanged();
+        [controller filterSettings:@"no matching setting"];
+        valid = valid && controller.visibleSettingCount == 0;
+        [controller filterSettings:@""];
+        marker(support, @"smoke-settings.txt", valid);
     } else if ([args containsObject:@"--smoke-typography"]) {
         [self.editor typography];
         marker(support, @"smoke-typography.txt", YES);

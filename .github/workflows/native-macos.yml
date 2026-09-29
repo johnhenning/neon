@@ -43,6 +43,7 @@ jobs:
             build-native/native-editor-dark.png
             build-native/native-typography.png
             build-native/native-context-menu.png
+            build-native/native-settings.png
             build-native/dependencies.txt
             build-native/Testing/Temporary/LastTest.log
 

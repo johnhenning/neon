@@ -23,3 +23,8 @@ NSInteger NeonAppearance();
 
 NeonFont* NeonManuscriptFont(CGFloat size);
 NSString* NeonFontChoice();
+
+NeonFont* NeonFontNamed(NSString* name, CGFloat size);
+CGFloat NeonParagraphSpacing();
+CGFloat NeonTextMeasure();
+BOOL NeonWritingPreference(NSString* key);
