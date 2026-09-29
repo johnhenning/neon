@@ -214,6 +214,9 @@ NSUInteger words(NSString* text) {
 @property(nonatomic, strong) NSTextField* guidance;
 @property(nonatomic, strong) NeonInlineTitle* windowTitle;
 @property(nonatomic, strong) NSToolbarItem* workspaceItem;
+@property(nonatomic, strong) NSLayoutConstraint* workspaceSpacing;
+@property(nonatomic, strong) NSLayoutConstraint* toolbarTitleWidth;
+@property(nonatomic) BOOL aligningWorkspace;
 @property(nonatomic, strong) NeonInlineTitle* chapterTitle;
 @property(nonatomic, strong) NSView* sidebarBody;
 @property(nonatomic, strong) NSView* sidebarMaterial;
@@ -269,7 +272,7 @@ NSUInteger words(NSString* text) {
     toolbar.delegate = self;
     toolbar.displayMode = NSToolbarDisplayModeIconOnly;
     self.window.toolbar = toolbar;
-    toolbar.centeredItemIdentifiers = [NSSet setWithObject:@"workspace"];
+
     self.split = [NSSplitViewController new];
     self.sidebar = [NSViewController new];
     self.sidebar.view = [NSView new];
@@ -284,6 +287,10 @@ NSUInteger words(NSString* text) {
     self.content.view = [NeonSurface new];
     [self.split addSplitViewItem:[NSSplitViewItem splitViewItemWithViewController:self.content]];
     self.window.contentViewController = self.split;
+    [NSNotificationCenter.defaultCenter addObserver:self
+                                           selector:@selector(workspaceGeometryChanged:)
+                                               name:NSSplitViewDidResizeSubviewsNotification
+                                             object:self.split.splitView];
     [NSWorkspace.sharedWorkspace.notificationCenter
         addObserver:self
            selector:@selector(accessibilityChanged:)
@@ -390,7 +397,7 @@ NSUInteger words(NSString* text) {
 - (NSArray*)toolbarDefaultItemIdentifiers:(NSToolbar*)toolbar {
     (void)toolbar;
     return @[
-        @"projectTitle", @"sidebar", @"library", NSToolbarFlexibleSpaceItemIdentifier, @"workspace",
+        @"projectTitle", @"sidebar", @"library", @"workspaceSpacing", @"workspace",
         NSToolbarFlexibleSpaceItemIdentifier, @"type", @"more", @"new", NSToolbarSpaceItemIdentifier
     ];
 }
@@ -402,6 +409,14 @@ NSUInteger words(NSString* text) {
     willBeInsertedIntoToolbar:(BOOL)flag {
     (void)toolbar;
     (void)flag;
+    if ([identifier isEqual:@"workspaceSpacing"]) {
+        NSToolbarItem* spacer = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
+        spacer.view = [NSView new];
+        self.workspaceSpacing = [spacer.view.widthAnchor constraintEqualToConstant:0];
+        self.workspaceSpacing.active = YES;
+        [spacer.view.heightAnchor constraintEqualToConstant:1].active = YES;
+        return spacer;
+    }
     if ([identifier isEqual:@"workspace"]) {
         self.workspaceItem = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
         self.workspaceItem.label = @"Workspace view";
@@ -422,7 +437,8 @@ NSUInteger words(NSString* text) {
         titleItem.label = @"Project title";
         titleItem.navigational = YES;
         titleItem.view = self.windowTitle;
-        [self.windowTitle.widthAnchor constraintEqualToConstant:150].active = YES;
+        self.toolbarTitleWidth = [self.windowTitle.widthAnchor constraintEqualToConstant:150];
+        self.toolbarTitleWidth.active = YES;
         return titleItem;
     }
     NSDictionary* config = @{
@@ -446,6 +462,7 @@ NSUInteger words(NSString* text) {
     (void)sender;
     NSSplitViewItem* sidebar = self.split.splitViewItems.firstObject;
     sidebar.collapsed = !sidebar.collapsed;
+    [self workspaceGeometryChanged:nil];
 }
 - (void)clear:(NSView*)view {
     for (NSView* child in view.subviews.copy)
@@ -1012,11 +1029,44 @@ NSUInteger words(NSString* text) {
         [NSString stringWithFormat:@"%@\n\n%@", preset[@"description"],
                                    [titles componentsJoinedByString:@" · "]];
 }
+- (void)workspaceGeometryChanged:(NSNotification*)notification {
+    (void)notification;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self alignWorkspacePill];
+    });
+}
+- (void)windowDidResize:(NSNotification*)notification {
+    [self workspaceGeometryChanged:notification];
+}
+- (void)alignWorkspacePill {
+    if (self.aligningWorkspace || !self.session || !self.workspaceItem.view.window)
+        return;
+    self.aligningWorkspace = YES;
+    // Measure both views in window coordinates. The toolbar spacer follows the
+    // actual detail pane, including divider dragging and sidebar collapse.
+    self.toolbarTitleWidth.constant = 150;
+    for (NSInteger pass = 0; pass < 3; ++pass) {
+        [self.window.contentView.superview layoutSubtreeIfNeeded];
+        NSRect body = [self.content.view convertRect:self.content.view.bounds toView:nil];
+        NSRect pill = [self.workspaceItem.view convertRect:self.workspaceItem.view.bounds
+                                                    toView:nil];
+        CGFloat gap = self.workspaceSpacing.constant + NSMidX(body) - NSMidX(pill);
+        if (gap < 0 && self.toolbarTitleWidth.constant > 60) {
+            self.toolbarTitleWidth.constant = MAX(60, self.toolbarTitleWidth.constant + gap);
+            self.workspaceSpacing.constant = 0;
+        } else {
+            self.workspaceSpacing.constant = MAX(0, gap);
+        }
+    }
+    [self.window.contentView.superview layoutSubtreeIfNeeded];
+    self.aligningWorkspace = NO;
+}
 - (void)updateWorkspacePill {
     self.workspaceItem.view =
         NeonPillSelector(@[ @"Editor", @"History" ], self.historyController ? 1 : 0, self,
                          @selector(workspaceChanged:));
     self.workspaceItem.view.hidden = self.session == nil;
+    [self workspaceGeometryChanged:nil];
 }
 - (void)workspaceChanged:(id)sender {
     if ([sender tag] == 1)

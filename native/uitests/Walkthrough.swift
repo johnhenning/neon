@@ -64,6 +64,13 @@ final class Walkthrough: XCTestCase {
         #endif
         let editor = element("manuscript")
         XCTAssertTrue(editor.waitForExistence(timeout: 15))
+        #if os(macOS)
+        func assertPillCentered(file: StaticString = #filePath, line: UInt = #line) {
+            let pill = app.buttons["Editor"].frame.union(app.buttons["History"].frame)
+            XCTAssertEqual(pill.midX, element("manuscript").frame.midX, accuracy: 4, file: file, line: line)
+        }
+        assertPillCentered()
+        #endif
         capture("02-editor")
         activate(editor)
         editor.typeText("\nNeon recorded UI persistence check.")
@@ -80,9 +87,11 @@ final class Walkthrough: XCTestCase {
         #if os(macOS)
         activate(app.buttons["Toggle sidebar"])
         XCTAssertFalse(element("section-1").isHittable)
+        assertPillCentered()
         capture("05-focus")
         activate(app.buttons["Toggle sidebar"])
         XCTAssertTrue(element("section-1").isHittable)
+        assertPillCentered()
         #else
         chapters()
         #endif
