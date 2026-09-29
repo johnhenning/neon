@@ -32,7 +32,9 @@ for family in ['iPhone', 'iPad']:
     try:
         if booted_here:
             run('boot', udid)
-        subprocess.run(['xcrun', 'simctl', 'bootstatus', udid, '-b'], check=True, timeout=300)
+        # Fresh Apple runtimes can spend more than five minutes in first-boot migration.
+        # This allowance does not relax any application assertion or marker deadline.
+        subprocess.run(['xcrun', 'simctl', 'bootstatus', udid, '-b'], check=True, timeout=600)
         run('install', udid, str(app))
         container = pathlib.Path(run('get_app_container', udid, bundle, 'data'))
         marker = container / 'Library/Application Support/smoke-result.txt'
