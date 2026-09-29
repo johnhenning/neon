@@ -23,7 +23,7 @@
         self.contextAction(self, NSMakeRect(point.x, point.y, 1, 1));
 }
 - (NSSize)intrinsicContentSize {
-    return NSMakeSize(180, 36);
+    return NSMakeSize(142, 36);
 }
 - (void)drawRect:(NSRect)rect {
     (void)rect;
@@ -87,6 +87,26 @@ NSUInteger words(NSString* text) {
     return count;
 }
 } // namespace
+@interface NeonSliderCell : NSSliderCell
+@end
+@implementation NeonSliderCell
+- (void)drawBarInside:(NSRect)rect flipped:(BOOL)flipped {
+    (void)flipped;
+    NSRect track = NSMakeRect(rect.origin.x, NSMidY(rect) - 2, rect.size.width, 4);
+    [[NeonMuted() colorWithAlphaComponent:0.35] setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:track xRadius:2 yRadius:2] fill];
+    track.size.width *= (self.doubleValue - self.minValue) / (self.maxValue - self.minValue);
+    [NeonAccent() setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:track xRadius:2 yRadius:2] fill];
+}
+@end
+@interface NeonSlider : NSSlider
+@end
+@implementation NeonSlider
++ (Class)cellClass {
+    return NeonSliderCell.class;
+}
+@end
 @interface NeonSurface : NSView
 @property(nonatomic) BOOL panel;
 @end
@@ -227,7 +247,7 @@ NSUInteger words(NSString* text) {
     NeonSurface* panel = [NeonSurface new];
     panel.panel = YES;
     self.sidebar.view = panel;
-    NSSplitViewItem* side = [NSSplitViewItem sidebarWithViewController:self.sidebar];
+    NSSplitViewItem* side = [NSSplitViewItem splitViewItemWithViewController:self.sidebar];
     side.minimumThickness = 220;
     side.maximumThickness = 290;
     side.canCollapse = YES;
@@ -329,6 +349,7 @@ NSUInteger words(NSString* text) {
     NSArray* item = config[identifier];
     NSToolbarItem* result = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
     result.label = item[0];
+    result.navigational = [identifier isEqual:@"sidebar"] || [identifier isEqual:@"library"];
     result.toolTip = item[0];
     result.target = self;
     result.action = NSSelectorFromString(item[2]);
@@ -385,6 +406,8 @@ NSUInteger words(NSString* text) {
     NSScrollView* scroll = [NSScrollView new];
     scroll.drawsBackground = NO;
     scroll.hasVerticalScroller = YES;
+    scroll.autohidesScrollers = YES;
+    scroll.scrollerStyle = NSScrollerStyleOverlay;
     pin(scroll, self.sidebar.view);
     NSStackView* stack = column(rows, 22);
     stack.edgeInsets = NSEdgeInsetsMake(28, 20, 28, 16);
@@ -415,6 +438,8 @@ NSUInteger words(NSString* text) {
     NSScrollView* scroll = [NSScrollView new];
     scroll.drawsBackground = NO;
     scroll.hasVerticalScroller = YES;
+    scroll.autohidesScrollers = YES;
+    scroll.scrollerStyle = NSScrollerStyleOverlay;
     pin(scroll, self.content.view);
     NSStackView* stack = column(
         @[
@@ -538,6 +563,8 @@ NSUInteger words(NSString* text) {
     [stack setCustomSpacing:30 afterView:rule];
     NSScrollView* scroll = [NSScrollView new];
     scroll.hasVerticalScroller = YES;
+    scroll.autohidesScrollers = YES;
+    scroll.scrollerStyle = NSScrollerStyleOverlay;
     scroll.drawsBackground = NO;
     self.editor = [[NeonTextView alloc] initWithFrame:NSMakeRect(0, 0, 650, 400)];
     self.editor.minSize = NSMakeSize(0, 300);
@@ -577,7 +604,7 @@ NSUInteger words(NSString* text) {
     self.editor.font = NeonManuscriptFont(NeonTextSize());
     NSMutableParagraphStyle* paragraph = [NSMutableParagraphStyle new];
     paragraph.lineSpacing = NeonLineSpacing();
-    paragraph.paragraphSpacing = 18;
+    paragraph.paragraphSpacing = 4;
     self.editor.defaultParagraphStyle = paragraph;
     [self.editor.textStorage addAttributes:@{
         NSFontAttributeName : NeonManuscriptFont(NeonTextSize()),
@@ -657,6 +684,7 @@ NSUInteger words(NSString* text) {
         [self showError:error];
         return;
     }
+    self.trashMode = NO;
     self.session = [self.library openURL:url error:&error];
     self.selectedURL = url;
     [self showEditor];
@@ -697,19 +725,20 @@ NSUInteger words(NSString* text) {
                    nil, self, @selector(changeFont:));
         choice.identifier = name;
         choice.font = NeonSerif(19);
+        choice.contentTintColor = NeonInk();
         [controls addObject:choice];
     }
-    NSSlider* size = [NSSlider sliderWithValue:NeonTextSize()
-                                      minValue:16
-                                      maxValue:32
-                                        target:self
-                                        action:@selector(changeSize:)];
+    NSSlider* size = [NeonSlider sliderWithValue:NeonTextSize()
+                                        minValue:16
+                                        maxValue:32
+                                          target:self
+                                          action:@selector(changeSize:)];
     size.accessibilityLabel = @"Text size";
-    NSSlider* space = [NSSlider sliderWithValue:NeonLineSpacing()
-                                       minValue:2
-                                       maxValue:16
-                                         target:self
-                                         action:@selector(changeSpacing:)];
+    NSSlider* space = [NeonSlider sliderWithValue:NeonLineSpacing()
+                                         minValue:2
+                                         maxValue:16
+                                           target:self
+                                           action:@selector(changeSpacing:)];
     space.accessibilityLabel = @"Line spacing";
     NSSegmentedControl* appearance =
         [NSSegmentedControl segmentedControlWithLabels:@[ @"System", @"Light", @"Dark" ]
@@ -717,6 +746,7 @@ NSUInteger words(NSString* text) {
                                                 target:self
                                                 action:@selector(changeAppearance:)];
     appearance.selectedSegment = NeonAppearance();
+    appearance.selectedSegmentBezelColor = NeonAccent();
     [controls addObjectsFromArray:@[
         label(@"Text Size", NeonUI(13), NeonMuted()), size,
         label(@"Line Spacing", NeonUI(13), NeonMuted()), space,
@@ -1038,7 +1068,8 @@ NSUInteger words(NSString* text) {
     if (![self.session selectSection:first error:&error])
         exit(5);
     [self showEditor];
-    self.window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    [NSUserDefaults.standardUserDefaults setInteger:2 forKey:@"appearance"];
+    [self applyAppearance];
     [self performSelector:@selector(captureDark) withObject:nil afterDelay:1];
 }
 - (void)captureDark {

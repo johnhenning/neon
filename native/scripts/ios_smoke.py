@@ -22,8 +22,10 @@ runtimes = json.loads(run('list', 'runtimes', '-j'))['runtimes']
 runtime = max((item for item in runtimes if item.get('isAvailable') and 'iOS' in item['name']),
               key=lambda item: tuple(int(v) for v in re.findall(r'\d+', item['version'])))
 types = json.loads(run('list', 'devicetypes', '-j'))['devicetypes']
+devices = json.loads(run('list', 'devices', 'available', '-j'))['devices']
 for family in ['iPhone', 'iPad']:
-    kind = next(item for item in reversed(types) if family in item['name'])
+    existing = next(item for item in devices[runtime['identifier']] if family in item['name'])
+    kind = next(item for item in types if item['name'] == existing['name'])
     udid = run('create', f'Neon CI {family}', kind['identifier'], runtime['identifier'])
     device = {'name': kind['name'], 'udid': udid}
     booted_here = True

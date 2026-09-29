@@ -119,6 +119,8 @@ void NeonDismissMenu() {
                                                 : NeonInk();
     NSImage* icon = [NSImage imageWithSystemSymbolName:self.command.symbol
                               accessibilityDescription:nil];
+    icon = [icon imageWithSymbolConfiguration:[NSImageSymbolConfiguration
+                                                  configurationWithPaletteColors:@[ color ]]];
     [icon drawInRect:NSMakeRect(12, 10, 16, 16)];
     [self.command.title
             drawInRect:NSMakeRect(40, 8, self.bounds.size.width - 48, 24)
@@ -142,14 +144,22 @@ void NeonDismissMenu() {
     [super keyDown:event];
 }
 @end
+@interface NeonMenuSurface : NSView
+@end
+@implementation NeonMenuSurface
+- (void)drawRect:(NSRect)rect {
+    [NeonPanel() setFill];
+    NSRectFill(rect);
+}
+@end
 @interface NeonMenuController : NSViewController
 @property(nonatomic, strong) NSArray<NeonMenuAction*>* actions;
 @end
 @implementation NeonMenuController
 - (void)loadView {
-    self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 280, self.actions.count * 36 + 16)];
-    self.view.wantsLayer = YES;
-    self.view.layer.backgroundColor = NeonPanel().CGColor;
+    self.view =
+        [[NeonMenuSurface alloc] initWithFrame:NSMakeRect(0, 0, 280, self.actions.count * 36 + 16)];
+
     NSMutableArray<NSButton*>* rows = [NSMutableArray array];
     NSInteger i = 0;
     for (NeonMenuAction* item in self.actions) {
@@ -159,6 +169,7 @@ void NeonDismissMenu() {
         row.title = item.title;
         row.enabled = item.enabled;
         row.bordered = NO;
+        row.focusRingType = NSFocusRingTypeNone;
         row.target = self;
         row.action = @selector(choose:);
         row.accessibilityLabel = item.title;

@@ -22,6 +22,12 @@ NeonColor* tone(CGFloat r, CGFloat g, CGFloat b, CGFloat dr, CGFloat dg, CGFloat
         }];
 #endif
 }
+NeonFont* regular(NeonFont* font, CGFloat size) {
+    NSDictionary* axes = @{@(0x77676874) : @400, @(0x6f70737a) : @(size)};
+    auto descriptor = [font.fontDescriptor
+        fontDescriptorByAddingAttributes:@{(__bridge NSString*)kCTFontVariationAttribute : axes}];
+    return [NeonFont fontWithDescriptor:descriptor size:size] ?: font;
+}
 } // namespace
 void NeonRegisterFonts() {
     for (NSString* name in @[ @"literata", @"sourcesans3" ]) {
@@ -48,18 +54,24 @@ NeonColor* NeonAccent() {
 }
 NeonFont* NeonSerif(CGFloat size) {
 #if TARGET_OS_IPHONE
-    return [UIFont fontWithName:@"Literata-Regular" size:size]
-               ?: [UIFont fontWithName:@"Georgia" size:size];
+    return regular([UIFont fontWithName:@"Literata-Regular" size:size]
+                       ?: [UIFont fontWithName:@"Georgia" size:size],
+                   size);
 #else
-    return [NSFont fontWithName:@"Literata-Regular" size:size]
-               ?: [NSFont fontWithName:@"Georgia" size:size];
+    return regular([NSFont fontWithName:@"Literata-Regular" size:size]
+                       ?: [NSFont fontWithName:@"Georgia" size:size],
+                   size);
 #endif
 }
 NeonFont* NeonUI(CGFloat size) {
 #if TARGET_OS_IPHONE
-    return [UIFont fontWithName:@"SourceSans3-Roman" size:size] ?: [UIFont systemFontOfSize:size];
+    return regular([UIFont fontWithName:@"SourceSans3-Roman" size:size]
+                       ?: [UIFont systemFontOfSize:size],
+                   size);
 #else
-    return [NSFont fontWithName:@"SourceSans3-Roman" size:size] ?: [NSFont systemFontOfSize:size];
+    return regular([NSFont fontWithName:@"SourceSans3-Roman" size:size]
+                       ?: [NSFont systemFontOfSize:size],
+                   size);
 #endif
 }
 CGFloat NeonTextSize() {

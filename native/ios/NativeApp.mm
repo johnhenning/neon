@@ -208,7 +208,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     NSRange selection = self.editor.selectedRange;
     NSMutableParagraphStyle* style = [NSMutableParagraphStyle new];
     style.lineSpacing = NeonLineSpacing();
-    style.paragraphSpacing = 18;
+    style.paragraphSpacing = 4;
     NSDictionary* attrs = @{
         NSFontAttributeName : [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
             scaledFontForFont:NeonManuscriptFont(NeonTextSize())],
@@ -887,6 +887,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                            [self showProblem:error];
                                            return;
                                        }
+                                       self.trashMode = NO;
                                        [self reloadLibrary];
                                        NSInteger i = [self.projects
                                            indexOfObjectPassingTest:^BOOL(
