@@ -13,7 +13,7 @@ NeonMenuAction* NeonAction(NSString* title, NSString* symbol, BOOL enabled, BOOL
 void NeonShowMenu(UIViewController* host, UIView* anchor, CGRect rect,
                   NSArray<NeonMenuAction*>* actions);
 #else
-void NeonShowMenu(NSView* anchor, NSRect rect, NSArray<NeonMenuAction*>* actions);
+void NeonShowMenu(id anchor, NSRect rect, NSArray<NeonMenuAction*>* actions);
 #endif
 
 void NeonDismissMenu();

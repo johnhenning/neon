@@ -135,7 +135,7 @@
         self.activateTitle();
 }
 - (void)beginRenaming {
-    if (_renaming || !self.commitTitle)
+    if (_renaming || !self.enabled || !self.commitTitle)
         return;
     _original = self.stringValue;
     _renaming = YES;

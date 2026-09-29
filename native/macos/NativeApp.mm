@@ -14,32 +14,20 @@
     return YES;
 }
 @end
-@interface NeonChapterButton : NSButton
-@property(nonatomic, copy) void (^contextAction)(NSView*, NSRect);
+@interface NeonChapterRow : NSStackView
+@property(nonatomic) BOOL currentChapter;
 @end
-@implementation NeonChapterButton
-- (void)rightMouseDown:(NSEvent*)event {
-    NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
-    if (self.contextAction)
-        self.contextAction(self, NSMakeRect(point.x, point.y, 1, 1));
-}
-- (NSSize)intrinsicContentSize {
-    return NSMakeSize(142, 36);
-}
+@implementation NeonChapterRow
 - (void)drawRect:(NSRect)rect {
     (void)rect;
-    [NSGraphicsContext saveGraphicsState];
-    [NSBezierPath clipRect:self.bounds];
-    if (self.state == NSControlStateValueOn) {
-        [[NeonAccent() colorWithAlphaComponent:0.16] setFill];
-        [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:6 yRadius:6] fill];
-    }
-    [self.title drawInRect:NSInsetRect(self.bounds, 10, 8)
-            withAttributes:@{
-                NSFontAttributeName : NeonUI(15),
-                NSForegroundColorAttributeName : NeonInk()
-            }];
-    [NSGraphicsContext restoreGraphicsState];
+    if (!self.currentChapter)
+        return;
+    [[NeonAccent() colorWithAlphaComponent:0.18] setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:7 yRadius:7] fill];
+    [NeonAccent() setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(0, 7, 3, self.bounds.size.height - 14)
+                                     xRadius:1.5
+                                     yRadius:1.5] fill];
 }
 @end
 
@@ -208,7 +196,7 @@ NSUInteger words(NSString* text) {
 @property(nonatomic, strong) NSPopover* typography;
 @property(nonatomic, strong) NSPanel* settings;
 @property(nonatomic) BOOL trashMode;
-- (void)projectMenu:(NSURL*)url title:(NSString*)title anchor:(NSView*)anchor rect:(NSRect)rect;
+- (void)projectMenu:(NSURL*)url title:(NSString*)title anchor:(id)anchor rect:(NSRect)rect;
 - (void)sectionMenu:(NSString*)identifier anchor:(NSView*)anchor rect:(NSRect)rect;
 - (void)projectCommand:(NSString*)command url:(NSURL*)url title:(NSString*)title;
 - (void)sectionCommand:(NSString*)command identifier:(NSString*)identifier;
@@ -382,7 +370,7 @@ NSUInteger words(NSString* text) {
     if ([identifier isEqual:@"projectTitle"]) {
         NSToolbarItem* titleItem = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
         self.windowTitle = [[NeonInlineTitle alloc] initWithFrame:NSMakeRect(0, 0, 210, 26)];
-        self.windowTitle.font = NeonUI(17);
+        self.windowTitle.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
         self.windowTitle.stringValue = @"Neon";
         self.windowTitle.accessibilityLabel = @"Project title";
         __weak NeonApp* weakSelf = self;
@@ -410,11 +398,6 @@ NSUInteger words(NSString* text) {
     result.target = self;
     result.action = NSSelectorFromString(item[2]);
     result.image = [NSImage imageWithSystemSymbolName:item[1] accessibilityDescription:item[0]];
-    result.view = button(item[0], item[1], self, NSSelectorFromString(item[2]));
-    ((NSButton*)result.view).title = @"";
-    ((NSButton*)result.view).bordered = YES;
-    ((NSButton*)result.view).bezelStyle = NSBezelStyleRounded;
-    result.view.accessibilityLabel = item[0];
     return result;
 }
 - (void)toggleSidebar:(id)sender {
@@ -468,11 +451,31 @@ NSUInteger words(NSString* text) {
             };
             row.textColor =
                 [identifier isEqual:self.session.selectedSectionID] ? NeonAccent() : NeonInk();
-            [row.widthAnchor constraintEqualToConstant:142].active = YES;
+            [row.widthAnchor constraintGreaterThanOrEqualToConstant:70].active = YES;
+            [row setContentHuggingPriority:200
+                            forOrientation:NSLayoutConstraintOrientationHorizontal];
             [row.heightAnchor constraintGreaterThanOrEqualToConstant:32].active = YES;
             NSButton* more = button(@"", @"ellipsis", self, @selector(chapterActions:));
             more.tag = index - 1;
-            [rows addObject:[NSStackView stackViewWithViews:@[ row, more ]]];
+            BOOL selected = [identifier isEqual:self.session.selectedSectionID];
+            NSImageView* check =
+                [NSImageView imageViewWithImage:[NSImage imageWithSystemSymbolName:@"checkmark"
+                                                          accessibilityDescription:nil]];
+            check.contentTintColor = NeonAccent();
+            check.alphaValue = selected ? 1 : 0;
+            [check.widthAnchor constraintEqualToConstant:12].active = YES;
+            [more.widthAnchor constraintEqualToConstant:28].active = YES;
+            [more.heightAnchor constraintEqualToConstant:28].active = YES;
+            more.toolTip = @"Chapter actions";
+            NeonChapterRow* chapter = [NeonChapterRow stackViewWithViews:@[ check, row, more ]];
+            chapter.currentChapter = selected;
+            chapter.spacing = 7;
+            chapter.edgeInsets = NSEdgeInsetsMake(5, 10, 5, 8);
+            chapter.accessibilityLabel = section[@"title"];
+            chapter.accessibilityValue = selected ? @"Current chapter" : @"Chapter";
+            [chapter.widthAnchor constraintEqualToAnchor:self.sidebarBody.widthAnchor constant:-28]
+                .active = YES;
+            [rows addObject:chapter];
         }
         [rows addObject:button(@"New Chapter", @"plus", self, @selector(newSection:))];
         if (self.session.trashedSections.count)
@@ -505,6 +508,7 @@ NSUInteger words(NSString* text) {
     self.window.title = @"Neon";
     self.window.subtitle = @"";
     self.windowTitle.stringValue = @"Neon";
+    self.windowTitle.enabled = NO;
     self.chapterTitle = nil;
     [self buildSidebar];
     [self clear:self.content.view];
@@ -606,6 +610,7 @@ NSUInteger words(NSString* text) {
     self.window.title = self.session.title;
     self.window.subtitle = @"";
     self.windowTitle.stringValue = self.session.title;
+    self.windowTitle.enabled = YES;
     self.chapterTitle = nil;
     [self buildSidebar];
     if (!self.session.sections.count) {
@@ -816,7 +821,11 @@ NSUInteger words(NSString* text) {
     [self flush];
 }
 - (void)showTypography:(id)sender {
-    [self.typography close];
+    if (self.typography.shown) {
+        [self.typography close];
+        return;
+    }
+    NeonDismissMenu();
     self.typography = [NSPopover new];
     self.typography.behavior = NSPopoverBehaviorTransient;
     self.typography.appearance = self.window.effectiveAppearance;
@@ -866,6 +875,10 @@ NSUInteger words(NSString* text) {
     NSStackView* stack = column(controls, 12);
     stack.edgeInsets = NSEdgeInsetsMake(20, 20, 20, 20);
     pin(stack, surface);
+    if ([sender isKindOfClass:NSToolbarItem.class]) {
+        [self.typography showRelativeToToolbarItem:sender];
+        return;
+    }
     NSView* anchor = [sender isKindOfClass:NSView.class] ? sender : self.content.view;
     [self.typography showRelativeToRect:[sender isKindOfClass:NSView.class]
                                             ? anchor.bounds
@@ -971,14 +984,13 @@ NSUInteger words(NSString* text) {
     NSDictionary* project = self.projects[sender.tag];
     [self projectMenu:project[@"url"] title:project[@"title"] anchor:sender rect:sender.bounds];
 }
-- (void)currentProjectMenu:(NSView*)sender {
+- (void)currentProjectMenu:(id)sender {
+    [self.typography close];
+    NSRect rect = [sender isKindOfClass:NSView.class] ? ((NSView*)sender).bounds : NSZeroRect;
     if (self.session)
-        [self projectMenu:self.selectedURL
-                    title:self.session.title
-                   anchor:sender
-                     rect:sender.bounds];
+        [self projectMenu:self.selectedURL title:self.session.title anchor:sender rect:rect];
     else
-        NeonShowMenu(sender, sender.bounds, @[
+        NeonShowMenu(sender, rect, @[
             NeonAction(@"New Project…", @"plus", YES, NO,
                        ^{
                          [self newProject:nil];
@@ -989,7 +1001,7 @@ NSUInteger words(NSString* text) {
                        })
         ]);
 }
-- (void)projectMenu:(NSURL*)url title:(NSString*)title anchor:(NSView*)anchor rect:(NSRect)rect {
+- (void)projectMenu:(NSURL*)url title:(NSString*)title anchor:(id)anchor rect:(NSRect)rect {
     NSMutableArray* items = [NSMutableArray array];
     NSArray* commands = self.trashMode ? @[ @"Restore", @"Delete Permanently…" ]
                                        : @[ @"Rename…", @"Duplicate", @"Move to Trash…" ];
@@ -1186,10 +1198,12 @@ NSUInteger words(NSString* text) {
     [self capture:@"native-editor-dark.png"];
     for (NSToolbarItem* item in self.window.toolbar.items)
         if ([item.itemIdentifier isEqual:@"type"])
-            [self showTypography:item.view];
+            [NSApp sendAction:item.action to:item.target from:item];
     [self performSelector:@selector(captureTypography) withObject:nil afterDelay:1];
 }
 - (void)captureTypography {
+    if (!self.typography.shown)
+        exit(8);
     [self capture:@"native-typography.png"];
     [self.typography close];
     [self sectionMenu:self.session.selectedSectionID
@@ -1200,6 +1214,20 @@ NSUInteger words(NSString* text) {
 - (void)captureActions {
     [self capture:@"native-context-menu.png"];
     NeonDismissMenu();
+    for (NSToolbarItem* item in self.window.toolbar.items) {
+        if ([item.itemIdentifier isEqual:@"more"]) {
+            if (![NSApp sendAction:item.action to:item.target from:item])
+                exit(8);
+            NeonDismissMenu();
+        }
+        if ([item.itemIdentifier isEqual:@"sidebar"]) {
+            BOOL collapsed = self.split.splitViewItems.firstObject.collapsed;
+            [NSApp sendAction:item.action to:item.target from:item];
+            if (self.split.splitViewItems.firstObject.collapsed == collapsed)
+                exit(8);
+            [NSApp sendAction:item.action to:item.target from:item];
+        }
+    }
     NSTextView* originalEditor = self.editor;
     NSString* draft = self.editor.string;
     NSRange selection = self.editor.selectedRange;

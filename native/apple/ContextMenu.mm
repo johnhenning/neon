@@ -229,14 +229,19 @@ void NeonDismissMenu() {
         perform();
 }
 @end
-void NeonShowMenu(NSView* anchor, NSRect rect, NSArray<NeonMenuAction*>* actions) {
+void NeonShowMenu(id anchor, NSRect rect, NSArray<NeonMenuAction*>* actions) {
     [activeMenu close];
     NeonMenuController* controller = [NeonMenuController new];
     controller.actions = actions;
     activeMenu = [NSPopover new];
     activeMenu.behavior = NSPopoverBehaviorTransient;
     activeMenu.contentViewController = controller;
-    activeMenu.appearance = anchor.effectiveAppearance;
-    [activeMenu showRelativeToRect:rect ofView:anchor preferredEdge:NSRectEdgeMaxY];
+    if ([anchor isKindOfClass:NSToolbarItem.class]) {
+        activeMenu.appearance = NSApp.keyWindow.effectiveAppearance;
+        [activeMenu showRelativeToToolbarItem:anchor];
+    } else {
+        activeMenu.appearance = ((NSView*)anchor).effectiveAppearance;
+        [activeMenu showRelativeToRect:rect ofView:anchor preferredEdge:NSRectEdgeMaxY];
+    }
 }
 #endif
