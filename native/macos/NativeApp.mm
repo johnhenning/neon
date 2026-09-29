@@ -65,8 +65,8 @@ NSUInteger words(NSString* text) {
 
 // Cover illustration is rasterized when invalidated; its layer is composited by Core Animation.
 @interface NeonCover : NSButton
-@property(nonatomic) NSString* bookTitle;
-@property(nonatomic) NSString* author;
+@property(nonatomic, strong) NSString* bookTitle;
+@property(nonatomic, strong) NSString* author;
 @property(nonatomic) NSInteger design;
 @end
 @implementation NeonCover
@@ -124,16 +124,16 @@ NSUInteger words(NSString* text) {
     std::string selectedBook_;
     std::string selectedChapter_;
 }
-@property(nonatomic) NSWindow* window;
-@property(nonatomic) NSSplitViewController* split;
-@property(nonatomic) NSViewController* sidebar;
-@property(nonatomic) NSViewController* content;
-@property(nonatomic) NSTextView* editor;
-@property(nonatomic) NSTextField* status;
-@property(nonatomic) NSTimer* saveTimer;
+@property(nonatomic, strong) NSWindow* window;
+@property(nonatomic, strong) NSSplitViewController* split;
+@property(nonatomic, strong) NSViewController* sidebar;
+@property(nonatomic, strong) NSViewController* content;
+@property(nonatomic, strong) NSTextView* editor;
+@property(nonatomic, strong) NSTextField* status;
+@property(nonatomic, strong) NSTimer* saveTimer;
 @property(nonatomic) BOOL loading;
 @property(nonatomic) BOOL smoke;
-@property(nonatomic) NSString* directory;
+@property(nonatomic, strong) NSString* directory;
 @end
 
 @implementation NeonApp
@@ -529,6 +529,13 @@ NSUInteger words(NSString* text) {
                                      length:chapter->richText.size()];
         text = [[NSAttributedString alloc] initWithRTF:rtf documentAttributes:nil];
     }
+    if (!text && !chapter->richText.empty()) {
+        self.editor = nil;
+        self.loading = NO;
+        [self showError:
+                  @"The chapter’s rich text could not be decoded. The original file is unchanged."];
+        return;
+    }
     if (!text)
         text = [[NSAttributedString alloc] initWithString:ns(chapter->text) attributes:attributes];
     [self.editor.textStorage setAttributedString:text];
@@ -549,7 +556,8 @@ NSUInteger words(NSString* text) {
     (void)notification;
     if (self.loading)
         return;
-    [self captureDraft];
+    if (![self captureDraft])
+        return;
     self.status.stringValue =
         [NSString stringWithFormat:@"%lu words  ·  Unsaved changes", words(self.editor.string)];
     [self.saveTimer invalidate];
@@ -559,12 +567,12 @@ NSUInteger words(NSString* text) {
                                                     userInfo:nil
                                                      repeats:NO];
 }
-- (void)captureDraft {
+- (BOOL)captureDraft {
     if (!self.editor || selectedBook_.empty())
-        return;
+        return YES;
     const auto* book = [self currentBook];
     if (!book)
-        return;
+        return NO;
     for (const auto& existing : book->chapters) {
         if (existing.id != selectedChapter_)
             continue;
@@ -573,15 +581,22 @@ NSUInteger words(NSString* text) {
         NSData* rtf = [self.editor RTFFromRange:NSMakeRange(0, self.editor.string.length)];
         if (!rtf) {
             [self showError:@"Could not encode rich text. Keep this window open."];
-            return;
+            return NO;
         }
         const auto* bytes = static_cast<const std::uint8_t*>(rtf.bytes);
         chapter.richText.assign(bytes, bytes + rtf.length);
-        workspace_->updateChapter(selectedBook_, chapter);
-        return;
+        if (chapter.text == existing.text && chapter.richText == existing.richText)
+            return YES;
+        auto result = workspace_->updateChapter(selectedBook_, chapter);
+        if (!result.ok)
+            [self showError:ns(result.message)];
+        return result.ok;
     }
+    return NO;
 }
 - (BOOL)flush {
+    if (![self captureDraft])
+        return NO;
     [self.saveTimer invalidate];
     auto result = workspace_->save();
     if (!result.ok) {
@@ -596,17 +611,14 @@ NSUInteger words(NSString* text) {
 }
 - (void)saveAction:(id)sender {
     (void)sender;
-    [self captureDraft];
     [self flush];
 }
 - (BOOL)windowShouldClose:(NSWindow*)sender {
     (void)sender;
-    [self captureDraft];
     return [self flush];
 }
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)sender {
     (void)sender;
-    [self captureDraft];
     return [self flush] ? NSTerminateNow : NSTerminateCancel;
 }
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
@@ -636,6 +648,7 @@ NSUInteger words(NSString* text) {
         [self showError:ns(result.message)];
         return;
     }
+    self.editor = nil;
     selectedBook_ = book.id;
     selectedChapter_ = book.chapters[0].id;
     if ([self flush])
