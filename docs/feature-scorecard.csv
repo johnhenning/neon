@@ -1,0 +1,81 @@
+id,category,feature,status,evidence,neo_reference
+NEO-001,Library,First-run author and pantser/plotter setup,Missing,No first-run flow,showFirstRun
+NEO-002,Library,Create and open books,Implemented,Sample library exercised by UI smoke,bookTile/createBook
+NEO-003,Library,Edit title author subtitle and series,Implemented,Code reviewed; title/author smoke-tested,title page
+NEO-004,Library,Create shelves,Implemented,Code reviewed; interactive acceptance pending,renderShelves
+NEO-005,Library,Rename shelves,Implemented,Long-press action; interactive acceptance pending,renderShelves
+NEO-006,Library,Delete shelves safely,Missing,No action,renderShelves
+NEO-007,Library,Reorder shelves,Missing,No drag/reorder action,shelf dragging
+NEO-008,Library,Reorder and move books by drag and drop,Partial,Move-to-shelf action exists; no drag/order parity,book dragging
+NEO-009,Library,Remove from shelf and reshelve,Partial,Removal exists; unshelved discovery needs acceptance,bookTile
+NEO-010,Library,Trash books with recovery through OS trash,Missing,No trash action,bookTile
+NEO-011,Library,Pen names and author-specific shelves,Missing,Default author only,currentAuthor/displayAuthor
+NEO-012,Library,Word-goal progress on book covers,Implemented,Goal property and progress control; sampled in smoke,bookTile
+NEO-013,Writing,Continuous manuscript with title page,Missing,Single selected chapter only,renderChapters
+NEO-014,Writing,Rich-text typing bold and italic,Implemented,Qt document implementation; full keyboard acceptance pending,wireChapterBody/styleKeepScroll
+NEO-015,Writing,Paragraph alignment,Implemented,Four alignments wired in Format menu; acceptance pending,applyAlign
+NEO-016,Writing,Create and rename chapters,Implemented,UI/controller implemented; creation used in tests,newChapter
+NEO-017,Writing,Automatic chapter numbering including single-chapter exception,Partial,Fallback chapter numbers; no single-chapter/title-page rule,renderChapters
+NEO-018,Writing,Reorder chapters,Partial,Arrow commands; no drag workflow,finishChapterDrag
+NEO-019,Writing,Split and merge chapters,Partial,Implemented; split regression test added; annotation/merge cases remain,splitChapterAt/chapterStartBackspace
+NEO-020,Writing,Double/triple Enter scene and chapter creation,Missing,Explicit commands only,handleEnter
+NEO-021,Writing,Scene-break insertion and deletion behavior,Partial,Insertion command; upstream deletion rules absent,handleEnter/sceneBreakDelete
+NEO-022,Writing,Poetry paragraphs and Shift-Enter behavior,Partial,Indent/italic toggle; special enter/backspace behavior incomplete,handlePoetry/poetryBackspace
+NEO-023,Writing,Smart dashes ellipses and quotation marks,Missing,No transform engine,smartKeys/quoteStyle
+NEO-024,Writing,Language-aware French spacing and punctuation,Missing,No language typography handling,frenchTypography
+NEO-025,Writing,Tab spacing and safe cross-boundary editing,Missing,No equivalent boundary logic,handleTabSpacing/spaceSafeDelete
+NEO-026,Writing,Unified text and structural undo/redo,Partial,Separate stacks; split fix tested this build; unified chronology absent,structuralUndo
+NEO-027,Writing,Rich paste cleanup with formatting preservation,Partial,Qt paste; Neo annotation-preserving codec absent,cleanPasteHtml
+NEO-028,Typography and focus,Light and dark page appearance,Implemented,Both captured; macOS native theme refresh in current build,applyFonts
+NEO-029,Typography and focus,Curated body font choices and installed-font preview,Partial,Unfiltered installed families; no preview or reliable current selection,pickLocalFont
+NEO-030,Typography and focus,Drop caps with literary fantasy sci-fi and none,Missing,No drop-cap rendering,DROPCAP_FONTS
+NEO-031,Typography and focus,Font size and page zoom,Partial,Font-size setting; no equivalent whole-page/pinch zoom,setPageZoom
+NEO-032,Typography and focus,Distraction-free fading controls and bright UI option,Partial,Hide-controls mode; no fading/bright option,applyFonts/hidden panels
+NEO-033,Typography and focus,Edge-reveal and pinned chapter/notes panels,Missing,Static sidebar only,renderNav
+NEO-034,Typography and focus,Typewriter scrolling,Partial,Cursor positioning exists; limits and persistence unverified,applyTypewriter
+NEO-035,Typography and focus,Paragraph focus,Missing,No dimming engine,focusParagraph
+NEO-036,Typography and focus,Sentence focus,Missing,No sentence highlighting,sentenceRange/updateFocus
+NEO-037,Typography and focus,Fullscreen and complete shortcut help,Missing,Focus hides controls; no fullscreen/help sheet,showHelp
+NEO-038,Planning and revision,Book notes and outline documents,Implemented,Separate persisted documents; interactive acceptance pending,switchTab
+NEO-039,Planning and revision,Chapter notes in navigation,Implemented,Persisted chapterNotes and editable fields,renderChapters
+NEO-040,Planning and revision,Structured chapter/section outline and ghost paragraphs,Missing,Free-form outline only,renderOutline/syncGhosts
+NEO-041,Planning and revision,Custom tab names,Missing,Fixed labels,tabNames
+NEO-042,Planning and revision,Move passages into Darlings,Partial,Keyboard/menu capture; no drag/drop; undo incomplete,moveSelectionToDarlings
+NEO-043,Planning and revision,Restore Darlings to original location,Partial,Context anchors; ambiguity and edited-anchor tests missing,restoreDarling
+NEO-044,Planning and revision,Insert placeholder with linked sticky note,Partial,Visible TODO text; not Neo marker semantics,insertPlaceholder
+NEO-045,Planning and revision,Resolve navigate and reconcile placeholders,Partial,Resolve and chapter flags; exact navigation/deletion reconciliation incomplete,reconcileMarks/returnToMark
+NEO-046,Search and spelling,Whole-manuscript find previous/next and match highlights,Partial,Whole-book navigation added; all-match highlighting/count missing,runSearch/gotoMatch
+NEO-047,Search and spelling,Replace current/all across manuscript,Implemented,New controller test covers case-insensitive whole-book replace and undo; CI passed,replaceAllMatches
+NEO-048,Search and spelling,On-demand spelling with inline marks,Partial,Native word list; no inline squiggles,toggleSpellcheck
+NEO-049,Search and spelling,Spelling suggestions ignore learn and language choice,Partial,Native suggestions/learn; ignore and persistence incomplete,showSpellMenu/changeSpellLanguage
+NEO-050,Goals,Book/chapter word counts and toggle,Partial,Counts exist; total/current toggle absent,updateCounters
+NEO-051,Goals,Book word goal,Implemented,Metadata and goal dialog; code reviewed,openStats
+NEO-052,Goals,Daily goal and writing-day boundary,Partial,Counts/settings; midnight timer and rollover testing missing,writingDay/trackDailyWords
+NEO-053,Goals,Word sprint start stop and feedback,Partial,Basic target counter; acceptance and completion behavior incomplete,openStats
+NEO-054,Goals,Thirty-day progress chart,Partial,Bars exist; upstream target/cumulative presentation incomplete,statsChartSvg
+NEO-055,Covers,Six seeded art styles,Partial,Colored geometric cover; not six styles,coverMode/dressTile
+NEO-056,Covers,Six type templates and bundled cover fonts,Missing,One Georgia title layout,dressTile
+NEO-057,Covers,Reroll seeded design,Partial,Seed changes palette; full typography/art variation missing,bookTile
+NEO-058,Covers,Import/drop custom cover art,Partial,Picker and image conversion; no drop action,bookTile
+NEO-059,Covers,Opt-in AI cover generation and progress,Missing,Explicitly disabled placeholder,openCoverArt
+NEO-060,Covers,Painted/seeded mode switching and regeneration,Missing,No AI pipeline,coverMode
+NEO-061,Covers,Secure cover API-key storage,Implemented,macOS Keychain code; signed/native interactive acceptance pending,openCoverArt
+NEO-062,Import and export,TXT manuscript import with chapter/scene detection,Partial,Parser exists; realistic fixture validation pending,importBooks
+NEO-063,Import and export,Markdown manuscript import,Partial,Heading/emphasis fixture passes; title and scene fidelity incomplete,importBooks
+NEO-064,Import and export,DOCX manuscript import,Partial,Unicode/emphasis round trip; heading/style fidelity incomplete,importBooks
+NEO-065,Import and export,Plain-text export,Implemented,Serializer implemented; complete upstream comparison pending,buildTxt
+NEO-066,Import and export,Markdown export,Partial,Basic output; formatting/poetry fidelity incomplete,buildMd
+NEO-067,Import and export,HTML export,Partial,Basic output; full style/annotation handling incomplete,buildHtml
+NEO-068,Import and export,PDF export,Partial,PDF signature tested; pagination/font fidelity not independently checked,doExport
+NEO-069,Import and export,DOCX export,Partial,Valid basic OOXML round trip; independent Word/style checks missing,buildDocxEntries
+NEO-070,Import and export,EPUB export with cover navigation and metadata,Partial,EPUB3/nav structure tested; cover and EPUBCheck missing,buildEpubEntries
+NEO-071,Import and export,Shelf anthology export,Missing,No anthology path,exportShelfAnthology
+NEO-072,Import and export,Email timestamped PDF and text fingerprint,Partial,Mac share handoff and hash; alternate email settings and acceptance missing,doEmailDraft/emailSettings
+NEO-073,Persistence and delivery,Continuous autosave to plain files,Implemented,Atomic store and application saves exercised; failure testing remains,scheduleChapterSave
+NEO-074,Persistence and delivery,Crash recovery and visible save errors,Partial,Journal replay test passes; UI kill/recovery acceptance incomplete,flushAllSaves/main storage
+NEO-075,Persistence and delivery,Automatic daily ZIP backups and 14-day retention,Partial,Manual verified ZIP/retention; no automatic scheduler,main backup implementation
+NEO-076,Persistence and delivery,External-change refresh and conflict handling,Partial,Conflict copies; no automatic safe refresh workflow,refreshFromDisk
+NEO-077,Persistence and delivery,Library location and reveal workflow,Partial,CLI override; no complete native location UI,main library handling
+NEO-078,Persistence and delivery,Eight interface locales,Missing,English strings; no catalogs,applyStaticI18n/locales
+NEO-079,Persistence and delivery,Update checks and installation flow,Missing,No updater,checkForUpdate
+NEO-080,Persistence and delivery,About attribution and help links,Implemented,Neo attribution and license notices included,showAbout
