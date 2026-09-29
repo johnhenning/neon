@@ -34,3 +34,39 @@ ctest --test-dir build-core --output-on-failure
 - Layer-backed views for Core Animation compositing. There is no custom Metal text renderer or continuous animation loop. Text layout/encoding may still execute on the CPU.
 
 This is not Neo feature parity. The full Settings design, import/export, rich-text migration, durable revision history, iCloud/Git, and other frontends remain planned. See [architecture](native/ARCHITECTURE.md). The app is an ad-hoc-signed preview, not a notarized release.
+
+## Apple foundation slice
+
+`native/core/document.h` (under `include/neon`) introduces an independent semantic
+Project/Document/Section/text-block model. The existing Mac RTF prototype remains
+usable while its editor adapter is migrated in a subsequent slice. No Neo import
+is planned. This is not a rich-text format freeze.
+
+The new `NeonMobile` UIKit target runs on both iPhone and iPad and uses the shared
+C++ document model through `NeonDocumentSession`, a Foundation-only bridge also
+built/tested on macOS. It supports one local plain-text draft, native keyboard/
+selection/undo, debounced save, explicit save and background flush. Its isolated
+Application Support file never opens the old Mac prototype library. Native undo
+is the only undo authority for this initial whole-block editing slice.
+
+On a Mac with Xcode and an iOS simulator runtime:
+
+```sh
+cmake -S native -B build-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS \
+  -DCMAKE_OSX_SYSROOT=iphonesimulator -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
+  -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
+cmake --build build-ios --config Debug --target NeonMobile
+python3 native/scripts/ios_smoke.py build-ios/Debug-iphonesimulator/NeonMobile.app build-ios/evidence
+```
+
+CI builds the Mac prototype, runs Foundation codec/storage tests, and launches
+both iPhone and iPad simulators. Deployment targets and system fonts are provisional;
+full design tokens, library navigation, rich text/media, per-change history,
+coordination/journaled storage, async I/O, physical-device signing and iCloud are
+not complete. Background callbacks alone do not guarantee recovery after termination.
+This preview performs small synchronous writes and is not ready for long manuscripts.
+The codec rejects unsupported schemas, extra fields and richer structures without
+overwriting them. A production codec must preserve extensions and all document
+structures. Creator/last-editor metadata is not a full authorship ledger.
+
+Build setup follows [CMake Apple toolchains](https://cmake.org/cmake/help/latest/manual/cmake-toolchains.7.html#cross-compiling-for-ios-tvos-visionos-or-watchos).

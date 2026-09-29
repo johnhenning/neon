@@ -1,4 +1,4 @@
-name: Native AppKit prototype
+name: Native Apple foundation
 on:
   pull_request:
   workflow_dispatch:
@@ -42,3 +42,28 @@ jobs:
             build-native/native-editor.png
             build-native/dependencies.txt
             build-native/Testing/Temporary/LastTest.log
+
+  ios-native:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record Apple toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+      - name: Configure iPhone and iPad simulator app
+        run: >-
+          cmake -S native -B build-ios -G Xcode
+          -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0
+          -DCMAKE_OSX_ARCHITECTURES=arm64
+          -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
+      - name: Build native mobile app
+        run: cmake --build build-ios --config Debug --target NeonMobile
+      - name: iPhone and iPad edit-save-reopen smoke
+        run: python3 native/scripts/ios_smoke.py build-ios/Debug-iphonesimulator/NeonMobile.app build-ios/evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-Apple-Simulator-Evidence
+          path: build-ios/evidence
