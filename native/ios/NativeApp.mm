@@ -787,7 +787,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     BOOL reopen =
         [args containsObject:@"--smoke-reopen"] || [args containsObject:@"--smoke-library"] ||
         [args containsObject:@"--smoke-focus"] || [args containsObject:@"--smoke-typography"] ||
-        [args containsObject:@"--smoke-menu"] || [args containsObject:@"--smoke-settings"];
+        [args containsObject:@"--smoke-menu"] || [args containsObject:@"--smoke-settings"] ||
+        [args containsObject:@"--smoke-history"] || [args containsObject:@"--smoke-preset"];
     NSURL* support = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
                                                             inDomains:NSUserDomainMask]
                          .firstObject;
