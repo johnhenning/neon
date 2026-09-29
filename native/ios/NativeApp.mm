@@ -565,7 +565,11 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.tableView.tintColor = NeonAccent();
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = self.chapters ? 72 : 142;
-    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    self.tableView.separatorStyle =
+        self.chapters ? UITableViewCellSeparatorStyleSingleLine : UITableViewCellSeparatorStyleNone;
+    self.tableView.separatorColor = [NeonInk() colorWithAlphaComponent:0.16];
+    self.tableView.separatorInset = UIEdgeInsetsZero;
+    self.tableView.separatorInsetReference = UITableViewSeparatorInsetFromCellEdges;
     self.navigationItem.rightBarButtonItems = @[
         [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"gearshape"]
                                          style:UIBarButtonItemStylePlain
@@ -669,6 +673,23 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         NeonInlineTitle* title = [NeonInlineTitle new];
         title.text = section[@"title"];
         title.font = NeonUI(18);
+        BOOL current = [identifier isEqual:self.coordinator.session.selectedSectionID];
+        title.textColor = current ? NeonAccent() : NeonInk();
+        cell.accessibilityTraits =
+            current ? UIAccessibilityTraitSelected : UIAccessibilityTraitNone;
+        cell.separatorInset = UIEdgeInsetsZero;
+        // Persist the active section even when reloadData clears UIKit selection.
+        UIView* background = [UIView new];
+        background.backgroundColor =
+            current ? [NeonAccent() colorWithAlphaComponent:0.16] : UIColor.clearColor;
+        if (current) {
+            UIView* marker =
+                [[UIView alloc] initWithFrame:CGRectMake(0, 0, 3, cell.bounds.size.height)];
+            marker.backgroundColor = NeonAccent();
+            marker.autoresizingMask = UIViewAutoresizingFlexibleHeight;
+            [background addSubview:marker];
+        }
+        cell.backgroundView = background;
         title.accessibilityLabel =
             [self.coordinator.session.preset[@"sectionLabel"] stringByAppendingString:@" title"];
         __weak NeonList* weakSelf = self;
@@ -970,7 +991,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     }
     self.session = session;
     self.selectedURL = url;
-    self.chapterList = [[NeonList alloc] initWithStyle:UITableViewStyleInsetGrouped];
+    self.chapterList = [[NeonList alloc] initWithStyle:UITableViewStylePlain];
     self.chapterList.chapters = YES;
     self.chapterList.coordinator = self;
     [self.navigation setViewControllers:@[ self.libraryList, self.chapterList ] animated:NO];

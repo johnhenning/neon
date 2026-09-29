@@ -22,14 +22,17 @@
 @implementation NeonChapterRow
 - (void)drawRect:(NSRect)rect {
     (void)rect;
-    if (!self.currentChapter)
-        return;
-    [[NeonAccent() colorWithAlphaComponent:0.18] setFill];
-    [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:7 yRadius:7] fill];
-    [NeonAccent() setFill];
-    [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(0, 7, 3, self.bounds.size.height - 14)
-                                     xRadius:1.5
-                                     yRadius:1.5] fill];
+    if (self.currentChapter) {
+        [[NeonAccent() colorWithAlphaComponent:0.16] setFill];
+        NSRectFill(self.bounds);
+        [NeonAccent() setFill];
+        NSRectFill(NSMakeRect(0, 0, 3, self.bounds.size.height));
+    }
+    // Continuous, translucent rules remain visible on unselected rows too.
+    [[NeonInk() colorWithAlphaComponent:0.16] setFill];
+    CGFloat pixel = 1.0 / (self.window.backingScaleFactor ?: 2.0);
+    CGFloat bottom = self.isFlipped ? self.bounds.size.height - pixel : 0;
+    NSRectFill(NSMakeRect(0, bottom, self.bounds.size.width, pixel));
 }
 @end
 
@@ -496,7 +499,7 @@ NSUInteger words(NSString* text) {
                 [chapter addArrangedSubview:child];
             chapter.currentChapter = selected;
             chapter.spacing = 7;
-            chapter.edgeInsets = NSEdgeInsetsMake(5, 10, 5, 8);
+            chapter.edgeInsets = NSEdgeInsetsMake(12, 20, 12, 16);
             chapter.accessibilityLabel = section[@"title"];
             chapter.accessibilityValue =
                 selected
@@ -523,14 +526,28 @@ NSUInteger words(NSString* text) {
     scroll.autohidesScrollers = YES;
     scroll.scrollerStyle = NSScrollerStyleOverlay;
     pin(scroll, self.sidebarBody);
-    NSStackView* stack = column(rows, 22);
-    stack.edgeInsets = NSEdgeInsetsMake(28, 20, 28, 16);
+    NSMutableArray<NSView*>* arranged = [NSMutableArray array];
+    for (NSView* row in rows) {
+        if ([row isKindOfClass:NeonChapterRow.class]) {
+            [arranged addObject:row];
+        } else {
+            NSStackView* inset = [NSStackView stackViewWithViews:@[ row ]];
+            inset.edgeInsets = NSEdgeInsetsMake(0, 20, 0, 16);
+            [arranged addObject:inset];
+        }
+    }
+    NSStackView* stack = column(arranged, 22);
+    stack.edgeInsets = NSEdgeInsetsMake(28, 0, 28, 0);
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     scroll.documentView = stack;
     [stack.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor].active = YES;
-    for (NSView* row in rows)
-        if ([row isKindOfClass:NeonChapterRow.class])
-            [row.widthAnchor constraintEqualToAnchor:stack.widthAnchor constant:-36].active = YES;
+    for (NSUInteger i = 0; i < arranged.count; ++i) {
+        NSView* row = arranged[i];
+        [row.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
+        if ([row isKindOfClass:NeonChapterRow.class] && i + 1 < arranged.count &&
+            [arranged[i + 1] isKindOfClass:NeonChapterRow.class])
+            [stack setCustomSpacing:0 afterView:row];
+    }
 }
 - (void)showLibrary:(id)sender {
     if (sender != self)
