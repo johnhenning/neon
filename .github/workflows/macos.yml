@@ -1,0 +1,36 @@
+name: macOS native build
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          cache: true
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+      - name: Build
+        run: cmake --build build --parallel 3
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Bundle Qt and capture build details
+        run: |
+          macdeployqt build/Neon.app -qmldir=qml
+          codesign --force --deep --sign - build/Neon.app
+          uname -m > build/platform.txt
+          clang++ --version >> build/platform.txt
+          ditto -c -k --sequesterRsrc --keepParent build/Neon.app build/Neon-macOS-preview.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Neon-macOS-preview
+          path: |
+            build/Neon-macOS-preview.zip
+            build/platform.txt
+            build/smoke.png
