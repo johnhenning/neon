@@ -40,7 +40,7 @@ python3 native/scripts/quality.py
 cmake -S native -B build-native -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
 cmake --build build-native --parallel
 ctest --test-dir build-native --output-on-failure
-open build-native/NeonNative.app
+open build-native/Neon.app
 ```
 
 The app uses `Application Support/Neon Apple Preview` in its platform container.
@@ -54,7 +54,7 @@ cmake -S native -B build-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS \
   -DCMAKE_OSX_SYSROOT=iphonesimulator -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
   -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
 cmake --build build-ios --config Debug --target NeonMobile
-python3 native/scripts/ios_smoke.py build-ios/Debug-iphonesimulator/NeonMobile.app build-ios/evidence
+python3 native/scripts/ios_smoke.py build-ios/Debug-iphonesimulator/Neon.app build-ios/evidence
 ```
 
 CI builds Mac and iOS, exercises multi-section save/reopen, and captures native

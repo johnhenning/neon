@@ -13,6 +13,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   target_link_libraries(NeonNative PRIVATE neon_portable_core "-framework AppKit" "-framework Foundation" "-framework QuartzCore")
   target_compile_options(NeonNative PRIVATE -fobjc-arc -Wall -Wextra)
   set_target_properties(NeonNative PROPERTIES
+    OUTPUT_NAME Neon
     MACOSX_BUNDLE_GUI_IDENTIFIER com.johnhenning.neon.nativeprototype
     MACOSX_BUNDLE_BUNDLE_NAME "Neon"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/macos/Info.plist")
@@ -35,6 +36,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   target_link_libraries(NeonMobile PRIVATE neon_apple_document "-framework UIKit")
   target_compile_options(NeonMobile PRIVATE -fobjc-arc -Wall -Wextra)
   set_target_properties(NeonMobile PROPERTIES
+    OUTPUT_NAME Neon
+    MACOSX_BUNDLE_BUNDLE_NAME "Neon"
     MACOSX_BUNDLE_GUI_IDENTIFIER com.johnhenning.neon.applepreview
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/ios/Info.plist"
     XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
