@@ -1,4 +1,5 @@
 #include "controller.h"
+#include <QFile>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
@@ -29,14 +30,37 @@ int main(int argc, char** argv) {
             [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
         engine.loadFromModule("Neon", "Main");
         if (smoke) {
-            controller.createBook("The Quiet Sea", "A. Writer", "");
-            QTimer::singleShot(1500, &app, [&] {
+            QFile sample(temporary.filePath("The Quiet Sea.md"));
+            if (!sample.open(QIODevice::WriteOnly))
+                return 2;
+            sample.write(
+                "## The arrival\n\nThe sea was quiet that morning. Mara stood at the end of the "
+                "pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a "
+                "single light moved through the fog. It had been there yesterday, too, and the day "
+                "before.\n\nShe tucked the envelope into her coat and began to walk.\n\n## Low "
+                "tide\n\nBy noon the water had drawn back from the old stone steps.\n");
+            sample.close();
+            controller.importFile(QUrl::fromLocalFile(sample.fileName()));
+            controller.updateBook({{"author", "A. Writer"}, {"wordGoal", 50000}});
+            QString demoId = controller.book().value("id").toString();
+            controller.createBook("The Orchard at Dusk", "A. Writer", "");
+            controller.createBook("Letters from Elsewhere", "A. Writer", "");
+            controller.closeBook();
+            QTimer::singleShot(1200, &app, [&, demoId] {
                 if (engine.rootObjects().isEmpty())
                     return app.exit(1);
-                auto* w = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
-                if (!controller.save() || !w || !w->grabWindow().save("smoke.png"))
+                auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+                if (!window || !window->grabWindow().save("bookshelf.png"))
                     return app.exit(2);
-                app.quit();
+                controller.openBook(demoId);
+                QTimer::singleShot(1000, &app, [&] {
+                    auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+                    if (!controller.save() || controller.wordCount() < 30 ||
+                        controller.chapters().size() != 2 ||
+                        !window->grabWindow().save("editor.png"))
+                        return app.exit(3);
+                    app.quit();
+                });
             });
         }
         QObject::connect(&app, &QGuiApplication::applicationStateChanged, &controller,

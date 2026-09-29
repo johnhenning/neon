@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.3'
+          version: '6.10.3'
           cache: true
       - name: Install quality tools
         run: python3 -m pip install --break-system-packages clang-format==19.1.7 cpplint==2.0.2
@@ -38,4 +38,13 @@ jobs:
           path: |
             build/Neon-macOS-preview.zip
             build/platform.txt
-            build/smoke.png
+            build/bookshelf.png
+            build/editor.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-macOS-screenshots
+          path: |
+            build/bookshelf.png
+            build/editor.png
+            build/Testing/Temporary/LastTest.log
