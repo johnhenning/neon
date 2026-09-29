@@ -33,6 +33,7 @@
 @property(nonatomic, strong) NeonDocumentSession* session;
 @property(nonatomic, strong) NSURL* selectedURL;
 @property(nonatomic, strong) NeonEditor* editor;
+@property(nonatomic, strong) NeonHistoryController* historyController;
 @property(nonatomic, strong) NeonList* libraryList;
 @property(nonatomic, strong) NeonList* chapterList;
 @property(nonatomic, strong) UINavigationController* navigation;
@@ -66,6 +67,7 @@
 - (void)applyAppearance;
 - (void)showSettings;
 - (void)showHistory;
+- (void)showCurrentEditor;
 - (BOOL)renameInline:(NSString*)title section:(NSString*)identifier;
 @end
 namespace {
@@ -193,7 +195,10 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.heading.textAlignment = kicker.textAlignment;
     UIView* rule = [UIView new];
     rule.backgroundColor = [NeonAccent() colorWithAlphaComponent:0.5];
-    NSMutableArray* headerViews = [NSMutableArray arrayWithArray:@[ kicker, self.heading, rule ]];
+    UIView* workspace =
+        NeonPillSelector(@[ @"Editor", @"History" ], 0, self, @selector(workspaceChanged:));
+    NSMutableArray* headerViews =
+        [NSMutableArray arrayWithArray:@[ workspace, kicker, self.heading, rule ]];
     if (!self.session.text.length && self.session.sectionGuidance.length) {
         self.guidance = label(self.session.sectionGuidance, NeonUI(12), NeonMuted());
         [headerViews addObject:self.guidance];
@@ -224,7 +229,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     }
     UILayoutGuide* safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [header.topAnchor constraintEqualToAnchor:safe.topAnchor constant:54],
+        [header.topAnchor constraintEqualToAnchor:safe.topAnchor constant:16],
         [header.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:24],
         [header.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-24],
         [rule.widthAnchor constraintEqualToConstant:130],
@@ -239,6 +244,10 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                                  constant:-10]
     ]];
     [self applyTypography];
+}
+- (void)workspaceChanged:(id)sender {
+    if ([sender tag] == 1)
+        [self.coordinator showHistory];
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
@@ -1068,6 +1077,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     }];
 }
 - (void)renderSection:(NSInteger)index {
+    self.historyController = nil;
     if (self.session.sections.count &&
         (index < 0 || index >= static_cast<NSInteger>(self.session.sections.count)))
         return;
@@ -1255,20 +1265,42 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         CGRectMake(self.view.bounds.size.width / 2, 80, 1, 1);
     [self presentViewController:picker animated:YES completion:nil];
 }
+- (void)showCurrentEditor {
+    NSUInteger index = [self.session.sections
+        indexOfObjectPassingTest:^BOOL(NSDictionary* section, NSUInteger idx, BOOL* stop) {
+          (void)idx;
+          (void)stop;
+          return [section[@"id"] isEqual:self.session.selectedSectionID];
+        }];
+    [self openSection:index == NSNotFound ? 0 : index];
+}
 - (void)showHistory {
-    if (!self.session || (self.editor && ![self.editor flush]))
+    if (!self.session || self.historyController || (self.editor && ![self.editor flush]))
         return;
-    NeonHistoryController* controller = [NeonHistoryController new];
-    controller.session = self.session;
-    __weak NeonCoordinator* weakSelf = self;
-    controller.didRestore = ^{
-      [weakSelf refreshAfterStructure];
-    };
-    UINavigationController* navigation =
-        [[UINavigationController alloc] initWithRootViewController:controller];
-    navigation.modalPresentationStyle = UIModalPresentationPageSheet;
-    navigation.overrideUserInterfaceStyle = self.overrideUserInterfaceStyle;
-    [self presentViewController:navigation animated:YES completion:nil];
+    [self transitionNavigation:^{
+      self.editor.session = nil;
+      self.editor = nil;
+      NeonHistoryController* controller = [NeonHistoryController new];
+      controller.session = self.session;
+      __weak NeonCoordinator* weakSelf = self;
+      controller.showEditor = ^{
+        [weakSelf showCurrentEditor];
+      };
+      controller.didRestore = ^{
+        [weakSelf.chapterList.tableView reloadData];
+      };
+      self.historyController = controller;
+      if (self.collapsed) {
+          [self.navigation setViewControllers:@[ self.libraryList, self.chapterList, controller ]
+                                     animated:NO];
+      } else {
+          [self setViewController:[[UINavigationController alloc]
+                                      initWithRootViewController:controller]
+                        forColumn:UISplitViewControllerColumnSecondary];
+          [self showColumn:UISplitViewControllerColumnSecondary];
+      }
+      [self applyAppearance];
+    }];
 }
 - (void)newSection {
     [self askTitle:YES];
@@ -1281,6 +1313,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     }];
 }
 - (void)renderLibrary {
+    self.historyController = nil;
     if (self.editor && ![self.editor flush])
         return;
     self.editor.session = nil;
@@ -1564,8 +1597,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                 [self.session.text isEqual:original];
         [self refreshAfterStructure];
         [self showHistory];
-        UINavigationController* navigation = (id)self.presentedViewController;
-        NeonHistoryController* controller = (id)navigation.topViewController;
+        NeonHistoryController* controller = self.historyController;
         [controller loadViewIfNeeded];
         [controller selectRevisionAtIndex:1];
         marker(support, @"smoke-history.txt",

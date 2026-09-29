@@ -121,3 +121,76 @@ BOOL NeonWritingPreference(NSString* key) {
     NSNumber* value = [NSUserDefaults.standardUserDefaults objectForKey:key];
     return value ? value.boolValue : YES;
 }
+
+#if !TARGET_OS_IPHONE
+@interface NeonPillButton : NSButton
+@end
+@implementation NeonPillButton
+- (void)drawRect:(NSRect)rect {
+    (void)rect;
+    BOOL selected = self.state == NSControlStateValueOn;
+    [(selected ? [NeonAccent() colorWithAlphaComponent:0.22] : NeonPanel()) setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 1, 1) xRadius:16
+                                     yRadius:16] fill];
+    NSDictionary* attributes = @{
+        NSFontAttributeName : NeonUI(14),
+        NSForegroundColorAttributeName : selected ? NeonAccent() : NeonMuted()
+    };
+    NSSize size = [self.title sizeWithAttributes:attributes];
+    [self.title drawAtPoint:NSMakePoint((self.bounds.size.width - size.width) / 2,
+                                        (self.bounds.size.height - size.height) / 2)
+             withAttributes:attributes];
+}
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    self.needsDisplay = YES;
+}
+@end
+#endif
+#if TARGET_OS_IPHONE
+UIView* NeonPillSelector(NSArray<NSString*>* titles, NSInteger selected, id target, SEL action) {
+    UIStackView* stack = [UIStackView new];
+    stack.spacing = 4;
+    for (NSUInteger i = 0; i < titles.count; ++i) {
+        UIButton* button = [UIButton buttonWithType:UIButtonTypeSystem];
+        UIButtonConfiguration* config = UIButtonConfiguration.filledButtonConfiguration;
+        config.title = titles[i];
+        config.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+        config.baseBackgroundColor =
+            i == selected ? [NeonAccent() colorWithAlphaComponent:0.22] : NeonPanel();
+        config.baseForegroundColor = i == selected ? NeonAccent() : NeonMuted();
+        config.contentInsets = NSDirectionalEdgeInsetsMake(7, 16, 7, 16);
+        button.configuration = config;
+        button.tag = i;
+        button.accessibilityTraits =
+            UIAccessibilityTraitButton | (i == selected ? UIAccessibilityTraitSelected : 0);
+        [button addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+        [stack addArrangedSubview:button];
+    }
+    return stack;
+}
+#else
+NSView* NeonPillSelector(NSArray<NSString*>* titles, NSInteger selected, id target, SEL action) {
+    NSStackView* stack = [NSStackView new];
+    stack.spacing = 4;
+    for (NSUInteger i = 0; i < titles.count; ++i) {
+        NeonPillButton* button = [NeonPillButton new];
+        button.title = titles[i];
+        button.bordered = NO;
+        button.target = target;
+        button.action = action;
+        button.tag = i;
+        button.state = i == selected ? NSControlStateValueOn : NSControlStateValueOff;
+        button.accessibilityValue = i == selected ? @"Selected" : @"Not selected";
+        [button.widthAnchor constraintEqualToConstant:MAX(90, [titles[i] sizeWithAttributes:@{
+                                                                  NSFontAttributeName : NeonUI(14)
+                                                              }]
+                                                                      .width +
+                                                                  32)]
+            .active = YES;
+        [button.heightAnchor constraintEqualToConstant:34].active = YES;
+        [stack addArrangedSubview:button];
+    }
+    return stack;
+}
+#endif

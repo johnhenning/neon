@@ -86,8 +86,9 @@ final class Walkthrough: XCTestCase {
         #else
         chapters()
         #endif
-        activate(app.buttons["History"])
-        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 10))
+        activate(app.buttons["History"].firstMatch)
+        XCTAssertTrue(app.buttons["Editor"].waitForExistence(timeout: 10))
+        XCTAssertFalse(element("manuscript").exists)
         XCTAssertFalse(app.searchFields.firstMatch.isHittable)
         capture("06-history")
         activate(app.buttons["Search History"])
@@ -100,7 +101,9 @@ final class Walkthrough: XCTestCase {
         activate(app.buttons["Search History"])
         XCTAssertFalse(historySearch.isHittable)
         XCTAssertFalse((revisionPreview.value as? String ?? "").contains("No matching revisions"))
-        activate(app.buttons["Done"])
+        activate(app.buttons["Editor"])
+        XCTAssertTrue(element("manuscript").waitForExistence(timeout: 10))
+        XCTAssertTrue((element("manuscript").value as? String ?? "").contains("Neon recorded UI persistence check."))
         #if os(macOS)
         app.typeKey(",", modifierFlags: .command)
         // AppKit exposes the Settings NSPanel as an accessibility dialog.
@@ -112,6 +115,7 @@ final class Walkthrough: XCTestCase {
         let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: settings)
         XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 5), .completed)
         #else
+        chapters()
         activate(app.buttons["Settings"])
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
         capture("07-settings")

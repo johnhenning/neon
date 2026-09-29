@@ -13,6 +13,17 @@ NSString* entryDetail(NSDictionary* entry) {
 }
 } // namespace
 #if TARGET_OS_OSX
+@interface NeonHistoryRow : NSTableRowView
+@end
+@implementation NeonHistoryRow
+- (void)drawSelectionInRect:(NSRect)rect {
+    [[NeonAccent() colorWithAlphaComponent:0.18] setFill];
+    NSRectFill(rect);
+}
+- (NSBackgroundStyle)interiorBackgroundStyle {
+    return NSBackgroundStyleNormal;
+}
+@end
 @interface NeonHistoryBackground : NSView
 @end
 @implementation NeonHistoryBackground
@@ -53,12 +64,10 @@ NSString* entryDetail(NSDictionary* entry) {
     NSTextField* title = [NSTextField labelWithString:@"Version History"];
     title.font = NeonSerif(26);
     title.textColor = NeonInk();
-    NSSegmentedControl* scope =
-        [NSSegmentedControl segmentedControlWithLabels:@[ @"All Versions", @"Checkpoints" ]
-                                          trackingMode:NSSegmentSwitchTrackingSelectOne
-                                                target:self
-                                                action:@selector(scopeChanged:)];
-    scope.selectedSegment = 0;
+    NSView* workspace =
+        NeonPillSelector(@[ @"Editor", @"History" ], 1, self, @selector(workspaceChanged:));
+    NSView* scope =
+        NeonPillSelector(@[ @"All Versions", @"Checkpoints" ], 0, self, @selector(scopeChanged:));
     NSButton* searchButton = [NSButton buttonWithTitle:@"Search History"
                                                 target:self
                                                 action:@selector(toggleSearch)];
@@ -113,15 +122,14 @@ NSString* entryDetail(NSDictionary* entry) {
     _restore = [NSButton buttonWithTitle:@"Restore as New Version…"
                                   target:self
                                   action:@selector(restore)];
-    NSButton* done = [NSButton buttonWithTitle:@"Done" target:self action:@selector(close)];
-    NSStackView* buttons = [NSStackView stackViewWithViews:@[ checkpoint, _restore, done ]];
+    NSStackView* buttons = [NSStackView stackViewWithViews:@[ checkpoint, _restore ]];
     buttons.spacing = 12;
     NSStackView* stack = [NSStackView stackViewWithViews:@[
-        title, _detail, filters, search, list, _previewTitle, preview, buttons
+        workspace, title, _detail, filters, search, list, _previewTitle, preview, buttons
     ]];
     stack.orientation = NSUserInterfaceLayoutOrientationVertical;
     stack.alignment = NSLayoutAttributeLeading;
-    stack.spacing = 14;
+    stack.spacing = 10;
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:stack];
     [NSLayoutConstraint activateConstraints:@[
@@ -129,8 +137,8 @@ NSString* entryDetail(NSDictionary* entry) {
         [stack.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-24],
         [stack.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:24],
         [stack.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-24],
-        [list.heightAnchor constraintEqualToConstant:160],
-        [preview.heightAnchor constraintGreaterThanOrEqualToConstant:100]
+        [list.heightAnchor constraintEqualToConstant:120],
+        [preview.heightAnchor constraintGreaterThanOrEqualToConstant:60]
     ]];
     for (NSView* child in @[ search, _detail, list, _previewTitle, preview ])
         [child.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
@@ -144,17 +152,10 @@ NSString* entryDetail(NSDictionary* entry) {
                                          style:UIBarButtonItemStylePlain
                                         target:self
                                         action:@selector(toggleSearch)];
-    UISegmentedControl* scope =
-        [[UISegmentedControl alloc] initWithItems:@[ @"All Versions", @"Checkpoints" ]];
-    scope.selectedSegmentIndex = 0;
-    [scope addTarget:self
-                  action:@selector(scopeChanged:)
-        forControlEvents:UIControlEventValueChanged];
-    self.navigationItem.rightBarButtonItem =
-        [[UIBarButtonItem alloc] initWithTitle:@"Done"
-                                         style:UIBarButtonItemStyleDone
-                                        target:self
-                                        action:@selector(close)];
+    UIView* workspace =
+        NeonPillSelector(@[ @"Editor", @"History" ], 1, self, @selector(workspaceChanged:));
+    UIView* scope =
+        NeonPillSelector(@[ @"All Versions", @"Checkpoints" ], 0, self, @selector(scopeChanged:));
     UISearchBar* search = [UISearchBar new];
     search.placeholder = @"Search local history";
     search.delegate = self;
@@ -198,7 +199,7 @@ NSString* entryDetail(NSDictionary* entry) {
     buttons.axis = UILayoutConstraintAxisVertical;
     buttons.spacing = 4;
     UIStackView* stack = [[UIStackView alloc] initWithArrangedSubviews:@[
-        _detail, scope, search, _table, _previewTitle, _preview, buttons
+        workspace, _detail, scope, search, _table, _previewTitle, _preview, buttons
     ]];
     stack.axis = UILayoutConstraintAxisVertical;
     stack.spacing = 10;
@@ -240,11 +241,32 @@ NSString* entryDetail(NSDictionary* entry) {
 #endif
     }
 }
+- (void)workspaceChanged:(id)sender {
+    if ([sender tag] == 0 && self.showEditor)
+        self.showEditor();
+}
 - (void)scopeChanged:(id)sender {
+    _checkpointsOnly = [sender tag] == 1;
 #if TARGET_OS_OSX
-    _checkpointsOnly = [sender selectedSegment] == 1;
+    for (NSButton* button in [sender superview].subviews) {
+        if (![button isKindOfClass:NSButton.class])
+            continue;
+        button.state = button == sender ? NSControlStateValueOn : NSControlStateValueOff;
+        button.accessibilityValue = button == sender ? @"Selected" : @"Not selected";
+        button.needsDisplay = YES;
+    }
 #else
-    _checkpointsOnly = [sender selectedSegmentIndex] == 1;
+    for (UIButton* button in [sender superview].subviews) {
+        if (![button isKindOfClass:UIButton.class])
+            continue;
+        UIButtonConfiguration* config = button.configuration;
+        config.baseBackgroundColor =
+            button == sender ? [NeonAccent() colorWithAlphaComponent:0.22] : NeonPanel();
+        config.baseForegroundColor = button == sender ? NeonAccent() : NeonMuted();
+        button.configuration = config;
+        button.accessibilityTraits =
+            UIAccessibilityTraitButton | (button == sender ? UIAccessibilityTraitSelected : 0);
+    }
 #endif
     [self reloadHistory];
 }
@@ -390,14 +412,12 @@ NSString* entryDetail(NSDictionary* entry) {
     [self presentViewController:alert animated:YES completion:nil];
 #endif
 }
-- (void)close {
 #if TARGET_OS_OSX
-    [self.view.window.sheetParent endSheet:self.view.window];
-#else
-    [self dismissViewControllerAnimated:YES completion:nil];
-#endif
+- (NSTableRowView*)tableView:(NSTableView*)tableView rowViewForRow:(NSInteger)row {
+    (void)tableView;
+    (void)row;
+    return [NeonHistoryRow new];
 }
-#if TARGET_OS_OSX
 - (NSInteger)numberOfRowsInTableView:(NSTableView*)tableView {
     (void)tableView;
     return _entries.count;
@@ -412,7 +432,7 @@ NSString* entryDetail(NSDictionary* entry) {
         [NSTextField wrappingLabelWithString:[NSString stringWithFormat:@"%@\n%@", entry[@"label"],
                                                                         entryDetail(entry)]];
     field.font = NeonUI(12);
-    field.textColor = NSColor.labelColor;
+    field.textColor = NeonInk();
     return field;
 }
 - (void)tableViewSelectionDidChange:(NSNotification*)notification {

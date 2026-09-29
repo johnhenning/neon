@@ -28,3 +28,9 @@ NeonFont* NeonFontNamed(NSString* name, CGFloat size);
 CGFloat NeonParagraphSpacing();
 CGFloat NeonTextMeasure();
 BOOL NeonWritingPreference(NSString* key);
+
+#if TARGET_OS_IPHONE
+UIView* NeonPillSelector(NSArray<NSString*>* titles, NSInteger selected, id target, SEL action);
+#else
+NSView* NeonPillSelector(NSArray<NSString*>* titles, NSInteger selected, id target, SEL action);
+#endif

@@ -221,7 +221,7 @@ NSUInteger words(NSString* text) {
 @property(nonatomic, strong) NSPopover* typography;
 @property(nonatomic, strong) NSPanel* settings;
 @property(nonatomic, strong) NSImageView* transitionOverlay;
-@property(nonatomic, strong) NSWindow* historyWindow;
+@property(nonatomic, strong) NeonHistoryController* historyController;
 @property(nonatomic, strong) NSTextField* presetDescription;
 @property(nonatomic, strong) NSLayoutConstraint* measureConstraint;
 @property(nonatomic) BOOL trashMode;
@@ -522,8 +522,6 @@ NSUInteger words(NSString* text) {
         [rows
             addObject:button([@"New " stringByAppendingString:self.session.preset[@"sectionLabel"]],
                              @"plus", self, @selector(newSection:))];
-        [rows
-            addObject:button(@"History", @"clock.arrow.circlepath", self, @selector(showHistory:))];
         if (self.session.trashedSections.count)
             [rows
                 addObject:button([@"Deleted "
@@ -606,6 +604,8 @@ NSUInteger words(NSString* text) {
     }];
 }
 - (void)renderLibrary:(id)sender {
+    [self.historyController removeFromParentViewController];
+    self.historyController = nil;
     if (sender != self)
         self.trashMode = NO;
     if (![self flush])
@@ -723,6 +723,8 @@ NSUInteger words(NSString* text) {
     }];
 }
 - (void)renderEditor {
+    [self.historyController removeFromParentViewController];
+    self.historyController = nil;
     self.editor = nil;
     [self clear:self.content.view];
     self.window.title = self.session.title;
@@ -772,7 +774,9 @@ NSUInteger words(NSString* text) {
       return [weakSelf renameInline:title section:identifier];
     };
     heading.alignment = kicker.alignment;
-    NSMutableArray* header = [NSMutableArray arrayWithArray:@[ kicker, heading ]];
+    NSView* workspace =
+        NeonPillSelector(@[ @"Editor", @"History" ], 0, self, @selector(workspaceChanged:));
+    NSMutableArray* header = [NSMutableArray arrayWithArray:@[ workspace, kicker, heading ]];
     if (!self.session.text.length && self.session.sectionGuidance.length) {
         NSTextField* guidance = [NSTextField wrappingLabelWithString:self.session.sectionGuidance];
         self.guidance = guidance;
@@ -782,7 +786,7 @@ NSUInteger words(NSString* text) {
         [header addObject:guidance];
     }
     NSStackView* stack = column(header, 18);
-    stack.edgeInsets = NSEdgeInsetsMake(46, 44, 18, 44);
+    stack.edgeInsets = NSEdgeInsetsMake(20, 44, 18, 44);
     stack.alignment = NSLayoutAttributeCenterX;
     pin(stack, self.content.view);
     [heading.widthAnchor constraintEqualToAnchor:stack.widthAnchor constant:-88].active = YES;
@@ -999,26 +1003,38 @@ NSUInteger words(NSString* text) {
         [NSString stringWithFormat:@"%@\n\n%@", preset[@"description"],
                                    [titles componentsJoinedByString:@" · "]];
 }
+- (void)workspaceChanged:(id)sender {
+    if ([sender tag] == 1)
+        [self showHistory:nil];
+    else if (self.historyController)
+        [self showEditor];
+}
 - (void)showHistory:(id)sender {
     (void)sender;
     if (!self.session || ![self flush])
         return;
     NeonDismissMenu();
     [self.typography close];
-    NeonHistoryController* controller = [NeonHistoryController new];
-    controller.session = self.session;
-    __weak NeonApp* weakSelf = self;
-    controller.didRestore = ^{
-      [weakSelf showEditor];
-    };
-    self.historyWindow = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 740, 640)
-                                                     styleMask:NSWindowStyleMaskTitled
-                                                       backing:NSBackingStoreBuffered
-                                                         defer:NO];
-    self.historyWindow.title = @"Version History";
-    self.historyWindow.appearance = self.window.effectiveAppearance;
-    self.historyWindow.contentViewController = controller;
-    [self.window beginSheet:self.historyWindow completionHandler:nil];
+    if (self.historyController)
+        return;
+    [self transitionContent:^{
+      self.editor = nil;
+      self.chapterTitle = nil;
+      self.guidance = nil;
+      [self clear:self.content.view];
+      NeonHistoryController* controller = [NeonHistoryController new];
+      controller.session = self.session;
+      __weak NeonApp* weakSelf = self;
+      controller.showEditor = ^{
+        [weakSelf showEditor];
+      };
+      controller.didRestore = ^{
+        [weakSelf buildSidebar];
+      };
+      self.historyController = controller;
+      [self.content addChildViewController:controller];
+      pin(controller.view, self.content.view);
+    }];
 }
 - (void)newSection:(id)sender {
     (void)sender;
@@ -1522,15 +1538,15 @@ NSUInteger words(NSString* text) {
     [self performSelector:@selector(captureHistory) withObject:nil afterDelay:1];
 }
 - (void)captureHistory {
-    NeonHistoryController* controller = (id)self.historyWindow.contentViewController;
+    NeonHistoryController* controller = self.historyController;
     [controller selectRevisionAtIndex:1];
     [self capture:@"native-history.png"];
-    self.historyWindow.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    self.window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
     [self performSelector:@selector(captureHistoryDark) withObject:nil afterDelay:1];
 }
 - (void)captureHistoryDark {
     [self capture:@"native-history-dark.png"];
-    [self.window endSheet:self.historyWindow];
+    [self showEditor];
     NSError* error = nil;
     NSURL* url = [self.library createProject:@"The tidal study" preset:@"research" error:&error];
     self.session = [self.library openURL:url error:&error];

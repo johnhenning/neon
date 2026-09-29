@@ -12,6 +12,7 @@
 #endif
 @property(nonatomic, strong) NeonDocumentSession* session;
 @property(nonatomic, copy) void (^didRestore)(void);
+@property(nonatomic, copy) void (^showEditor)(void);
 - (void)reloadHistory;
 - (void)selectRevisionAtIndex:(NSUInteger)index;
 @end
