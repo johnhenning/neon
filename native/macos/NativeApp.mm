@@ -467,7 +467,9 @@ NSUInteger words(NSString* text) {
             [more.widthAnchor constraintEqualToConstant:28].active = YES;
             [more.heightAnchor constraintEqualToConstant:28].active = YES;
             more.toolTip = @"Chapter actions";
-            NeonChapterRow* chapter = [NeonChapterRow stackViewWithViews:@[ check, row, more ]];
+            NeonChapterRow* chapter = [[NeonChapterRow alloc] initWithFrame:NSZeroRect];
+            for (NSView* child in @[ check, row, more ])
+                [chapter addArrangedSubview:child];
             chapter.currentChapter = selected;
             chapter.spacing = 7;
             chapter.edgeInsets = NSEdgeInsetsMake(5, 10, 5, 8);
@@ -1168,7 +1170,12 @@ NSUInteger words(NSString* text) {
         }];
     NSButton* button = [NSButton new];
     button.tag = index;
-    [self openProject:button];
+    @try {
+        [self openProject:button];
+    } @catch (NSException* exception) {
+        fprintf(stderr, "Project opening exception: %s\n", exception.description.UTF8String);
+        exit(9);
+    }
     [self performSelector:@selector(captureEditor) withObject:nil afterDelay:1];
 }
 - (void)captureEditor {
