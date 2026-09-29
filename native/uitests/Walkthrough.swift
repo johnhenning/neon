@@ -92,9 +92,14 @@ final class Walkthrough: XCTestCase {
         activate(app.buttons["Done"])
         #if os(macOS)
         app.typeKey(",", modifierFlags: .command)
-        XCTAssertTrue(app.windows["Settings"].waitForExistence(timeout: 10))
+        // AppKit exposes the Settings NSPanel as an accessibility dialog.
+        let settings = app.dialogs["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        XCTAssertTrue(settings.searchFields["Search settings"].exists)
         capture("07-settings")
-        activate(app.windows["Settings"].buttons[XCUIIdentifierCloseWindow])
+        activate(settings.buttons[XCUIIdentifierCloseWindow])
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: settings)
+        XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 5), .completed)
         #else
         activate(app.buttons["Settings"])
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
