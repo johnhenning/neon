@@ -1,5 +1,6 @@
 #import "ContextMenu.h"
 #import "EditorialTheme.h"
+#import "History.h"
 #import "InlineTitle.h"
 #import "LibraryStore.h"
 #import "Settings.h"
@@ -9,6 +10,7 @@
 @interface NeonEditor : UIViewController <UITextViewDelegate>
 @property(nonatomic, strong) UITextView* editor;
 @property(nonatomic, strong) UILabel* status;
+@property(nonatomic, strong) UILabel* guidance;
 @property(nonatomic, strong) NeonInlineTitle* heading;
 @property(nonatomic, strong) NeonInlineTitle* bookTitle;
 @property(nonatomic, strong) NeonDocumentSession* session;
@@ -35,6 +37,7 @@
 @property(nonatomic, strong) NeonList* chapterList;
 @property(nonatomic, strong) UINavigationController* navigation;
 @property(nonatomic) BOOL sidebarHidden;
+@property(nonatomic, copy) NSString* pendingPreset;
 @property(nonatomic) BOOL smoke;
 @property(nonatomic) BOOL trashMode;
 - (void)showLibrary;
@@ -60,6 +63,7 @@
 - (void)showProblem:(NSError*)error;
 - (void)applyAppearance;
 - (void)showSettings;
+- (void)showHistory;
 - (BOOL)renameInline:(NSString*)title section:(NSString*)identifier;
 @end
 namespace {
@@ -142,8 +146,9 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                          style:UIBarButtonItemStylePlain
                                         target:self
                                         action:@selector(chapters)];
-    self.navigationItem.leftBarButtonItem.title = @"Chapters";
-    self.navigationItem.leftBarButtonItem.accessibilityLabel = @"Show or hide chapters";
+    self.navigationItem.leftBarButtonItem.title = self.session.preset[@"sectionsLabel"];
+    self.navigationItem.leftBarButtonItem.accessibilityLabel =
+        [@"Show or hide " stringByAppendingString:self.session.preset[@"sectionsLabel"]];
     UIBarButtonItem* typography =
         [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"textformat"]
                                          style:UIBarButtonItemStylePlain
@@ -165,37 +170,47 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
               return [item[@"id"] isEqual:self.session.selectedSectionID];
             }] +
         1;
-    UILabel* kicker =
-        label(self.session.sections.count ? [NSString stringWithFormat:@"CHAPTER %lu", number]
-                                          : @"MANUSCRIPT",
-              NeonUI(12), NeonMuted());
-    kicker.textAlignment = NSTextAlignmentCenter;
+    UILabel* kicker = label(self.session.sections.count
+                                ? [[self.session sectionLabelAtIndex:number - 1] uppercaseString]
+                                : [self.session.preset[@"documentLabel"] uppercaseString],
+                            NeonUI(12), NeonMuted());
+    kicker.textAlignment = [self.session.preset[@"centeredHeading"] boolValue]
+                               ? NSTextAlignmentCenter
+                               : NSTextAlignmentLeft;
     self.heading = [NeonInlineTitle new];
     self.heading.text = self.session.sectionTitle;
     self.heading.font = scaledSerif(32);
     self.heading.adjustsFontForContentSizeCategory = YES;
-    self.heading.accessibilityLabel = @"Chapter title";
+    self.heading.accessibilityLabel =
+        [self.session.preset[@"sectionLabel"] stringByAppendingString:@" title"];
     NSString* identifier = self.session.selectedSectionID;
     if (identifier.length)
         self.heading.commitTitle = ^BOOL(NSString* title) {
           return [weakSelf.coordinator renameInline:title section:identifier];
         };
-    self.heading.textAlignment = NSTextAlignmentCenter;
+    self.heading.textAlignment = kicker.textAlignment;
     UIView* rule = [UIView new];
     rule.backgroundColor = [NeonAccent() colorWithAlphaComponent:0.5];
-    UIStackView* header =
-        [[UIStackView alloc] initWithArrangedSubviews:@[ kicker, self.heading, rule ]];
+    NSMutableArray* headerViews = [NSMutableArray arrayWithArray:@[ kicker, self.heading, rule ]];
+    if (!self.session.text.length && self.session.sectionGuidance.length) {
+        self.guidance = label(self.session.sectionGuidance, NeonUI(12), NeonMuted());
+        [headerViews addObject:self.guidance];
+    }
+    UIStackView* header = [[UIStackView alloc] initWithArrangedSubviews:headerViews];
     header.axis = UILayoutConstraintAxisVertical;
     header.alignment = UIStackViewAlignmentCenter;
     header.spacing = 20;
     [self.heading.widthAnchor constraintEqualToAnchor:header.widthAnchor].active = YES;
+    [kicker.widthAnchor constraintEqualToAnchor:header.widthAnchor].active = YES;
+    if (self.guidance)
+        [self.guidance.widthAnchor constraintEqualToAnchor:header.widthAnchor].active = YES;
     self.editor = [UITextView new];
     self.editor.delegate = self;
     self.editor.backgroundColor = NeonPaper();
     self.editor.textColor = NeonInk();
     self.editor.text = self.session.text;
     self.editor.editable = self.session.selectedSectionID.length > 0;
-    self.editor.accessibilityLabel = @"Manuscript";
+    self.editor.accessibilityLabel = self.session.preset[@"documentLabel"];
     self.editor.accessibilityIdentifier = @"manuscript";
     self.editor.adjustsFontForContentSizeCategory = YES;
     self.editor.textContainer.lineFragmentPadding = 0;
@@ -243,7 +258,17 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     NSRange selection = self.editor.selectedRange;
     NSMutableParagraphStyle* style = [NSMutableParagraphStyle new];
     style.lineSpacing = NeonLineSpacing();
-    style.paragraphSpacing = NeonParagraphSpacing();
+    style.paragraphSpacing = [NSUserDefaults.standardUserDefaults objectForKey:@"paragraphSpacing"]
+                                 ? NeonParagraphSpacing()
+                                 : [self.session.preset[@"paragraphSpacing"] doubleValue];
+    style.lineHeightMultiple = [self.session.preset[@"lineHeightMultiple"] doubleValue];
+    style.firstLineHeadIndent = [self.session.preset[@"firstLineIndent"] doubleValue];
+    for (NSDictionary* section in self.session.sections)
+        if ([section[@"id"] isEqual:self.session.selectedSectionID] &&
+            [section[@"role"] isEqual:@"references"]) {
+            style.firstLineHeadIndent = 0;
+            style.headIndent = 24;
+        }
     self.editor.spellCheckingType = NeonWritingPreference(@"spellcheck")
                                         ? UITextSpellCheckingTypeYes
                                         : UITextSpellCheckingTypeNo;
@@ -254,7 +279,9 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     [self.view setNeedsLayout];
     NSDictionary* attrs = @{
         NSFontAttributeName : [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
-            scaledFontForFont:NeonManuscriptFont(NeonTextSize())],
+            scaledFontForFont:([NSUserDefaults.standardUserDefaults objectForKey:@"manuscriptFont"]
+                                   ? NeonManuscriptFont(NeonTextSize())
+                                   : NeonFontNamed(self.session.preset[@"font"], NeonTextSize()))],
         NSForegroundColorAttributeName : NeonInk(),
         NSParagraphStyleAttributeName : style
     };
@@ -262,7 +289,9 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.editor.typingAttributes = attrs;
     self.editor.selectedRange = selection;
     self.editor.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
-        scaledFontForFont:NeonManuscriptFont(NeonTextSize())];
+        scaledFontForFont:([NSUserDefaults.standardUserDefaults objectForKey:@"manuscriptFont"]
+                               ? NeonManuscriptFont(NeonTextSize())
+                               : NeonFontNamed(self.session.preset[@"font"], NeonTextSize()))];
 }
 - (void)textViewDidChange:(UITextView*)view {
     if (view.markedTextRange)
@@ -272,6 +301,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         self.status.text = error.localizedDescription;
         return;
     }
+    self.guidance.hidden = view.text.length > 0;
     self.status.text = @"Unsaved changes";
     [self.saveTimer invalidate];
     __weak NeonEditor* weakSelf = self;
@@ -334,12 +364,14 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                                       url:self.coordinator.selectedURL
                                                     title:self.session.title];
                        }),
-            NeonAction(@"New Chapter…", @"plus", YES, NO,
+            NeonAction([NSString stringWithFormat:@"New %@…", self.session.preset[@"sectionLabel"]],
+                       @"plus", YES, NO,
                        ^{
                          [self.coordinator newSection];
                        }),
             NeonAction(
-                @"Chapter Actions…", @"doc.text", self.session.sections.count > 0, NO,
+                [NSString stringWithFormat:@"%@ Actions…", self.session.preset[@"sectionLabel"]],
+                @"doc.text", self.session.sections.count > 0, NO,
                 ^{
                   NSUInteger i = [self.session.sections
                       indexOfObjectPassingTest:^BOOL(NSDictionary* item, NSUInteger n, BOOL* stop) {
@@ -353,10 +385,14 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                            rect:CGRectMake(self.view.bounds.size.width - 44,
                                                            self.view.safeAreaInsets.top, 1, 1)];
                 }),
-            NeonAction(@"Deleted Chapters", @"arrow.uturn.backward",
-                       self.session.trashedSections.count > 0, NO,
+            NeonAction([@"Deleted " stringByAppendingString:self.session.preset[@"sectionsLabel"]],
+                       @"arrow.uturn.backward", self.session.trashedSections.count > 0, NO,
                        ^{
                          [self.coordinator showSectionTrash:self anchor:self.view];
+                       }),
+            NeonAction(@"History…", @"clock.arrow.circlepath", YES, NO,
+                       ^{
+                         [self.coordinator showHistory];
                        }),
             NeonAction(@"Move Project to Trash…", @"trash", YES, YES,
                        ^{
@@ -544,6 +580,16 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                         action:@selector(trash)]
     ];
     self.navigationItem.rightBarButtonItems.firstObject.accessibilityLabel = @"Settings";
+    if (self.chapters) {
+        UIBarButtonItem* history = [[UIBarButtonItem alloc]
+            initWithImage:[UIImage systemImageNamed:@"clock.arrow.circlepath"]
+                    style:UIBarButtonItemStylePlain
+                   target:self
+                   action:@selector(history)];
+        history.accessibilityLabel = @"History";
+        self.navigationItem.rightBarButtonItems =
+            [self.navigationItem.rightBarButtonItems arrayByAddingObject:history];
+    }
     UILongPressGestureRecognizer* hold =
         [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(context:)];
     [self.tableView addGestureRecognizer:hold];
@@ -561,6 +607,9 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 - (void)settings {
     [self.coordinator showSettings];
 }
+- (void)history {
+    [self.coordinator showHistory];
+}
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     if (!self.chapters)
@@ -576,7 +625,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 - (NSString*)tableView:(UITableView*)tableView titleForHeaderInSection:(NSInteger)section {
     (void)tableView;
     (void)section;
-    return self.chapters ? @"MANUSCRIPT" : @"ON THIS DEVICE";
+    return self.chapters ? [self.coordinator.session.preset[@"documentLabel"] uppercaseString]
+                         : @"ON THIS DEVICE";
 }
 - (UITableViewCell*)tableView:(UITableView*)tableView cellForRowAtIndexPath:(NSIndexPath*)path {
     UITableViewCell* cell = [tableView dequeueReusableCellWithIdentifier:@"project"];
@@ -588,7 +638,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     if (self.chapters) {
         NSDictionary* section = self.coordinator.session.sections[path.row];
         content.text = section[@"title"];
-        content.secondaryText = [NSString stringWithFormat:@"Section %ld", path.row + 1];
+        content.secondaryText = [self.coordinator.session sectionLabelAtIndex:path.row];
         content.image = [UIImage systemImageNamed:@"doc.text"];
         content.textProperties.font = NeonUI(18);
         content.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(18, 20, 18, 20);
@@ -598,7 +648,9 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         content.secondaryText =
             [project[@"error"] length]
                 ? project[@"error"]
-                : [NSString stringWithFormat:@"%@ sections · Local project", project[@"sections"]];
+                : [NSString stringWithFormat:@"%@ · %@ %@", project[@"preset"],
+                                             project[@"sections"],
+                                             [project[@"sectionLabel"] lowercaseString]];
         content.image = cover(project[@"title"]);
         content.imageProperties.maximumSize = CGSizeMake(74, 108);
         content.textProperties.font = scaledSerif(21);
@@ -617,7 +669,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         NeonInlineTitle* title = [NeonInlineTitle new];
         title.text = section[@"title"];
         title.font = NeonUI(18);
-        title.accessibilityLabel = @"Chapter title";
+        title.accessibilityLabel =
+            [self.coordinator.session.preset[@"sectionLabel"] stringByAppendingString:@" title"];
         __weak NeonList* weakSelf = self;
         title.commitTitle = ^BOOL(NSString* value) {
           return [weakSelf.coordinator renameInline:value section:identifier];
@@ -633,8 +686,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
           if (index != NSNotFound)
               [weakSelf.coordinator openSection:index];
         };
-        UILabel* subtitle = label([NSString stringWithFormat:@"Chapter %ld", path.row + 1],
-                                  NeonUI(13), NeonMuted());
+        UILabel* subtitle =
+            label([self.coordinator.session sectionLabelAtIndex:path.row], NeonUI(13), NeonMuted());
         UIStackView* row = [[UIStackView alloc] initWithArrangedSubviews:@[ title, subtitle ]];
         row.axis = UILayoutConstraintAxisVertical;
         row.spacing = 4;
@@ -656,7 +709,9 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     [more setImage:[UIImage systemImageNamed:@"ellipsis"] forState:UIControlStateNormal];
     more.frame = CGRectMake(0, 0, 44, 44);
     more.tag = path.row;
-    more.accessibilityLabel = self.chapters ? @"Chapter actions" : @"Project actions";
+    more.accessibilityLabel = self.chapters ? [self.coordinator.session.preset[@"sectionLabel"]
+                                                  stringByAppendingString:@" actions"]
+                                            : @"Project actions";
     [more addTarget:self action:@selector(more:) forControlEvents:UIControlEventTouchUpInside];
     cell.accessoryView = more;
     UIView* selected = [UIView new];
@@ -964,7 +1019,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     else
         [self showColumn:UISplitViewControllerColumnPrimary];
     self.editor.navigationItem.leftBarButtonItem.accessibilityLabel =
-        self.sidebarHidden ? @"Show chapters sidebar" : @"Hide chapters sidebar";
+        [NSString stringWithFormat:@"%@ %@ sidebar", self.sidebarHidden ? @"Show" : @"Hide",
+                                   self.session.preset[@"sectionsLabel"]];
 }
 - (UISplitViewControllerColumn)splitViewController:(UISplitViewController*)controller
          topColumnForCollapsingToProposedTopColumn:(UISplitViewControllerColumn)column {
@@ -1006,10 +1062,22 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 - (void)askTitle:(BOOL)section {
     if (self.editor && ![self.editor flush])
         return;
-    UIAlertController* alert =
-        [UIAlertController alertControllerWithTitle:section ? @"New section" : @"New project"
-                                            message:@"Give it a working title."
-                                     preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController* alert = [UIAlertController
+        alertControllerWithTitle:section
+                                     ? [@"New "
+                                           stringByAppendingString:self.session
+                                                                       .preset[@"sectionLabel"]]
+                                     : [@"New "
+                                           stringByAppendingString:[self selectedPreset][@"title"]]
+                         message:section
+                                     ? @"Give it a working title."
+                                     : [NSString
+                                           stringWithFormat:@"%@\n\n%@",
+                                                            [self selectedPreset][@"description"],
+                                                            [[[self selectedPreset][@"sections"]
+                                                                valueForKey:@"title"]
+                                                                componentsJoinedByString:@" · "]]
+                  preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField* field) {
       field.placeholder = @"Working title";
     }];
@@ -1045,7 +1113,10 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                                                         @"Your draft is retained."
                                                                 }]];
                                    } else {
-                                       NSURL* url = [self.library createProject:title error:&error];
+                                       NSURL* url =
+                                           [self.library createProject:title
+                                                                preset:self.pendingPreset ?: @"book"
+                                                                 error:&error];
                                        if (!url) {
                                            [self showProblem:error];
                                            return;
@@ -1064,8 +1135,48 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                  }]];
     [self presentViewController:alert animated:YES completion:nil];
 }
+- (NSDictionary*)selectedPreset {
+    for (NSDictionary* preset in NeonDocumentSession.writingPresets)
+        if ([preset[@"id"] isEqual:self.pendingPreset])
+            return preset;
+    return NeonDocumentSession.writingPresets.firstObject;
+}
 - (void)newProject {
-    [self askTitle:NO];
+    if (self.editor && ![self.editor flush])
+        return;
+    UIAlertController* picker =
+        [UIAlertController alertControllerWithTitle:@"Choose a writing preset"
+                                            message:@"Each preset includes its own outline, "
+                                                    @"terminology, and reading format."
+                                     preferredStyle:UIAlertControllerStyleActionSheet];
+    for (NSDictionary* preset in NeonDocumentSession.writingPresets)
+        [picker addAction:[UIAlertAction actionWithTitle:preset[@"title"]
+                                                   style:UIAlertActionStyleDefault
+                                                 handler:^(UIAlertAction*) {
+                                                   self.pendingPreset = preset[@"id"];
+                                                   [self askTitle:NO];
+                                                 }]];
+    [picker addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                               style:UIAlertActionStyleCancel
+                                             handler:nil]];
+    picker.popoverPresentationController.sourceView = self.view;
+    picker.popoverPresentationController.sourceRect =
+        CGRectMake(self.view.bounds.size.width / 2, 80, 1, 1);
+    [self presentViewController:picker animated:YES completion:nil];
+}
+- (void)showHistory {
+    if (!self.session || (self.editor && ![self.editor flush]))
+        return;
+    NeonHistoryController* controller = [NeonHistoryController new];
+    controller.session = self.session;
+    __weak NeonCoordinator* weakSelf = self;
+    controller.didRestore = ^{
+      [weakSelf refreshAfterStructure];
+    };
+    UINavigationController* navigation =
+        [[UINavigationController alloc] initWithRootViewController:controller];
+    navigation.modalPresentationStyle = UIModalPresentationPageSheet;
+    [self presentViewController:navigation animated:YES completion:nil];
 }
 - (void)newSection {
     [self askTitle:YES];
@@ -1232,13 +1343,18 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                         [self sectionCommand:@"Restore" identifier:section[@"id"]];
                                       })];
     if (!actions.count)
-        [actions addObject:NeonAction(@"No deleted chapters", @"trash", NO, NO,
-                                      ^{
-                                      })];
+        [actions
+            addObject:NeonAction([@"No deleted "
+                                     stringByAppendingString:[self.session.preset[@"sectionsLabel"]
+                                                                 lowercaseString]],
+                                 @"trash", NO, NO,
+                                 ^{
+                                 })];
     NeonShowMenu(host, anchor, CGRectMake(40, anchor.safeAreaInsets.top + 20, 1, 1), actions);
 }
 - (void)refreshAfterStructure {
     NSString* selected = self.session.selectedSectionID;
+    self.chapterList.title = self.session.title;
     self.editor.session = nil;
     self.editor = nil;
     NSUInteger index = [self.session.sections
@@ -1260,7 +1376,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         for (NSDictionary* section in self.session.sections)
             if ([section[@"id"] isEqual:identifier])
                 title = section[@"title"];
-        [self prompt:@"Rename Chapter"
+        [self prompt:[@"Rename " stringByAppendingString:self.session.preset[@"sectionLabel"]]
                  value:title
             completion:^(NSString* value) {
               NSError* error = nil;
@@ -1339,6 +1455,42 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         valid = [self renameInline:projectTitle section:nil] && valid;
         valid = [self renameInline:chapterTitle section:self.session.selectedSectionID] && valid;
         marker(support, @"smoke-result.txt", valid);
+    } else if ([args containsObject:@"--smoke-history"]) {
+        NSError* error = nil;
+        NSString* original = self.session.text;
+        BOOL valid = [self.session createCheckpoint:@"Before review" error:&error];
+        NSString* checkpoint = self.session.history.firstObject[@"id"];
+        valid = valid && [self.session replaceText:@"An unsaved revision" error:&error] &&
+                [self.session restoreRevision:checkpoint error:&error] &&
+                [self.session.text isEqual:original];
+        [self refreshAfterStructure];
+        [self showHistory];
+        UINavigationController* navigation = (id)self.presentedViewController;
+        NeonHistoryController* controller = (id)navigation.topViewController;
+        [controller loadViewIfNeeded];
+        [controller selectRevisionAtIndex:1];
+        marker(support, @"smoke-history.txt",
+               valid && [controller isKindOfClass:NeonHistoryController.class]);
+    } else if ([args containsObject:@"--smoke-preset"]) {
+        NSError* error = nil;
+        NSURL* url = [self.library createProject:@"The tidal study"
+                                          preset:@"research"
+                                           error:&error];
+        self.editor.session = nil;
+        self.editor = nil;
+        [self reloadLibrary];
+        NSUInteger index = [self.projects
+            indexOfObjectPassingTest:^BOOL(NSDictionary* project, NSUInteger, BOOL*) {
+              return [project[@"url"] isEqual:url];
+            }];
+        [self openProject:index];
+        [self openSection:0];
+        NSParagraphStyle* style =
+            self.editor.editor.typingAttributes[NSParagraphStyleAttributeName];
+        marker(support, @"smoke-preset.txt",
+               self.session.sections.count == 6 &&
+                   [self.session.sectionTitle isEqual:@"Abstract"] &&
+                   style.lineHeightMultiple == 2);
     } else if ([args containsObject:@"--smoke-settings"]) {
         [self showSettings];
         UINavigationController* navigation = (id)self.presentedViewController;

@@ -17,6 +17,7 @@ struct Section {
     std::string title;
     std::vector<TextBlock> blocks;
     bool trashed = false;
+    std::string role = "custom";
 };
 struct Document {
     std::string id;
@@ -29,9 +30,11 @@ struct Project {
     std::string id;
     std::string title;
     std::vector<Document> documents;
+    std::string preset = "book";
 };
 // IDs are project-wide unique. Vector order is semantic reading order.
 Result validate(const Project& project);
+Result restoreProject(Project* project, const Project& snapshot);
 Result renameProject(Project* project, const std::string& title);
 Result addSection(Project* project, const std::string& documentId, Section section);
 Result renameSection(Project* project, const std::string& sectionId, const std::string& title);

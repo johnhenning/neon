@@ -21,12 +21,13 @@ adapter. No account is required for local writing.
   word-count visibility, with confirmed device-preference reset.
 - Visible save errors; unsupported files are left unchanged.
 
-This is a plain-text preview. Rich formatting/media, durable history, journaled
+This is a plain-text preview. Rich formatting/media, revision comparison, journaled
 async storage, full accessibility/device acceptance and iCloud remain in progress.
 Additional settings categories and project/export scopes, structural undo and exact
 design acceptance remain open.
-Schema 2 retains trashed chapters; schema 1 is read and backed up before its first
-updated save. Earlier builds refuse schema 2 instead of dropping retained content.
+Schema 3 retains section roles, presets, and local history. Schemas 1 and 2 are read
+and backed up before their first updated save. Earlier builds refuse schema 3
+instead of dropping retained content.
 Typography controls affect presentation, not semantic document formatting. The
 Mac app is ad-hoc signed, not a notarized release. No performance claims are made.
 
@@ -73,3 +74,28 @@ See [architecture](native/ARCHITECTURE.md) and [font licenses](NOTICE.md).
 ## Inspiration
 
 The early writing workflow was inspired by [Hugh Howey’s NEO](https://github.com/hughhowey/neo); Neon is an independent implementation.
+
+### Writing presets and local history
+
+New projects can start as a Book, Research Paper, Newsletter, Essay, or Meeting Notes.
+Each preset supplies its own document/section terminology, starter outline, semantic section
+roles, and writing guidance. Renaming a heading preserves its role. The editor uses preset
+font and paragraph defaults (device font/paragraph preferences can override them), academic
+line spacing, and hanging reference paragraphs. These are reading/editing formats, not
+journal submission styles or export guarantees. References and URLs remain plain text;
+citation management, LaTeX, rich hyperlinks/media, and newsletter sending are still future work.
+
+Open **History** in the Mac sidebar/File menu or mobile editor actions/outline toolbar.
+Automatic snapshots are captured on changed saves, at most once per minute. Named
+checkpoints capture the current project exactly. Search and preview are read-only. Restore
+creates a new revision and retains the current draft as a **Before restore** checkpoint;
+its scope is the entire project, including section Trash. History is local, not cloud sync,
+collaborative review, or per-keystroke undo. Diff views, checkpoint renaming, scoped restore,
+and retention controls remain open.
+
+Schema 3 stores preset/section roles and history in one atomic JSON envelope. Schemas 1 and 2
+are backed up byte-for-byte before first changed save; backups follow project Trash/restore.
+Unknown or invalid content/history is refused without overwriting the file. History travels
+with the project; a duplicated project begins its own history. Snapshots retain full text
+and are not pruned automatically, so files grow over time. A scalable asynchronous journal,
+file coordination, and recovery remain release prerequisites.

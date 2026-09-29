@@ -39,6 +39,8 @@
             @"url" : file,
             @"title" : session.title ?: file.lastPathComponent,
             @"sections" : @(session.sections.count),
+            @"sectionLabel" : session.preset[@"sectionsLabel"] ?: @"Sections",
+            @"preset" : session.preset[@"title"] ?: @"Project",
             @"modified" : modified ?: NSDate.distantPast,
             @"error" : problem.localizedDescription ?: @""
         }];
@@ -64,6 +66,9 @@
     return [[NeonDocumentSession alloc] initWithURL:url actor:self.actor error:error];
 }
 - (NSURL*)createProject:(NSString*)title error:(NSError**)error {
+    return [self createProject:title preset:@"book" error:error];
+}
+- (NSURL*)createProject:(NSString*)title preset:(NSString*)preset error:(NSError**)error {
     NSString* clean =
         [title stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     NSURL* file =
@@ -72,7 +77,8 @@
     NeonDocumentSession* session = [[NeonDocumentSession alloc] initWithURL:file
                                                                       actor:self.actor
                                                                       error:error];
-    if (!session || ![session renameProject:clean error:error] || ![session save:error])
+    if (!session || ![session initializePreset:preset error:error] ||
+        ![session renameProject:clean error:error] || ![session save:error])
         return nil;
     return file;
 }
@@ -106,14 +112,24 @@
         return NO;
     NSFileManager* manager = NSFileManager.defaultManager;
     NSURL* target = [destination URLByAppendingPathComponent:url.lastPathComponent];
-    NSURL* backup = [url URLByAppendingPathExtension:@"schema1-backup"];
-    NSURL* targetBackup = [target URLByAppendingPathExtension:@"schema1-backup"];
-    BOOL hasBackup = [manager fileExistsAtPath:backup.path];
+    NSMutableArray<NSString*>* moved = [NSMutableArray array];
     if (![manager moveItemAtURL:url toURL:target error:error])
         return NO;
-    if (hasBackup && ![manager moveItemAtURL:backup toURL:targetBackup error:error]) {
-        [manager moveItemAtURL:target toURL:url error:nil];
-        return NO;
+    for (NSString* suffix in @[ @"schema1-backup", @"schema2-backup" ]) {
+        NSURL* backup = [url URLByAppendingPathExtension:suffix];
+        if (![manager fileExistsAtPath:backup.path])
+            continue;
+        if (![manager moveItemAtURL:backup
+                              toURL:[target URLByAppendingPathExtension:suffix]
+                              error:error]) {
+            for (NSString* previous in moved)
+                [manager moveItemAtURL:[target URLByAppendingPathExtension:previous]
+                                 toURL:[url URLByAppendingPathExtension:previous]
+                                 error:nil];
+            [manager moveItemAtURL:target toURL:url error:nil];
+            return NO;
+        }
+        [moved addObject:suffix];
     }
     return YES;
 }
@@ -130,10 +146,12 @@
     NSURL* trash = [self.directory URLByAppendingPathComponent:@"Trash" isDirectory:YES];
     if (![self validURL:url parent:trash error:error])
         return NO;
-    NSURL* backup = [url URLByAppendingPathExtension:@"schema1-backup"];
-    if ([[NSFileManager defaultManager] fileExistsAtPath:backup.path] &&
-        ![[NSFileManager defaultManager] removeItemAtURL:backup error:error])
-        return NO;
+    for (NSString* suffix in @[ @"schema1-backup", @"schema2-backup" ]) {
+        NSURL* backup = [url URLByAppendingPathExtension:suffix];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:backup.path] &&
+            ![[NSFileManager defaultManager] removeItemAtURL:backup error:error])
+            return NO;
+    }
     return [[NSFileManager defaultManager] removeItemAtURL:url error:error];
 }
 - (BOOL)seedPreview:(NSError**)error {

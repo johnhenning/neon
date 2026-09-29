@@ -1,4 +1,5 @@
 #include "neon/document.h"
+#include "neon/presets.h"
 #include <cstdlib>
 #include <iostream>
 #include <limits>
@@ -65,7 +66,29 @@ int main() {
     check(neon::core::trashSection(&project, "section2", false).ok &&
               project.documents[0].sections[0].title == "Renamed",
           "restore title");
-    project.schemaVersion = 3;
+    auto original = project;
+    auto revision = project.revision;
+    project.title = "Current draft";
+    project.preset = "research";
+    check(neon::core::restoreProject(&project, original).ok && project.title == original.title &&
+              project.revision == revision + 1 && project.schemaVersion == 3 &&
+              project.preset == "book",
+          "restore creates new revision and restores preset");
+    original.id = "another-project";
+    check(!neon::core::restoreProject(&project, original).ok && project.revision == revision + 1,
+          "foreign restore is atomic");
+    for (const auto& preset : neon::core::writingPresets()) {
+        check(!preset.sections.empty() && !preset.sectionLabel.empty(), "usable preset");
+        for (const auto& section : preset.sections)
+            check(!section.role.empty() && !section.guidance.empty(),
+                  "semantic role and workflow guidance");
+    }
+    check(neon::core::writingPreset("research")->sections.front().role == "abstract" &&
+              neon::core::writingPreset("research")->sections.back().role == "references" &&
+              neon::core::writingPreset("newsletter")->sectionLabel == "Section" &&
+              !neon::core::writingPreset("unknown"),
+          "use-case specific catalog");
+    project.schemaVersion = 4;
     check(!replaceText(&project, "block", "bad", "editor").ok, "future schema read-only");
     project.schemaVersion = 1;
     project.revision = std::numeric_limits<std::uint64_t>::max();

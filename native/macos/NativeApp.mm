@@ -1,5 +1,6 @@
 #import "ContextMenu.h"
 #import "EditorialTheme.h"
+#import "History.h"
 #import "InlineTitle.h"
 #import "LibraryStore.h"
 #import "Settings.h"
@@ -198,6 +199,7 @@ NSUInteger words(NSString* text) {
 @property(nonatomic, strong) NSURL* selectedURL;
 @property(nonatomic, strong) NSTextView* editor;
 @property(nonatomic, strong) NSTextField* status;
+@property(nonatomic, strong) NSTextField* guidance;
 @property(nonatomic, strong) NeonInlineTitle* windowTitle;
 @property(nonatomic, strong) NeonInlineTitle* chapterTitle;
 @property(nonatomic, strong) NSView* sidebarBody;
@@ -206,6 +208,8 @@ NSUInteger words(NSString* text) {
 @property(nonatomic, strong) NSTimer* timer;
 @property(nonatomic, strong) NSPopover* typography;
 @property(nonatomic, strong) NSPanel* settings;
+@property(nonatomic, strong) NSWindow* historyWindow;
+@property(nonatomic, strong) NSTextField* presetDescription;
 @property(nonatomic, strong) NSLayoutConstraint* measureConstraint;
 @property(nonatomic) BOOL trashMode;
 - (void)projectMenu:(NSURL*)url title:(NSString*)title anchor:(id)anchor rect:(NSRect)rect;
@@ -340,6 +344,7 @@ NSUInteger words(NSString* text) {
     [file.submenu addItemWithTitle:@"New Project…"
                             action:@selector(newProject:)
                      keyEquivalent:@"n"];
+    [file.submenu addItemWithTitle:@"History…" action:@selector(showHistory:) keyEquivalent:@"H"];
     [file.submenu addItemWithTitle:@"Save" action:@selector(saveAction:) keyEquivalent:@"s"];
     [menu addItem:file];
     NSMenuItem* edit = [NSMenuItem new];
@@ -437,13 +442,15 @@ NSUInteger words(NSString* text) {
           return [weakSelf renameInline:title section:nil];
         };
         [rows addObject:book];
-        [rows addObject:label(@"MANUSCRIPT", NeonUI(11), NeonMuted())];
+        [rows addObject:label([self.session.preset[@"documentLabel"] uppercaseString], NeonUI(11),
+                              NeonMuted())];
         NSInteger index = 0;
         for (NSDictionary* section in self.session.sections) {
             NeonInlineTitle* row = [NeonInlineTitle new];
             row.stringValue = section[@"title"];
             row.font = NeonUI(15);
-            row.accessibilityLabel = @"Chapter title";
+            row.accessibilityLabel =
+                [self.session.preset[@"sectionLabel"] stringByAppendingString:@" title"];
             row.tag = index++;
             NSString* identifier = section[@"id"];
             row.commitTitle = ^BOOL(NSString* title) {
@@ -480,7 +487,8 @@ NSUInteger words(NSString* text) {
             [check.widthAnchor constraintEqualToConstant:12].active = YES;
             [more.widthAnchor constraintEqualToConstant:28].active = YES;
             [more.heightAnchor constraintEqualToConstant:28].active = YES;
-            more.toolTip = @"Chapter actions";
+            more.toolTip =
+                [self.session.preset[@"sectionLabel"] stringByAppendingString:@" actions"];
             NeonChapterRow* chapter = [[NeonChapterRow alloc] initWithFrame:NSZeroRect];
             for (NSView* child in @[ check, row, more ])
                 [chapter addArrangedSubview:child];
@@ -488,13 +496,22 @@ NSUInteger words(NSString* text) {
             chapter.spacing = 7;
             chapter.edgeInsets = NSEdgeInsetsMake(5, 10, 5, 8);
             chapter.accessibilityLabel = section[@"title"];
-            chapter.accessibilityValue = selected ? @"Current chapter" : @"Chapter";
+            chapter.accessibilityValue =
+                selected
+                    ? [@"Current " stringByAppendingString:self.session.preset[@"sectionLabel"]]
+                    : self.session.preset[@"sectionLabel"];
             [rows addObject:chapter];
         }
-        [rows addObject:button(@"New Chapter", @"plus", self, @selector(newSection:))];
+        [rows
+            addObject:button([@"New " stringByAppendingString:self.session.preset[@"sectionLabel"]],
+                             @"plus", self, @selector(newSection:))];
+        [rows
+            addObject:button(@"History", @"clock.arrow.circlepath", self, @selector(showHistory:))];
         if (self.session.trashedSections.count)
-            [rows addObject:button(@"Deleted chapters", @"arrow.uturn.backward", self,
-                                   @selector(sectionTrash:))];
+            [rows
+                addObject:button([@"Deleted "
+                                     stringByAppendingString:self.session.preset[@"sectionsLabel"]],
+                                 @"arrow.uturn.backward", self, @selector(sectionTrash:))];
     } else {
         [rows addObject:label(@"ON THIS MAC", NeonUI(11), NeonMuted())];
     }
@@ -527,6 +544,7 @@ NSUInteger words(NSString* text) {
     self.windowTitle.stringValue = @"Neon";
     self.windowTitle.enabled = NO;
     self.chapterTitle = nil;
+    self.guidance = nil;
     [self buildSidebar];
     [self clear:self.content.view];
     NSError* error = nil;
@@ -576,7 +594,9 @@ NSUInteger words(NSString* text) {
         NSString* detail =
             [project[@"error"] length]
                 ? project[@"error"]
-                : [NSString stringWithFormat:@"%@ sections · On this Mac", project[@"sections"]];
+                : [NSString stringWithFormat:@"%@ · %@ %@ · On this Mac", project[@"preset"],
+                                             project[@"sections"],
+                                             [project[@"sectionLabel"] lowercaseString]];
         NSButton* more = button(@"Actions", @"ellipsis", self, @selector(projectActions:));
         more.tag = index - 1;
         NSStackView* row = [NSStackView stackViewWithViews:@[
@@ -629,14 +649,18 @@ NSUInteger words(NSString* text) {
     self.windowTitle.stringValue = self.session.title;
     self.windowTitle.enabled = YES;
     self.chapterTitle = nil;
+    self.guidance = nil;
     [self buildSidebar];
     if (!self.session.sections.count) {
         NSStackView* empty = column(
             @[
                 label(@"A fresh page", NeonSerif(38), NeonInk()),
-                label(@"Create a chapter, or restore one from Deleted chapters.", NeonUI(16),
-                      NeonMuted()),
-                button(@"New Chapter", @"plus", self, @selector(newSection:))
+                label([NSString
+                          stringWithFormat:@"Create a %@, or restore one from Trash.",
+                                           [self.session.preset[@"sectionLabel"] lowercaseString]],
+                      NeonUI(16), NeonMuted()),
+                button([@"New " stringByAppendingString:self.session.preset[@"sectionLabel"]],
+                       @"plus", self, @selector(newSection:))
             ],
             24);
         empty.edgeInsets = NSEdgeInsetsMake(80, 48, 80, 48);
@@ -651,24 +675,37 @@ NSUInteger words(NSString* text) {
               return [item[@"id"] isEqual:self.session.selectedSectionID];
             }] +
         1;
-    NSTextField* kicker =
-        label([NSString stringWithFormat:@"CHAPTER %lu", number], NeonUI(12), NeonMuted());
-    kicker.alignment = NSTextAlignmentCenter;
+    NSTextField* kicker = label([[self.session sectionLabelAtIndex:number - 1] uppercaseString],
+                                NeonUI(12), NeonMuted());
+    kicker.alignment = [self.session.preset[@"centeredHeading"] boolValue] ? NSTextAlignmentCenter
+                                                                           : NSTextAlignmentLeft;
     NeonInlineTitle* heading = [NeonInlineTitle new];
     heading.stringValue = self.session.sectionTitle;
     heading.font = NeonSerif(38);
-    heading.accessibilityLabel = @"Chapter title";
+    heading.accessibilityLabel =
+        [self.session.preset[@"sectionLabel"] stringByAppendingString:@" title"];
     self.chapterTitle = heading;
     __weak NeonApp* weakSelf = self;
     NSString* identifier = self.session.selectedSectionID;
     heading.commitTitle = ^BOOL(NSString* title) {
       return [weakSelf renameInline:title section:identifier];
     };
-    heading.alignment = NSTextAlignmentCenter;
-    NSStackView* stack = column(@[ kicker, heading ], 18);
+    heading.alignment = kicker.alignment;
+    NSMutableArray* header = [NSMutableArray arrayWithArray:@[ kicker, heading ]];
+    if (!self.session.text.length && self.session.sectionGuidance.length) {
+        NSTextField* guidance = [NSTextField wrappingLabelWithString:self.session.sectionGuidance];
+        self.guidance = guidance;
+        guidance.font = NeonUI(13);
+        guidance.textColor = NeonMuted();
+        [guidance.widthAnchor constraintLessThanOrEqualToConstant:540].active = YES;
+        [header addObject:guidance];
+    }
+    NSStackView* stack = column(header, 18);
     stack.edgeInsets = NSEdgeInsetsMake(46, 44, 18, 44);
     stack.alignment = NSLayoutAttributeCenterX;
     pin(stack, self.content.view);
+    [heading.widthAnchor constraintEqualToAnchor:stack.widthAnchor constant:-88].active = YES;
+    [kicker.widthAnchor constraintEqualToAnchor:heading.widthAnchor].active = YES;
     NSBox* rule = [NSBox new];
     rule.boxType = NSBoxSeparator;
     [rule.widthAnchor constraintEqualToConstant:130].active = YES;
@@ -735,23 +772,42 @@ NSUInteger words(NSString* text) {
     if (!self.editor)
         return;
     NSRange selection = self.editor.selectedRange;
-    self.editor.font = NeonManuscriptFont(NeonTextSize());
+    self.editor.font = ([NSUserDefaults.standardUserDefaults objectForKey:@"manuscriptFont"]
+                            ? NeonManuscriptFont(NeonTextSize())
+                            : NeonFontNamed(self.session.preset[@"font"], NeonTextSize()));
     NSMutableParagraphStyle* paragraph = [NSMutableParagraphStyle new];
     paragraph.lineSpacing = NeonLineSpacing();
-    paragraph.paragraphSpacing = NeonParagraphSpacing();
+    paragraph.paragraphSpacing =
+        [NSUserDefaults.standardUserDefaults objectForKey:@"paragraphSpacing"]
+            ? NeonParagraphSpacing()
+            : [self.session.preset[@"paragraphSpacing"] doubleValue];
+    paragraph.lineHeightMultiple = [self.session.preset[@"lineHeightMultiple"] doubleValue];
+    paragraph.firstLineHeadIndent = [self.session.preset[@"firstLineIndent"] doubleValue];
+    if ([self.session.sections count]) {
+        for (NSDictionary* section in self.session.sections)
+            if ([section[@"id"] isEqual:self.session.selectedSectionID] &&
+                [section[@"role"] isEqual:@"references"]) {
+                paragraph.firstLineHeadIndent = 0;
+                paragraph.headIndent = 24;
+            }
+    }
     self.measureConstraint.constant = NeonTextMeasure();
     self.editor.continuousSpellCheckingEnabled = NeonWritingPreference(@"spellcheck");
     self.editor.automaticQuoteSubstitutionEnabled = NeonWritingPreference(@"smartQuotes");
     self.editor.automaticDashSubstitutionEnabled = NeonWritingPreference(@"smartDashes");
     self.editor.defaultParagraphStyle = paragraph;
     [self.editor.textStorage addAttributes:@{
-        NSFontAttributeName : NeonManuscriptFont(NeonTextSize()),
+        NSFontAttributeName : ([NSUserDefaults.standardUserDefaults objectForKey:@"manuscriptFont"]
+                                   ? NeonManuscriptFont(NeonTextSize())
+                                   : NeonFontNamed(self.session.preset[@"font"], NeonTextSize())),
         NSParagraphStyleAttributeName : paragraph,
         NSForegroundColorAttributeName : NeonInk()
     }
                                      range:NSMakeRange(0, self.editor.string.length)];
     self.editor.typingAttributes = @{
-        NSFontAttributeName : NeonManuscriptFont(NeonTextSize()),
+        NSFontAttributeName : ([NSUserDefaults.standardUserDefaults objectForKey:@"manuscriptFont"]
+                                   ? NeonManuscriptFont(NeonTextSize())
+                                   : NeonFontNamed(self.session.preset[@"font"], NeonTextSize())),
         NSParagraphStyleAttributeName : paragraph,
         NSForegroundColorAttributeName : NeonInk()
     };
@@ -773,6 +829,7 @@ NSUInteger words(NSString* text) {
         [self showError:error];
         return;
     }
+    self.guidance.hidden = self.editor.string.length > 0;
     [self updateStatus:NO];
     [self.timer invalidate];
     self.timer = [NSTimer scheduledTimerWithTimeInterval:0.6
@@ -815,11 +872,35 @@ NSUInteger words(NSString* text) {
     (void)sender;
     if (![self flush])
         return;
-    NSString* title = [self askTitle:@"Start a new project"];
-    if (!title)
+    NSAlert* alert = [NSAlert new];
+    alert.messageText = @"Start a new project";
+    NSTextField* titleField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 380, 28)];
+    titleField.placeholderString = @"Working title";
+    NSPopUpButton* presets = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 380, 28)
+                                                        pullsDown:NO];
+    for (NSDictionary* preset in NeonDocumentSession.writingPresets)
+        [presets addItemWithTitle:preset[@"title"]];
+    presets.target = self;
+    presets.action = @selector(presetChanged:);
+    self.presetDescription = [NSTextField wrappingLabelWithString:@""];
+    self.presetDescription.font = NeonUI(12);
+    self.presetDescription.textColor = NeonMuted();
+    NSStackView* fields = column(@[ titleField, presets, self.presetDescription ], 12);
+    fields.frame = NSMakeRect(0, 0, 380, 190);
+    [self.presetDescription.widthAnchor constraintEqualToConstant:380].active = YES;
+    [titleField.widthAnchor constraintEqualToConstant:380].active = YES;
+    [presets.widthAnchor constraintEqualToConstant:380].active = YES;
+    alert.accessoryView = fields;
+    [self presetChanged:presets];
+    [alert addButtonWithTitle:@"Create"];
+    [alert addButtonWithTitle:@"Cancel"];
+    if ([alert runModal] != NSAlertFirstButtonReturn)
         return;
     NSError* error = nil;
-    NSURL* url = [self.library createProject:title error:&error];
+    NSURL* url = [self.library
+        createProject:titleField.stringValue
+               preset:NeonDocumentSession.writingPresets[presets.indexOfSelectedItem][@"id"]
+                error:&error];
     if (!url) {
         [self showError:error];
         return;
@@ -829,11 +910,40 @@ NSUInteger words(NSString* text) {
     self.selectedURL = url;
     [self showEditor];
 }
+- (void)presetChanged:(NSPopUpButton*)sender {
+    NSDictionary* preset = NeonDocumentSession.writingPresets[sender.indexOfSelectedItem];
+    NSArray* titles = [preset[@"sections"] valueForKey:@"title"];
+    self.presetDescription.stringValue =
+        [NSString stringWithFormat:@"%@\n\n%@", preset[@"description"],
+                                   [titles componentsJoinedByString:@" · "]];
+}
+- (void)showHistory:(id)sender {
+    (void)sender;
+    if (!self.session || ![self flush])
+        return;
+    NeonDismissMenu();
+    [self.typography close];
+    NeonHistoryController* controller = [NeonHistoryController new];
+    controller.session = self.session;
+    __weak NeonApp* weakSelf = self;
+    controller.didRestore = ^{
+      [weakSelf showEditor];
+    };
+    self.historyWindow = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 740, 640)
+                                                     styleMask:NSWindowStyleMaskTitled
+                                                       backing:NSBackingStoreBuffered
+                                                         defer:NO];
+    self.historyWindow.title = @"History";
+    self.historyWindow.contentViewController = controller;
+    self.historyWindow.appearance = self.window.effectiveAppearance;
+    [self.window beginSheet:self.historyWindow completionHandler:nil];
+}
 - (void)newSection:(id)sender {
     (void)sender;
     if (![self flush])
         return;
-    NSString* title = [self askTitle:@"New section"];
+    NSString* title =
+        [self askTitle:[@"New " stringByAppendingString:self.session.preset[@"sectionLabel"]]];
     if (!title)
         return;
     NSError* error = nil;
@@ -1316,7 +1426,38 @@ NSUInteger words(NSString* text) {
 - (void)finishSettingsSmoke {
     [self capture:@"native-settings.png"];
     [self.settings close];
-    printf("Shared Mac editor/navigation/reopen, commands and settings passed\n");
+    NSError* error = nil;
+    if (![self.session createCheckpoint:@"Before review" error:&error])
+        exit(11);
+    NSString* checkpoint = self.session.history.firstObject[@"id"];
+    NSString* original = self.session.text;
+    if (![self.session replaceText:@"An unsaved revision" error:&error] ||
+        ![self.session restoreRevision:checkpoint error:&error] ||
+        ![self.session.text isEqual:original])
+        exit(11);
+    [self showEditor];
+    [self showHistory:nil];
+    [self performSelector:@selector(captureHistory) withObject:nil afterDelay:1];
+}
+- (void)captureHistory {
+    NeonHistoryController* controller = (id)self.historyWindow.contentViewController;
+    [controller selectRevisionAtIndex:1];
+    [self capture:@"native-history.png"];
+    [self.window endSheet:self.historyWindow];
+    NSError* error = nil;
+    NSURL* url = [self.library createProject:@"The tidal study" preset:@"research" error:&error];
+    self.session = [self.library openURL:url error:&error];
+    self.selectedURL = url;
+    if (self.session.sections.count != 6 || ![self.session.sectionTitle isEqual:@"Abstract"])
+        exit(12);
+    [self showEditor];
+    if (self.editor.defaultParagraphStyle.lineHeightMultiple != 2)
+        exit(12);
+    [self performSelector:@selector(capturePreset) withObject:nil afterDelay:1];
+}
+- (void)capturePreset {
+    [self capture:@"native-research.png"];
+    printf("Shared Mac editor/navigation/reopen, commands, settings, history and presets passed\n");
     [NSApp terminate:nil];
 }
 @end

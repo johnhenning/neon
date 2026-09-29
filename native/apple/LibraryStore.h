@@ -9,6 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSArray<NSDictionary*>*)projects:(NSError**)error;
 - (nullable NeonDocumentSession*)openURL:(NSURL*)url error:(NSError**)error;
 - (nullable NSURL*)createProject:(NSString*)title error:(NSError**)error;
+- (nullable NSURL*)createProject:(NSString*)title preset:(NSString*)preset error:(NSError**)error;
 - (nullable NSArray<NSDictionary*>*)trashedProjects:(NSError**)error;
 - (BOOL)setProject:(NSURL*)url trashed:(BOOL)trashed error:(NSError**)error;
 - (nullable NSURL*)duplicateProject:(NSURL*)url error:(NSError**)error;

@@ -1,4 +1,5 @@
 #include "neon/document.h"
+#include "neon/presets.h"
 #include <limits>
 #include <set>
 #include <string>
@@ -42,19 +43,20 @@ bool validUTF8(const std::string& text) {
 }
 } // namespace
 Result validate(const Project& project) {
-    if (project.schemaVersion != 1 && project.schemaVersion != 2)
+    if (project.schemaVersion != 1 && project.schemaVersion != 2 && project.schemaVersion != 3)
         return Result::failure("Unsupported project schema; do not overwrite this file.");
     std::set<std::string> ids;
     auto id = [&](const std::string& value) {
         return !value.empty() && validUTF8(value) && ids.insert(value).second;
     };
-    if (!id(project.id) || !validUTF8(project.title))
+    if (!id(project.id) || !validUTF8(project.title) || !writingPreset(project.preset))
         return Result::failure("Invalid project metadata.");
     for (const auto& document : project.documents) {
         if (!id(document.id) || !validUTF8(document.title))
             return Result::failure("Invalid or duplicate document identifier.");
         for (const auto& section : document.sections) {
-            if (!id(section.id) || !validUTF8(section.title))
+            if (!id(section.id) || !validUTF8(section.title) || section.role.empty() ||
+                !validUTF8(section.role))
                 return Result::failure("Invalid or duplicate section identifier.");
             for (const auto& block : section.blocks) {
                 if (!id(block.id) || !validUTF8(block.text) || block.createdBy.empty() ||
@@ -64,6 +66,23 @@ Result validate(const Project& project) {
             }
         }
     }
+    return Result::success();
+}
+Result restoreProject(Project* project, const Project& snapshot) {
+    if (!project || project->id != snapshot.id)
+        return Result::failure("This revision belongs to a different project.");
+    auto result = validate(*project);
+    if (!result.ok)
+        return result;
+    result = validate(snapshot);
+    if (!result.ok)
+        return result;
+    if (project->revision == std::numeric_limits<std::uint64_t>::max())
+        return Result::failure("Revision limit reached.");
+    auto restored = snapshot;
+    restored.schemaVersion = 3;
+    restored.revision = project->revision + 1;
+    *project = std::move(restored);
     return Result::success();
 }
 Result replaceText(Project* project, const std::string& blockId, const std::string& text,
@@ -141,7 +160,8 @@ Result changeSection(Project* project, const std::string& id, Mutation mutation)
             result = mutation(document, i);
             if (!result.ok)
                 return result;
-            candidate.schemaVersion = 2;
+            if (candidate.schemaVersion < 2)
+                candidate.schemaVersion = 2;
             ++candidate.revision;
             result = validate(candidate);
             if (!result.ok)

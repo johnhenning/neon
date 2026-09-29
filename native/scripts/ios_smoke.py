@@ -59,7 +59,7 @@ for family in ['iPhone', 'iPad']:
             raise SystemExit(f'{family}: process relaunch lost document text')
         run('io', udid, 'screenshot', str(output / f'{family}-reopened.png'))
         run('terminate', udid, bundle)
-        for mode in ['library', 'focus', 'typography', 'menu', 'settings']:
+        for mode in ['library', 'focus', 'typography', 'menu', 'settings', 'history']:
             if mode == 'focus' and family != 'iPad':
                 continue
             mode_marker = marker.with_name(f'smoke-{mode}.txt')
@@ -78,6 +78,17 @@ for family in ['iPhone', 'iPad']:
         run('launch', udid, bundle, '--smoke-reopen')
         time.sleep(3)
         run('io', udid, 'screenshot', str(output / f'{family}-dark.png'))
+        run('terminate', udid, bundle)
+        run('ui', udid, 'appearance', 'light')
+        run('launch', udid, bundle, '--smoke-preset')
+        preset_marker = marker.with_name('smoke-preset.txt')
+        deadline = time.monotonic() + 30
+        while not preset_marker.exists() and time.monotonic() < deadline:
+            time.sleep(1)
+        if not preset_marker.exists() or preset_marker.read_text() != 'PASS':
+            raise SystemExit(f'{family}: preset creation failed')
+        time.sleep(2)
+        run('io', udid, 'screenshot', str(output / f'{family}-research.png'))
         run('terminate', udid, bundle)
     finally:
         if booted_here:

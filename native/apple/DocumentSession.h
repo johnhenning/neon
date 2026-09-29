@@ -4,6 +4,16 @@
 NS_ASSUME_NONNULL_BEGIN
 // Main-thread, single-window prototype bridge. No C++ or UI types escape this API.
 @interface NeonDocumentSession : NSObject
++ (NSArray<NSDictionary*>*)writingPresets;
+@property(nonatomic, readonly) NSDictionary* preset;
+@property(nonatomic, readonly) NSString* sectionGuidance;
+- (NSString*)sectionLabelAtIndex:(NSUInteger)index;
+// Only valid before a new project has been saved. Never replaces an existing manuscript.
+- (BOOL)initializePreset:(NSString*)identifier error:(NSError**)error;
+@property(nonatomic, readonly) NSArray<NSDictionary*>* history;
+- (nullable NSString*)previewRevision:(NSString*)identifier error:(NSError**)error;
+- (BOOL)createCheckpoint:(NSString*)name error:(NSError**)error;
+- (BOOL)restoreRevision:(NSString*)identifier error:(NSError**)error;
 @property(nonatomic, readonly) NSString* text;
 @property(nonatomic, readonly) BOOL dirty;
 @property(nonatomic, readonly) NSString* title;

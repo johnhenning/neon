@@ -31,9 +31,30 @@ RTF prototype stays in git history and its separate preview branch; the new app
 uses Application Support/Neon Apple Preview and never loads the old library.
 
 iPhone: Library → project sections → editor. iPad: adaptive split navigation with
-an explicit Chapters toggle to hide/show the sidebar. Focus mode retains the
+an explicit section-sidebar toggle to hide/show the sidebar. Focus mode retains the
 selected section and unsaved editing state. Typography sheets follow appearance.
 
 Shared colors and bundled OFL fonts live in EditorialTheme and resources/fonts.
 Only real implemented actions appear in the UI; sync/review controls will arrive
 with their workflows. CI captures real native light/dark editor and library views.
+
+## Presets and history
+
+The portable preset catalog defines Book, Research Paper, Newsletter, Essay, and Meeting
+Notes outlines, vocabulary, section roles, and reading defaults. Schema 3 stores the
+preset identifier and each section role; titles can change without losing meaning.
+Reading defaults are projected into native paragraph styles, not rich-text export.
+
+The Foundation adapter stores local history inside the same atomic JSON envelope as
+the current draft. Changed saves add a full snapshot at most once per minute; named
+checkpoints capture exact drafts. Project-wide restore validates identity, preserves
+the current draft in a checkpoint, increments the current revision, and writes the
+restored content and both history entries together before changing in-memory state.
+Failed writes/conflicts retain the original draft. Snapshots exclude nested history.
+
+Schema 1/2 originals receive byte-for-byte migration backups; all history travels
+inside the project through Trash and restore. Duplicates retain content/roles with
+new identities and independent history. Unknown schemas, malformed history, and
+foreign-project snapshots are rejected. No automatic retention/deletion is performed.
+Large-file scaling, asynchronous storage, coordinated writes, diff views, and scoped
+restore remain later work. The history UI is a local project browser, not sync or undo.
