@@ -466,8 +466,24 @@ NSUInteger words(NSString* text) {
 - (void)toggleSidebar:(id)sender {
     (void)sender;
     NSSplitViewItem* sidebar = self.split.splitViewItems.firstObject;
-    sidebar.collapsed = !sidebar.collapsed;
-    [self workspaceGeometryChanged:nil];
+    BOOL collapsed = !sidebar.collapsed;
+    if (NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) {
+        sidebar.collapsed = collapsed;
+        [self workspaceGeometryChanged:nil];
+        return;
+    }
+    [NSAnimationContext
+        runAnimationGroup:^(NSAnimationContext* context) {
+          context.duration = 0.28;
+          context.timingFunction =
+              [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+          // Animate the native split layout so the manuscript reflows with the
+          // pane. Resize notifications keep the toolbar pill following it.
+          sidebar.animator.collapsed = collapsed;
+        }
+        completionHandler:^{
+          [self alignWorkspacePill];
+        }];
 }
 - (void)clear:(NSView*)view {
     for (NSView* child in view.subviews.copy)
