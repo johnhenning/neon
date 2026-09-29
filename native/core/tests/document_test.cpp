@@ -39,6 +39,19 @@ int main() {
     project.documents[0].sections[0].blocks.push_back(block);
     check(!validate(project).ok, "duplicate block identity rejected");
     project.documents[0].sections[0].blocks.pop_back();
+    auto before = project.revision;
+    check(!neon::core::addSection(&project, "document",
+                                  {"section", "Duplicate", {{"new", "", "author", "author"}}})
+                  .ok &&
+              project.revision == before,
+          "duplicate structural edit rejected atomically");
+    check(neon::core::addSection(&project, "document",
+                                 {"section2", "Next", {{"new", "", "author", "author"}}})
+              .ok,
+          "append ordered section");
+    check(project.documents[0].sections.size() == 2 &&
+              project.documents[0].sections[0].id == "section",
+          "order preserved");
     project.schemaVersion = 2;
     check(!replaceText(&project, "block", "bad", "editor").ok, "future schema read-only");
     project.schemaVersion = 1;

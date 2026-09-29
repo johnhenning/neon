@@ -13,7 +13,7 @@ bundle = 'com.johnhenning.neon.applepreview'
 
 
 def run(*args):
-    return subprocess.check_output(['xcrun', 'simctl', *args], text=True).strip()
+    return subprocess.check_output(['xcrun', 'simctl', *args], text=True, timeout=300).strip()
 
 
 devices = json.loads(run('list', 'devices', 'available', '-j'))['devices']
@@ -52,6 +52,26 @@ for family in ['iPhone', 'iPad']:
         if not reopened.exists() or reopened.read_text() != 'PASS':
             raise SystemExit(f'{family}: process relaunch lost document text')
         run('io', udid, 'screenshot', str(output / f'{family}-reopened.png'))
+        run('terminate', udid, bundle)
+        for mode in ['library', 'focus']:
+            if mode == 'focus' and family != 'iPad':
+                continue
+            mode_marker = marker.with_name(f'smoke-{mode}.txt')
+            mode_marker.unlink(missing_ok=True)
+            run('ui', udid, 'appearance', 'dark' if mode == 'focus' else 'light')
+            run('launch', udid, bundle, f'--smoke-{mode}')
+            deadline = time.monotonic() + 30
+            while not mode_marker.exists() and time.monotonic() < deadline:
+                time.sleep(1)
+            if not mode_marker.exists() or mode_marker.read_text() != 'PASS':
+                raise SystemExit(f'{family}: {mode} navigation failed')
+            time.sleep(2)
+            run('io', udid, 'screenshot', str(output / f'{family}-{mode}.png'))
+            run('terminate', udid, bundle)
+        run('ui', udid, 'appearance', 'dark')
+        run('launch', udid, bundle, '--smoke-reopen')
+        time.sleep(3)
+        run('io', udid, 'screenshot', str(output / f'{family}-dark.png'))
         run('terminate', udid, bundle)
     finally:
         if booted_here:

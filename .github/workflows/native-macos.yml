@@ -40,10 +40,12 @@ jobs:
             build-native/Neon-Native-Preview.zip
             build-native/native-bookshelf.png
             build-native/native-editor.png
+            build-native/native-editor-dark.png
             build-native/dependencies.txt
             build-native/Testing/Temporary/LastTest.log
 
   ios-native:
+    timeout-minutes: 20
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4

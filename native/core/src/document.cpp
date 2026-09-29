@@ -2,6 +2,7 @@
 #include <limits>
 #include <set>
 #include <string>
+#include <utility>
 
 namespace neon::core {
 namespace {
@@ -86,5 +87,40 @@ Result replaceText(Project* project, const std::string& blockId, const std::stri
                     return Result::success();
                 }
     return Result::failure("Text block does not exist.");
+}
+Result renameProject(Project* project, const std::string& title) {
+    if (!project || title.empty() || !validUTF8(title))
+        return Result::failure("A title is required.");
+    if (project->title == title)
+        return Result::success();
+    if (project->revision == std::numeric_limits<std::uint64_t>::max())
+        return Result::failure("Revision limit reached.");
+    auto candidate = *project;
+    candidate.title = title;
+    auto result = validate(candidate);
+    if (!result.ok)
+        return result;
+    ++candidate.revision;
+    *project = std::move(candidate);
+    return Result::success();
+}
+Result addSection(Project* project, const std::string& documentId, Section section) {
+    if (!project || section.title.empty() || section.blocks.empty())
+        return Result::failure("A section needs a title and content block.");
+    if (project->revision == std::numeric_limits<std::uint64_t>::max())
+        return Result::failure("Revision limit reached.");
+    auto candidate = *project;
+    for (auto& document : candidate.documents) {
+        if (document.id != documentId)
+            continue;
+        document.sections.push_back(std::move(section));
+        auto result = validate(candidate);
+        if (!result.ok)
+            return result;
+        ++candidate.revision;
+        *project = std::move(candidate);
+        return Result::success();
+    }
+    return Result::failure("Document does not exist.");
 }
 } // namespace neon::core

@@ -1,30 +1,26 @@
-#include "MacRepository.h"
-#include "neon/workspace.h"
-#import <AppKit/AppKit.h>
+#import "EditorialTheme.h"
+#import "LibraryStore.h"
 #import <QuartzCore/QuartzCore.h>
 #include <cstdio>
 #include <cstdlib>
-#include <memory>
 #include <string>
 
 namespace {
-NSString* ns(const std::string& value) {
-    return [[NSString alloc] initWithBytes:value.data()
-                                    length:value.size()
-                                  encoding:NSUTF8StringEncoding];
-}
-std::string utf8(NSString* value) {
-    NSData* data = [value dataUsingEncoding:NSUTF8StringEncoding];
-    return {static_cast<const char*>(data.bytes), data.length};
-}
 NSTextField* label(NSString* text, NSFont* font, NSColor* color) {
-    NSTextField* view = [NSTextField wrappingLabelWithString:text];
-    view.font = font;
-    view.textColor = color;
-    return view;
+    NSTextField* label = [NSTextField wrappingLabelWithString:text];
+    label.font = font;
+    label.textColor = color;
+    return label;
 }
-NSFont* serif(CGFloat size) {
-    return [NSFont fontWithName:@"Baskerville" size:size] ?: [NSFont systemFontOfSize:size];
+NSButton* button(NSString* title, NSString* symbol, id target, SEL action) {
+    NSButton* button = [NSButton buttonWithTitle:title target:target action:action];
+    button.bezelStyle = NSBezelStyleRecessed;
+    button.font = NeonUI(15);
+    button.contentTintColor = NeonAccent();
+    if (symbol)
+        button.image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:title];
+    button.imagePosition = NSImageLeading;
+    return button;
 }
 NSStackView* column(NSArray<NSView*>* views, CGFloat spacing) {
     NSStackView* stack = [NSStackView stackViewWithViews:views];
@@ -33,24 +29,15 @@ NSStackView* column(NSArray<NSView*>* views, CGFloat spacing) {
     stack.spacing = spacing;
     return stack;
 }
-void pin(NSView* child, NSView* parent, CGFloat margin) {
+void pin(NSView* child, NSView* parent) {
     child.translatesAutoresizingMaskIntoConstraints = NO;
     [parent addSubview:child];
     [NSLayoutConstraint activateConstraints:@[
-        [child.leadingAnchor constraintEqualToAnchor:parent.leadingAnchor constant:margin],
-        [child.trailingAnchor constraintEqualToAnchor:parent.trailingAnchor constant:-margin],
-        [child.topAnchor constraintEqualToAnchor:parent.topAnchor constant:margin],
-        [child.bottomAnchor constraintEqualToAnchor:parent.bottomAnchor constant:-margin]
+        [child.leadingAnchor constraintEqualToAnchor:parent.leadingAnchor],
+        [child.trailingAnchor constraintEqualToAnchor:parent.trailingAnchor],
+        [child.topAnchor constraintEqualToAnchor:parent.topAnchor],
+        [child.bottomAnchor constraintEqualToAnchor:parent.bottomAnchor]
     ]];
-}
-NSButton* button(NSString* title, NSString* symbol, id target, SEL action) {
-    NSButton* view = [NSButton buttonWithTitle:title target:target action:action];
-    view.bezelStyle = NSBezelStyleRounded;
-    if (symbol) {
-        view.image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:title];
-        view.imagePosition = NSImageLeading;
-    }
-    return view;
 }
 NSUInteger words(NSString* text) {
     __block NSUInteger count = 0;
@@ -62,556 +49,541 @@ NSUInteger words(NSString* text) {
     return count;
 }
 } // namespace
-
-// Cover illustration is rasterized when invalidated; its layer is composited by Core Animation.
-@interface NeonCover : NSButton
-@property(nonatomic, strong) NSString* bookTitle;
-@property(nonatomic, strong) NSString* author;
-@property(nonatomic) NSInteger design;
+@interface NeonSurface : NSView
+@property(nonatomic) BOOL panel;
 @end
-@implementation NeonCover
-- (instancetype)initWithFrame:(NSRect)frame {
-    self = [super initWithFrame:frame];
-    if (self) {
-        self.wantsLayer = YES;
-        self.layer.cornerRadius = 5;
-        self.layer.masksToBounds = YES;
-        self.bordered = NO;
-    }
-    return self;
+@implementation NeonSurface
+- (void)drawRect:(NSRect)rect {
+    [(self.panel ? NeonPanel() : NeonPaper()) setFill];
+    NSRectFill(rect);
 }
-- (void)drawRect:(NSRect)dirtyRect {
-    (void)dirtyRect;
-    NSArray<NSColor*>* colors = @[
-        [NSColor colorWithRed:0.13 green:0.25 blue:0.29 alpha:1],
-        [NSColor colorWithRed:0.47 green:0.27 blue:0.20 alpha:1],
-        [NSColor colorWithRed:0.31 green:0.32 blue:0.24 alpha:1]
-    ];
-    [colors[self.design % colors.count] setFill];
+@end
+@interface NeonBookCover : NSButton
+@property(nonatomic, copy) NSString* titleText;
+@end
+@implementation NeonBookCover
+- (void)drawRect:(NSRect)rect {
+    (void)rect;
+    [[NSColor colorWithSRGBRed:0.84 green:0.81 blue:0.72 alpha:1] setFill];
     NSRectFill(self.bounds);
-    [[NSColor colorWithWhite:1 alpha:0.10] setFill];
-    for (int i = 0; i < 7; ++i) {
-        NSBezierPath* path =
-            [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(-65 + i * 22, 30 + i * 9, 210, 145)];
-        path.lineWidth = 1.4;
-        [[NSColor colorWithWhite:1 alpha:0.17] setStroke];
-        [path stroke];
-    }
-    [[NSColor colorWithWhite:0 alpha:0.14] setFill];
-    NSRectFill(NSMakeRect(0, 0, 9, self.bounds.size.height));
-    NSMutableParagraphStyle* style = [NSMutableParagraphStyle new];
-    style.alignment = NSTextAlignmentLeft;
-    [self.bookTitle drawInRect:NSMakeRect(25, 137, self.bounds.size.width - 44, 112)
+    [[NSColor colorWithSRGBRed:0.24 green:0.37 blue:0.39 alpha:1] setFill];
+    NSRectFill(NSMakeRect(0, 0, self.bounds.size.width, self.bounds.size.height * 0.28));
+    [[NSColor colorWithSRGBRed:0.13 green:0.26 blue:0.29 alpha:1] setFill];
+    [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(-30, -50, 230, 100)] fill];
+    [self.titleText drawInRect:NSInsetRect(NSMakeRect(0, 70, self.bounds.size.width,
+                                                      self.bounds.size.height - 80),
+                                           18, 12)
                 withAttributes:@{
-                    NSFontAttributeName : serif(29),
-                    NSForegroundColorAttributeName : NSColor.whiteColor,
-                    NSParagraphStyleAttributeName : style
+                    NSFontAttributeName : NeonSerif(21),
+                    NSForegroundColorAttributeName : NSColor.blackColor
                 }];
-    [self.author.uppercaseString drawInRect:NSMakeRect(25, 25, self.bounds.size.width - 44, 20)
-                             withAttributes:@{
-                                 NSFontAttributeName : [NSFont systemFontOfSize:9
-                                                                         weight:NSFontWeightMedium],
-                                 NSKernAttributeName : @1.6,
-                                 NSForegroundColorAttributeName : NSColor.whiteColor
-                             }];
 }
 @end
-
 @interface NeonApp
-    : NSObject <NSApplicationDelegate, NSWindowDelegate, NSToolbarDelegate, NSTextViewDelegate> {
-    std::unique_ptr<neon::core::LibraryRepository> repository_;
-    std::unique_ptr<neon::core::Workspace> workspace_;
-    std::string selectedBook_;
-    std::string selectedChapter_;
-}
+    : NSObject <NSApplicationDelegate, NSWindowDelegate, NSTextViewDelegate, NSToolbarDelegate>
 @property(nonatomic, strong) NSWindow* window;
 @property(nonatomic, strong) NSSplitViewController* split;
 @property(nonatomic, strong) NSViewController* sidebar;
 @property(nonatomic, strong) NSViewController* content;
+@property(nonatomic, strong) NeonLibraryStore* library;
+@property(nonatomic, strong) NSArray<NSDictionary*>* projects;
+@property(nonatomic, strong) NeonDocumentSession* session;
+@property(nonatomic, strong) NSURL* selectedURL;
 @property(nonatomic, strong) NSTextView* editor;
 @property(nonatomic, strong) NSTextField* status;
-@property(nonatomic, strong) NSTimer* saveTimer;
-@property(nonatomic) BOOL loading;
+@property(nonatomic, strong) NSTimer* timer;
+@property(nonatomic, strong) NSPanel* typography;
 @property(nonatomic) BOOL smoke;
-@property(nonatomic, strong) NSString* directory;
+- (BOOL)flush;
 @end
-
 @implementation NeonApp
-- (void)applicationDidFinishLaunching:(NSNotification*)notification {
-    (void)notification;
-    NSArray<NSString*>* args = NSProcessInfo.processInfo.arguments;
-    self.smoke = [args containsObject:@"--smoke-test"];
-    self.directory =
-        self.smoke ? [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString]
-                   : [[NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory,
-                                                           NSUserDomainMask, YES) firstObject]
-                         stringByAppendingPathComponent:@"Neon Native Prototype"];
-    repository_ = neon::mac::makeRepository(utf8(self.directory));
-    workspace_ = std::make_unique<neon::core::Workspace>(*repository_);
-    auto opened = workspace_->open();
-    if (!opened.ok) {
-        [self showError:ns(opened.message)];
-        [NSApp terminate:nil];
-        return;
-    }
-    if (self.smoke) {
-        workspace_->addBook(
-            {"sea",
-             "The Quiet Sea",
-             "A. Writer",
-             {{"arrival",
-               "The arrival",
-               "The sea was quiet that morning. Mara stood at the end of the pier, holding a "
-               "letter she had promised never to open.\n\nBeyond the harbor, a single light moved "
-               "through the fog. It had been there yesterday, too, and the day before.\n\nShe "
-               "tucked the envelope into her coat and began to walk.",
-               {}},
-              {"tide",
-               "Low tide",
-               "By noon the water had drawn back from the old stone steps.",
-               {}}}});
-        workspace_->addBook(
-            {"orchard", "The Orchard\nat Dusk", "A. Writer", {{"one", "Chapter one", "", {}}}});
-        workspace_->addBook(
-            {"letters", "Letters from\nElsewhere", "A. Writer", {{"one", "Chapter one", "", {}}}});
-        workspace_->save();
+- (void)applicationDidFinishLaunching:(NSNotification*)note {
+    (void)note;
+    NeonRegisterFonts();
+    self.smoke = [NSProcessInfo.processInfo.arguments containsObject:@"--smoke-test"];
+    NSURL* root =
+        self.smoke
+            ? [NSURL fileURLWithPath:[NSTemporaryDirectory()
+                                         stringByAppendingPathComponent:NSUUID.UUID.UUIDString]]
+            : [[[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
+                                                      inDomains:NSUserDomainMask]
+                      .firstObject URLByAppendingPathComponent:@"Neon Apple Preview"];
+    self.library = [[NeonLibraryStore alloc] initWithDirectory:root];
+    NSError* error = nil;
+    if (self.smoke && ![self.library seedPreview:&error]) {
+        fprintf(stderr, "%s\n", error.localizedDescription.UTF8String);
+        exit(2);
     }
     self.window = [[NSWindow alloc]
-        initWithContentRect:NSMakeRect(0, 0, 1180, 780)
+        initWithContentRect:NSMakeRect(0, 0, 1180, 820)
                   styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                             NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable
                     backing:NSBackingStoreBuffered
                       defer:NO];
     self.window.title = @"Neon";
-    self.window.subtitle = @"Native preview";
-    self.window.minSize = NSMakeSize(860, 580);
+    self.window.minSize = NSMakeSize(760, 560);
     self.window.delegate = self;
     self.window.toolbarStyle = NSWindowToolbarStyleUnified;
-    self.window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleLine;
-    NSToolbar* toolbar = [[NSToolbar alloc] initWithIdentifier:@"NeonToolbar"];
+    NSToolbar* toolbar = [[NSToolbar alloc] initWithIdentifier:@"NeonEditorial"];
     toolbar.delegate = self;
     toolbar.displayMode = NSToolbarDisplayModeIconOnly;
     self.window.toolbar = toolbar;
     self.split = [NSSplitViewController new];
     self.sidebar = [NSViewController new];
-    NSVisualEffectView* sidebar = [NSVisualEffectView new];
-    sidebar.material = NSVisualEffectMaterialSidebar;
-    sidebar.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-    sidebar.state = NSVisualEffectStateFollowsWindowActiveState;
-    sidebar.wantsLayer = YES;
-    self.sidebar.view = sidebar;
+    NeonSurface* panel = [NeonSurface new];
+    panel.panel = YES;
+    self.sidebar.view = panel;
     NSSplitViewItem* side = [NSSplitViewItem sidebarWithViewController:self.sidebar];
-    side.minimumThickness = 195;
-    side.maximumThickness = 250;
+    side.minimumThickness = 220;
+    side.maximumThickness = 290;
+    side.canCollapse = YES;
     [self.split addSplitViewItem:side];
     self.content = [NSViewController new];
-    self.content.view = [NSView new];
-    self.content.view.wantsLayer = YES;
+    self.content.view = [NeonSurface new];
     [self.split addSplitViewItem:[NSSplitViewItem splitViewItemWithViewController:self.content]];
     self.window.contentViewController = self.split;
+    [self applyAppearance];
     [self installMenu];
     [self showLibrary:nil];
     [self.window center];
     [self.window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
-    if (self.smoke) {
+    if (self.smoke)
         [self performSelector:@selector(captureLibrary) withObject:nil afterDelay:2];
+}
+- (void)applyAppearance {
+    self.window.appearance =
+        NeonAppearance() == 1   ? [NSAppearance appearanceNamed:NSAppearanceNameAqua]
+        : NeonAppearance() == 2 ? [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua]
+                                : nil;
+    self.window.backgroundColor = NeonPaper();
+    [self.sidebar.view setNeedsDisplay:YES];
+    [self.content.view setNeedsDisplay:YES];
+    if (self.editor) {
+        self.editor.backgroundColor = NeonPaper();
+        self.editor.textColor = NeonInk();
     }
 }
-- (void)showError:(NSString*)message {
+- (void)showError:(NSError*)error {
     if (self.smoke) {
-        fprintf(stderr, "Neon native: %s\n", message.UTF8String);
+        fprintf(stderr, "%s\n", error.localizedDescription.UTF8String);
         exit(2);
     }
     NSAlert* alert = [NSAlert new];
-    alert.messageText = @"Your draft has not been discarded";
-    alert.informativeText = message;
+    alert.messageText = @"Could not save or open this project";
+    alert.informativeText = error.localizedDescription ?: @"Your current draft remains open.";
     [alert runModal];
 }
 - (void)installMenu {
     NSMenu* menu = [NSMenu new];
-    NSMenuItem* appItem = [NSMenuItem new];
-    NSMenu* appMenu = [[NSMenu alloc] initWithTitle:@"Neon"];
-    [appMenu addItemWithTitle:@"About Neon" action:@selector(about:) keyEquivalent:@""];
-    [appMenu addItem:[NSMenuItem separatorItem]];
-    [appMenu addItemWithTitle:@"Quit Neon" action:@selector(terminate:) keyEquivalent:@"q"];
-    appItem.submenu = appMenu;
-    [menu addItem:appItem];
-    NSMenuItem* fileItem = [[NSMenuItem alloc] initWithTitle:@"File" action:nil keyEquivalent:@""];
-    NSMenu* file = [[NSMenu alloc] initWithTitle:@"File"];
-    NSMenuItem* create = [file addItemWithTitle:@"New Book…"
-                                         action:@selector(newBook:)
-                                  keyEquivalent:@"n"];
-    create.target = self;
-    NSMenuItem* save = [file addItemWithTitle:@"Save"
-                                       action:@selector(saveAction:)
-                                keyEquivalent:@"s"];
-    save.target = self;
-    fileItem.submenu = file;
-    [menu addItem:fileItem];
-    NSMenuItem* editItem = [[NSMenuItem alloc] initWithTitle:@"Edit" action:nil keyEquivalent:@""];
-    NSMenu* edit = [[NSMenu alloc] initWithTitle:@"Edit"];
-    [edit addItemWithTitle:@"Undo" action:@selector(undo:) keyEquivalent:@"z"];
-    NSMenuItem* redo = [edit addItemWithTitle:@"Redo" action:@selector(redo:) keyEquivalent:@"z"];
-    redo.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
-    [edit addItem:[NSMenuItem separatorItem]];
-    [edit addItemWithTitle:@"Cut" action:@selector(cut:) keyEquivalent:@"x"];
-    [edit addItemWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
-    [edit addItemWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"];
-    [edit addItemWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
-    editItem.submenu = edit;
-    [menu addItem:editItem];
-    NSMenuItem* formatItem = [[NSMenuItem alloc] initWithTitle:@"Format"
-                                                        action:nil
-                                                 keyEquivalent:@""];
-    NSMenu* format = [[NSMenu alloc] initWithTitle:@"Format"];
-    NSMenuItem* fonts = [format addItemWithTitle:@"Show Fonts"
-                                          action:@selector(orderFrontFontPanel:)
-                                   keyEquivalent:@"t"];
-    fonts.target = NSFontManager.sharedFontManager;
-    [format addItemWithTitle:@"Check Spelling" action:@selector(checkSpelling:) keyEquivalent:@";"];
-    formatItem.submenu = format;
-    [menu addItem:formatItem];
+    NSMenuItem* app = [NSMenuItem new];
+    app.submenu = [[NSMenu alloc] initWithTitle:@"Neon"];
+    [app.submenu addItemWithTitle:@"About Neon" action:@selector(about:) keyEquivalent:@""];
+    [app.submenu addItemWithTitle:@"Typography…"
+                           action:@selector(showTypography:)
+                    keyEquivalent:@","];
+    [app.submenu addItemWithTitle:@"Quit Neon" action:@selector(terminate:) keyEquivalent:@"q"];
+    [menu addItem:app];
+    NSMenuItem* file = [NSMenuItem new];
+    file.submenu = [[NSMenu alloc] initWithTitle:@"File"];
+    [file.submenu addItemWithTitle:@"New Project…"
+                            action:@selector(newProject:)
+                     keyEquivalent:@"n"];
+    [file.submenu addItemWithTitle:@"Save" action:@selector(saveAction:) keyEquivalent:@"s"];
+    [menu addItem:file];
+    NSMenuItem* edit = [NSMenuItem new];
+    edit.submenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+    for (NSArray* item in @[
+             @[ @"Undo", @"undo:", @"z" ], @[ @"Redo", @"redo:", @"Z" ], @[ @"Cut", @"cut:", @"x" ],
+             @[ @"Copy", @"copy:", @"c" ], @[ @"Paste", @"paste:", @"v" ],
+             @[ @"Select All", @"selectAll:", @"a" ]
+         ])
+        [edit.submenu addItemWithTitle:item[0]
+                                action:NSSelectorFromString(item[1])
+                         keyEquivalent:item[2]];
+    [menu addItem:edit];
     NSApp.mainMenu = menu;
 }
 - (void)about:(id)sender {
     (void)sender;
     [NSApp orderFrontStandardAboutPanelWithOptions:@{
-        NSAboutPanelOptionApplicationName : @"Neon — Native Prototype",
-        NSAboutPanelOptionApplicationVersion : @"0.2 prototype",
-        NSAboutPanelOptionCredits : [[NSAttributedString alloc]
-            initWithString:@"Inspired by NEO, created by Hugh Howey.\nAn independent native "
-                           @"implementation.\nC++23 core · AppKit UI · Core Animation\nFeature "
-                           @"parity is not yet complete."]
+        NSAboutPanelOptionApplicationName : @"Neon",
+        NSAboutPanelOptionApplicationVersion : @"Apple preview 0.4",
+        NSAboutPanelOptionCredits :
+            [[NSAttributedString alloc] initWithString:@"A quiet place for writing."]
     }];
 }
-- (NSArray<NSToolbarItemIdentifier>*)toolbarDefaultItemIdentifiers:(NSToolbar*)toolbar {
+- (NSArray*)toolbarDefaultItemIdentifiers:(NSToolbar*)toolbar {
     (void)toolbar;
-    return @[ @"library", NSToolbarFlexibleSpaceItemIdentifier, @"fonts", @"new" ];
+    return @[ @"sidebar", @"library", NSToolbarFlexibleSpaceItemIdentifier, @"type", @"new" ];
 }
-- (NSArray<NSToolbarItemIdentifier>*)toolbarAllowedItemIdentifiers:(NSToolbar*)toolbar {
+- (NSArray*)toolbarAllowedItemIdentifiers:(NSToolbar*)toolbar {
     return [self toolbarDefaultItemIdentifiers:toolbar];
 }
 - (NSToolbarItem*)toolbar:(NSToolbar*)toolbar
-        itemForItemIdentifier:(NSToolbarItemIdentifier)identifier
+        itemForItemIdentifier:(NSString*)identifier
     willBeInsertedIntoToolbar:(BOOL)flag {
     (void)toolbar;
     (void)flag;
-    NSToolbarItem* item = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
-    item.target = self;
-    if ([identifier isEqualToString:@"library"]) {
-        item.label = @"Library";
-        item.image = [NSImage imageWithSystemSymbolName:@"books.vertical"
-                               accessibilityDescription:@"Library"];
-        item.action = @selector(showLibrary:);
-    } else if ([identifier isEqualToString:@"new"]) {
-        item.label = @"New Book";
-        item.image = [NSImage imageWithSystemSymbolName:@"square.and.pencil"
-                               accessibilityDescription:@"New Book"];
-        item.action = @selector(newBook:);
-    } else {
-        item.label = @"Typography";
-        item.image = [NSImage imageWithSystemSymbolName:@"textformat"
-                               accessibilityDescription:@"Typography"];
-        item.target = NSFontManager.sharedFontManager;
-        item.action = @selector(orderFrontFontPanel:);
-    }
-    item.toolTip = item.label;
-    return item;
+    NSDictionary* config = @{
+        @"sidebar" : @[ @"Toggle sidebar", @"sidebar.left", @"toggleSidebar:" ],
+        @"library" : @[ @"Library", @"books.vertical", @"showLibrary:" ],
+        @"type" : @[ @"Typography", @"textformat", @"showTypography:" ],
+        @"new" : @[ @"New Project", @"plus", @"newProject:" ]
+    };
+    NSArray* item = config[identifier];
+    NSToolbarItem* result = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
+    result.label = item[0];
+    result.toolTip = item[0];
+    result.target = self;
+    result.action = NSSelectorFromString(item[2]);
+    result.image = [NSImage imageWithSystemSymbolName:item[1] accessibilityDescription:item[0]];
+    return result;
 }
-- (void)clearView:(NSView*)view {
+- (void)toggleSidebar:(id)sender {
+    [self.split toggleSidebar:sender];
+}
+- (void)clear:(NSView*)view {
     for (NSView* child in view.subviews.copy)
         [child removeFromSuperview];
 }
-- (const neon::core::Book*)currentBook {
-    for (const auto& book : workspace_->library().books)
-        if (book.id == selectedBook_)
-            return &book;
-    return nullptr;
-}
 - (void)buildSidebar {
-    [self clearView:self.sidebar.view];
-    NSMutableArray<NSView*>* views = [NSMutableArray array];
-    [views addObject:label(@"NEON", [NSFont systemFontOfSize:11 weight:NSFontWeightBold],
-                           NSColor.secondaryLabelColor)];
-    [views addObject:button(@"All Books", @"books.vertical", self, @selector(showLibrary:))];
-    const auto* book = [self currentBook];
-    if (book) {
-        [views
-            addObject:label(@"MANUSCRIPT", [NSFont systemFontOfSize:10 weight:NSFontWeightSemibold],
-                            NSColor.secondaryLabelColor)];
+    [self clear:self.sidebar.view];
+    NSMutableArray* rows = [NSMutableArray
+        arrayWithObjects:label(@"NEON", NeonUI(12), NeonMuted()),
+                         button(@"Library", @"books.vertical", self, @selector(showLibrary:)), nil];
+    if (self.session) {
+        [rows addObject:label(self.session.title, NeonSerif(23), NeonInk())];
+        [rows addObject:label(@"MANUSCRIPT", NeonUI(11), NeonMuted())];
         NSInteger index = 0;
-        for (const auto& chapter : book->chapters) {
-            NSButton* row = button(ns(chapter.title), @"doc.text", self, @selector(selectChapter:));
-            row.tag = index++;
-            row.bezelStyle = NSBezelStyleRecessed;
-            row.buttonType = NSButtonTypePushOnPushOff;
-            row.state =
-                chapter.id == selectedChapter_ ? NSControlStateValueOn : NSControlStateValueOff;
+        for (NSDictionary* section in self.session.sections) {
+            NSButton* row =
+                button([NSString stringWithFormat:@"%ld   %@", ++index, section[@"title"]], nil,
+                       self, @selector(selectSection:));
+            row.tag = index - 1;
             row.alignment = NSTextAlignmentLeft;
-            [views addObject:row];
+            row.buttonType = NSButtonTypePushOnPushOff;
+            row.state = [section[@"id"] isEqualToString:self.session.selectedSectionID]
+                            ? NSControlStateValueOn
+                            : NSControlStateValueOff;
+            [rows addObject:row];
         }
+        [rows addObject:button(@"New Section", @"plus", self, @selector(newSection:))];
     } else {
-        [views addObject:label(@"ON THIS MAC",
-                               [NSFont systemFontOfSize:10 weight:NSFontWeightSemibold],
-                               NSColor.secondaryLabelColor)];
-        [views addObject:label([NSString stringWithFormat:@"%lu books",
-                                                          workspace_->library().books.size()],
-                               [NSFont systemFontOfSize:13], NSColor.secondaryLabelColor)];
-        [views
-            addObject:label(@"A quiet place\nfor your next story.", serif(22), NSColor.labelColor)];
+        [rows addObject:label(@"ON THIS MAC", NeonUI(11), NeonMuted())];
     }
-    NSStackView* stack = column(views, 20);
+    NSScrollView* scroll = [NSScrollView new];
+    scroll.drawsBackground = NO;
+    scroll.hasVerticalScroller = YES;
+    pin(scroll, self.sidebar.view);
+    NSStackView* stack = column(rows, 22);
+    stack.edgeInsets = NSEdgeInsetsMake(28, 20, 28, 16);
     stack.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.sidebar.view addSubview:stack];
-    [NSLayoutConstraint activateConstraints:@[
-        [stack.leadingAnchor constraintEqualToAnchor:self.sidebar.view.leadingAnchor constant:20],
-        [stack.trailingAnchor constraintEqualToAnchor:self.sidebar.view.trailingAnchor
-                                             constant:-16],
-        [stack.topAnchor constraintEqualToAnchor:self.sidebar.view.topAnchor constant:28]
-    ]];
-    NSTextField* credit = label(@"Inspired by Hugh Howey’s NEO", [NSFont systemFontOfSize:10],
-                                NSColor.tertiaryLabelColor);
-    credit.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.sidebar.view addSubview:credit];
-    [NSLayoutConstraint activateConstraints:@[
-        [credit.leadingAnchor constraintEqualToAnchor:self.sidebar.view.leadingAnchor constant:20],
-        [credit.trailingAnchor constraintEqualToAnchor:self.sidebar.view.trailingAnchor
-                                              constant:-16],
-        [credit.bottomAnchor constraintEqualToAnchor:self.sidebar.view.bottomAnchor constant:-20]
-    ]];
+    scroll.documentView = stack;
+    [stack.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor].active = YES;
 }
 - (void)showLibrary:(id)sender {
     (void)sender;
     if (![self flush])
         return;
     self.editor = nil;
-    selectedBook_.clear();
-    selectedChapter_.clear();
+    self.session = nil;
+    self.selectedURL = nil;
+    self.status = nil;
     self.window.title = @"Neon";
     self.window.subtitle = @"Library";
     [self buildSidebar];
-    [self clearView:self.content.view];
+    [self clear:self.content.view];
+    NSError* error = nil;
+    self.projects = [self.library projects:&error];
+    if (!self.projects) {
+        [self showError:error];
+        return;
+    }
     NSScrollView* scroll = [NSScrollView new];
-    scroll.hasVerticalScroller = YES;
     scroll.drawsBackground = NO;
-    scroll.wantsLayer = YES;
-    pin(scroll, self.content.view, 0);
-    NSStackView* contents = column(
+    scroll.hasVerticalScroller = YES;
+    pin(scroll, self.content.view);
+    NSStackView* stack = column(
         @[
-            label(@"YOUR LIBRARY", [NSFont systemFontOfSize:10 weight:NSFontWeightSemibold],
-                  NSColor.secondaryLabelColor),
-            label(@"Stories in the making.", serif(37), NSColor.labelColor),
-            label(@"Pick up where you left off, or begin something new.",
-                  [NSFont systemFontOfSize:13], NSColor.secondaryLabelColor)
+            label(@"Library", NeonSerif(38), NeonInk()),
+            label(@"Your projects, saved on this Mac.", NeonUI(15), NeonMuted())
         ],
         14);
-    contents.edgeInsets = NSEdgeInsetsMake(38, 38, 38, 38);
-    contents.translatesAutoresizingMaskIntoConstraints = NO;
-    scroll.documentView = contents;
-    [contents.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor].active = YES;
+    stack.edgeInsets = NSEdgeInsetsMake(36, 40, 36, 40);
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    scroll.documentView = stack;
+    [stack.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor].active = YES;
     NSInteger index = 0;
-    NSStackView* row = nil;
-    for (const auto& book : workspace_->library().books) {
-        if (index % 3 == 0) {
-            row = [NSStackView stackViewWithViews:@[]];
-            row.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-            row.spacing = 26;
-            row.alignment = NSLayoutAttributeTop;
-            [contents addArrangedSubview:row];
-            [contents setCustomSpacing:30 afterView:contents.arrangedSubviews[2]];
-        }
-        NeonCover* cover = [[NeonCover alloc] initWithFrame:NSMakeRect(0, 0, 192, 280)];
-        cover.bookTitle = ns(book.title);
-        cover.author = ns(book.author);
-        cover.design = index;
+    for (NSDictionary* project in self.projects) {
+        NeonBookCover* cover = [[NeonBookCover alloc] initWithFrame:NSMakeRect(0, 0, 110, 150)];
+        cover.titleText = project[@"title"];
+        cover.tag = index;
         cover.target = self;
-        cover.action = @selector(openBook:);
-        cover.tag = index++;
-        cover.accessibilityLabel = [@"Open " stringByAppendingString:ns(book.title)];
-        [cover.widthAnchor constraintEqualToConstant:192].active = YES;
-        [cover.heightAnchor constraintEqualToConstant:280].active = YES;
-        NSUInteger count = 0;
-        for (const auto& chapter : book.chapters)
-            count += words(ns(chapter.text));
-        NSStackView* card = column(
-            @[
-                cover, label([NSString stringWithFormat:@"%lu words  ·  Draft", count],
-                             [NSFont systemFontOfSize:11], NSColor.secondaryLabelColor)
-            ],
-            12);
-        [row addArrangedSubview:card];
+        cover.action = @selector(openProject:);
+        cover.accessibilityLabel = [@"Open " stringByAppendingString:project[@"title"]];
+        [cover.widthAnchor constraintEqualToConstant:110].active = YES;
+        [cover.heightAnchor constraintEqualToConstant:150].active = YES;
+        NSButton* title = button(project[@"title"], nil, self, @selector(openProject:));
+        title.font = NeonSerif(25);
+        title.tag = index++;
+        NSString* detail =
+            [project[@"error"] length]
+                ? project[@"error"]
+                : [NSString stringWithFormat:@"%@ sections · On this Mac", project[@"sections"]];
+        NSStackView* row = [NSStackView stackViewWithViews:@[
+            cover, column(@[ title, label(detail, NeonUI(14), NeonMuted()) ], 10)
+        ]];
+        row.spacing = 24;
+        [stack addArrangedSubview:row];
+        [stack setCustomSpacing:26 afterView:row];
     }
-    [contents addArrangedSubview:button(@"New Book", @"plus", self, @selector(newBook:))];
+    if (!self.projects.count)
+        [stack addArrangedSubview:label(@"Begin with a working title. The rest can follow.",
+                                        NeonSerif(22), NeonMuted())];
+    [stack addArrangedSubview:button(@"New Project", @"plus", self, @selector(newProject:))];
 }
-- (void)openBook:(NSControl*)sender {
-    if (![self flush])
+- (void)openProject:(NSControl*)sender {
+    if (![self flush] || sender.tag < 0 ||
+        sender.tag >= static_cast<NSInteger>(self.projects.count))
         return;
-    if (sender.tag < 0 ||
-        static_cast<std::size_t>(sender.tag) >= workspace_->library().books.size())
+    NSError* error = nil;
+    NSURL* url = self.projects[sender.tag][@"url"];
+    NeonDocumentSession* session = [self.library openURL:url error:&error];
+    if (!session) {
+        [self showError:error];
         return;
-    const auto& book = workspace_->library().books[sender.tag];
-    selectedBook_ = book.id;
-    selectedChapter_ = book.chapters.front().id;
+    }
+    self.session = session;
+    self.selectedURL = url;
     [self showEditor];
 }
-- (void)selectChapter:(NSControl*)sender {
-    if (![self flush])
+- (void)selectSection:(NSControl*)sender {
+    if (![self flush] || sender.tag < 0 ||
+        sender.tag >= static_cast<NSInteger>(self.session.sections.count))
         return;
-    const auto* book = [self currentBook];
-    if (!book || sender.tag < 0 || static_cast<std::size_t>(sender.tag) >= book->chapters.size())
+    NSError* error = nil;
+    if (![self.session selectSection:self.session.sections[sender.tag][@"id"] error:&error]) {
+        [self showError:error];
         return;
-    selectedChapter_ = book->chapters[sender.tag].id;
+    }
     [self showEditor];
 }
 - (void)showEditor {
-    self.loading = YES;
     self.editor = nil;
-    [self clearView:self.content.view];
-    const auto* book = [self currentBook];
-    if (!book)
-        return;
-    const neon::core::Chapter* chapter = nullptr;
-    for (const auto& item : book->chapters)
-        if (item.id == selectedChapter_)
-            chapter = &item;
-    if (!chapter)
-        return;
-    self.window.title = ns(book->title);
+    [self clear:self.content.view];
+    self.window.title = self.session.title;
     self.window.subtitle = @"Manuscript";
     [self buildSidebar];
-    NSStackView* stack = column(
-        @[
-            label(@"MANUSCRIPT", [NSFont systemFontOfSize:10 weight:NSFontWeightSemibold],
-                  NSColor.secondaryLabelColor),
-            label(ns(chapter->title), serif(34), NSColor.labelColor)
-        ],
-        12);
-    stack.edgeInsets = NSEdgeInsetsMake(30, 40, 16, 40);
-    pin(stack, self.content.view, 0);
+    NSTextField* kicker = label(@"MANUSCRIPT", NeonUI(12), NeonMuted());
+    kicker.alignment = NSTextAlignmentCenter;
+    NSTextField* heading = label(self.session.sectionTitle, NeonSerif(38), NeonInk());
+    heading.alignment = NSTextAlignmentCenter;
+    NSStackView* stack = column(@[ kicker, heading ], 18);
+    stack.edgeInsets = NSEdgeInsetsMake(46, 44, 18, 44);
+    stack.alignment = NSLayoutAttributeCenterX;
+    pin(stack, self.content.view);
+    NSBox* rule = [NSBox new];
+    rule.boxType = NSBoxSeparator;
+    [rule.widthAnchor constraintEqualToConstant:130].active = YES;
+    [stack addArrangedSubview:rule];
+    [stack setCustomSpacing:30 afterView:rule];
     NSScrollView* scroll = [NSScrollView new];
     scroll.hasVerticalScroller = YES;
-    scroll.borderType = NSNoBorder;
-    scroll.wantsLayer = YES;
-    scroll.drawsBackground = YES;
-    scroll.backgroundColor = NSColor.textBackgroundColor;
-    self.editor = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 600, 400)];
-    self.editor.minSize = NSMakeSize(0, 400);
+    scroll.drawsBackground = NO;
+    self.editor = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 650, 400)];
+    self.editor.minSize = NSMakeSize(0, 300);
     self.editor.maxSize = NSMakeSize(CGFLOAT_MAX, CGFLOAT_MAX);
     self.editor.verticallyResizable = YES;
     self.editor.horizontallyResizable = NO;
     self.editor.autoresizingMask = NSViewWidthSizable;
-    self.editor.textContainer.containerSize = NSMakeSize(600, CGFLOAT_MAX);
     self.editor.textContainer.widthTracksTextView = YES;
-    self.editor.textContainerInset = NSMakeSize(24, 24);
-    self.editor.wantsLayer = YES;
-    self.editor.richText = YES;
-    self.editor.importsGraphics = NO;
+    self.editor.textContainerInset = NSMakeSize(22, 10);
+    self.editor.richText = NO;
     self.editor.allowsUndo = YES;
-    self.editor.usesFontPanel = YES;
-    self.editor.automaticQuoteSubstitutionEnabled = YES;
-    self.editor.automaticDashSubstitutionEnabled = YES;
-    self.editor.continuousSpellCheckingEnabled = NO;
-    self.editor.font = serif(20);
-    self.editor.textColor = NSColor.textColor;
-    self.editor.backgroundColor = NSColor.textBackgroundColor;
-    NSMutableParagraphStyle* paragraph = [NSMutableParagraphStyle new];
-    paragraph.lineSpacing = 5;
-    paragraph.paragraphSpacing = 14;
-    NSDictionary* attributes = @{
-        NSFontAttributeName : serif(20),
-        NSForegroundColorAttributeName : NSColor.textColor,
-        NSParagraphStyleAttributeName : paragraph
-    };
-    NSAttributedString* text = nil;
-    if (!chapter->richText.empty()) {
-        NSData* rtf = [NSData dataWithBytes:chapter->richText.data()
-                                     length:chapter->richText.size()];
-        text = [[NSAttributedString alloc] initWithRTF:rtf documentAttributes:nil];
-    }
-    if (!text && !chapter->richText.empty()) {
-        self.editor = nil;
-        self.loading = NO;
-        [self showError:
-                  @"The chapter’s rich text could not be decoded. The original file is unchanged."];
-        return;
-    }
-    if (!text)
-        text = [[NSAttributedString alloc] initWithString:ns(chapter->text) attributes:attributes];
-    [self.editor.textStorage setAttributedString:text];
-    self.editor.typingAttributes = attributes;
+    self.editor.string = self.session.text;
     self.editor.delegate = self;
+    self.editor.backgroundColor = NeonPaper();
+    self.editor.textColor = NeonInk();
+    [self styleEditor];
     scroll.documentView = self.editor;
     [stack addArrangedSubview:scroll];
-    [scroll.widthAnchor constraintEqualToAnchor:stack.widthAnchor constant:-80].active = YES;
-    [scroll.heightAnchor constraintGreaterThanOrEqualToConstant:200].active = YES;
+    [scroll.widthAnchor constraintLessThanOrEqualToAnchor:stack.widthAnchor constant:-88].active =
+        YES;
+    [scroll.widthAnchor constraintLessThanOrEqualToConstant:780].active = YES;
+    NSLayoutConstraint* preferred = [scroll.widthAnchor constraintEqualToAnchor:stack.widthAnchor
+                                                                       constant:-88];
+    preferred.priority = 750;
+    preferred.active = YES;
+    [scroll.heightAnchor constraintGreaterThanOrEqualToConstant:180].active = YES;
     [scroll setContentHuggingPriority:1 forOrientation:NSLayoutConstraintOrientationVertical];
-    self.status =
-        label(@"Saved on this Mac", [NSFont systemFontOfSize:11], NSColor.secondaryLabelColor);
+    self.status = label(@"Saved on this Mac", NeonUI(12), NeonMuted());
     [stack addArrangedSubview:self.status];
-    self.loading = NO;
     [self.window makeFirstResponder:self.editor];
+    [self updateStatus:YES];
+}
+- (void)styleEditor {
+    if (!self.editor)
+        return;
+    NSRange selection = self.editor.selectedRange;
+    self.editor.font = NeonSerif(NeonTextSize());
+    NSMutableParagraphStyle* paragraph = [NSMutableParagraphStyle new];
+    paragraph.lineSpacing = NeonLineSpacing();
+    paragraph.paragraphSpacing = 18;
+    self.editor.defaultParagraphStyle = paragraph;
+    [self.editor.textStorage addAttributes:@{
+        NSFontAttributeName : NeonSerif(NeonTextSize()),
+        NSParagraphStyleAttributeName : paragraph,
+        NSForegroundColorAttributeName : NeonInk()
+    }
+                                     range:NSMakeRange(0, self.editor.string.length)];
+    self.editor.typingAttributes = @{
+        NSFontAttributeName : NeonSerif(NeonTextSize()),
+        NSParagraphStyleAttributeName : paragraph,
+        NSForegroundColorAttributeName : NeonInk()
+    };
+    self.editor.selectedRange = selection;
+}
+- (void)updateStatus:(BOOL)saved {
+    self.status.stringValue =
+        [NSString stringWithFormat:@"%lu words  ·  %@", words(self.editor.string),
+                                   saved ? @"Saved on this Mac" : @"Unsaved changes"];
 }
 - (void)textDidChange:(NSNotification*)notification {
     (void)notification;
-    if (self.loading)
+    if (self.editor.hasMarkedText)
         return;
-    if (![self captureDraft])
+    NSError* error = nil;
+    if (![self.session replaceText:self.editor.string error:&error]) {
+        [self showError:error];
         return;
-    self.status.stringValue =
-        [NSString stringWithFormat:@"%lu words  ·  Unsaved changes", words(self.editor.string)];
-    [self.saveTimer invalidate];
-    self.saveTimer = [NSTimer scheduledTimerWithTimeInterval:0.7
-                                                      target:self
-                                                    selector:@selector(saveAction:)
-                                                    userInfo:nil
-                                                     repeats:NO];
-}
-- (BOOL)captureDraft {
-    if (!self.editor || selectedBook_.empty())
-        return YES;
-    const auto* book = [self currentBook];
-    if (!book)
-        return NO;
-    for (const auto& existing : book->chapters) {
-        if (existing.id != selectedChapter_)
-            continue;
-        auto chapter = existing;
-        chapter.text = utf8(self.editor.string);
-        NSData* rtf = [self.editor RTFFromRange:NSMakeRange(0, self.editor.string.length)];
-        if (!rtf) {
-            [self showError:@"Could not encode rich text. Keep this window open."];
-            return NO;
-        }
-        const auto* bytes = static_cast<const std::uint8_t*>(rtf.bytes);
-        chapter.richText.assign(bytes, bytes + rtf.length);
-        if (chapter.text == existing.text && chapter.richText == existing.richText)
-            return YES;
-        auto result = workspace_->updateChapter(selectedBook_, chapter);
-        if (!result.ok)
-            [self showError:ns(result.message)];
-        return result.ok;
     }
-    return NO;
+    [self updateStatus:NO];
+    [self.timer invalidate];
+    self.timer = [NSTimer scheduledTimerWithTimeInterval:0.6
+                                                  target:self
+                                                selector:@selector(saveAction:)
+                                                userInfo:nil
+                                                 repeats:NO];
 }
 - (BOOL)flush {
-    if (![self captureDraft])
-        return NO;
-    [self.saveTimer invalidate];
-    auto result = workspace_->save();
-    if (!result.ok) {
-        self.status.stringValue = @"Save failed — draft retained";
-        [self showError:ns(result.message)];
+    [self.timer invalidate];
+    if (!self.session)
+        return YES;
+    if (self.editor.hasMarkedText)
+        [self.editor unmarkText];
+    NSError* error = nil;
+    if ((self.editor && ![self.session replaceText:self.editor.string error:&error]) ||
+        ![self.session save:&error]) {
+        [self showError:error];
         return NO;
     }
     if (self.editor)
-        self.status.stringValue = [NSString
-            stringWithFormat:@"%lu words  ·  Saved on this Mac", words(self.editor.string)];
+        [self updateStatus:YES];
     return YES;
 }
 - (void)saveAction:(id)sender {
     (void)sender;
     [self flush];
+}
+- (NSString*)askTitle:(NSString*)message {
+    NSAlert* alert = [NSAlert new];
+    alert.messageText = message;
+    NSTextField* field = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 320, 28)];
+    field.placeholderString = @"Working title";
+    alert.accessoryView = field;
+    [alert addButtonWithTitle:@"Create"];
+    [alert addButtonWithTitle:@"Cancel"];
+    return [alert runModal] == NSAlertFirstButtonReturn ? field.stringValue : nil;
+}
+- (void)newProject:(id)sender {
+    (void)sender;
+    if (![self flush])
+        return;
+    NSString* title = [self askTitle:@"Start a new project"];
+    if (!title)
+        return;
+    NSError* error = nil;
+    NSURL* url = [self.library createProject:title error:&error];
+    if (!url) {
+        [self showError:error];
+        return;
+    }
+    self.session = [self.library openURL:url error:&error];
+    self.selectedURL = url;
+    [self showEditor];
+}
+- (void)newSection:(id)sender {
+    (void)sender;
+    if (![self flush])
+        return;
+    NSString* title = [self askTitle:@"New section"];
+    if (!title)
+        return;
+    NSError* error = nil;
+    if (![self.session addSection:title error:&error]) {
+        [self showError:error];
+        return;
+    }
+    // The selected section changed. Display its draft before any fallible save.
+    [self showEditor];
+    [self flush];
+}
+- (void)showTypography:(id)sender {
+    (void)sender;
+    if (self.typography)
+        return;
+    self.typography = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, 360, 300)
+                                                 styleMask:NSWindowStyleMaskTitled
+                                                   backing:NSBackingStoreBuffered
+                                                     defer:NO];
+    self.typography.title = @"Typography";
+    self.typography.appearance = self.window.appearance;
+    NSSlider* size = [NSSlider sliderWithValue:NeonTextSize()
+                                      minValue:16
+                                      maxValue:32
+                                        target:self
+                                        action:@selector(changeSize:)];
+    NSSlider* space = [NSSlider sliderWithValue:NeonLineSpacing()
+                                       minValue:2
+                                       maxValue:16
+                                         target:self
+                                         action:@selector(changeSpacing:)];
+    NSSegmentedControl* appearance =
+        [NSSegmentedControl segmentedControlWithLabels:@[ @"System", @"Light", @"Dark" ]
+                                          trackingMode:NSSegmentSwitchTrackingSelectOne
+                                                target:self
+                                                action:@selector(changeAppearance:)];
+    appearance.selectedSegment = NeonAppearance();
+    NSStackView* stack = column(
+        @[
+            label(@"Literata", NeonSerif(24), NeonInk()),
+            label(@"Text size", NeonUI(14), NeonMuted()), size,
+            label(@"Line spacing", NeonUI(14), NeonMuted()), space, appearance,
+            button(@"Done", nil, self, @selector(closeTypography:))
+        ],
+        10);
+    stack.edgeInsets = NSEdgeInsetsMake(20, 24, 20, 24);
+    pin(stack, self.typography.contentView);
+    [self.window beginSheet:self.typography completionHandler:nil];
+}
+- (void)changeSize:(NSSlider*)sender {
+    [NSUserDefaults.standardUserDefaults setDouble:sender.doubleValue forKey:@"manuscriptSize"];
+    [self styleEditor];
+}
+- (void)changeSpacing:(NSSlider*)sender {
+    [NSUserDefaults.standardUserDefaults setDouble:sender.doubleValue forKey:@"manuscriptSpacing"];
+    [self styleEditor];
+}
+- (void)changeAppearance:(NSSegmentedControl*)sender {
+    [NSUserDefaults.standardUserDefaults setInteger:sender.selectedSegment forKey:@"appearance"];
+    [self applyAppearance];
+    self.typography.appearance = self.window.appearance;
+}
+- (void)closeTypography:(id)sender {
+    (void)sender;
+    [self.window endSheet:self.typography];
+    self.typography = nil;
 }
 - (BOOL)windowShouldClose:(NSWindow*)sender {
     (void)sender;
@@ -625,71 +597,58 @@ NSUInteger words(NSString* text) {
     (void)sender;
     return YES;
 }
-- (void)newBook:(id)sender {
-    (void)sender;
-    if (![self flush])
-        return;
-    NSAlert* alert = [NSAlert new];
-    alert.messageText = @"Begin a new story";
-    alert.informativeText = @"Give it a working title. You can shape the story as you go.";
-    NSTextField* title = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 26)];
-    title.placeholderString = @"Untitled";
-    alert.accessoryView = title;
-    [alert addButtonWithTitle:@"Create Book"];
-    [alert addButtonWithTitle:@"Cancel"];
-    if ([alert runModal] != NSAlertFirstButtonReturn)
-        return;
-    neon::core::Book book{utf8(NSUUID.UUID.UUIDString),
-                          utf8(title.stringValue.length ? title.stringValue : @"Untitled"),
-                          "",
-                          {{utf8(NSUUID.UUID.UUIDString), "Chapter one", "", {}}}};
-    auto result = workspace_->addBook(book);
-    if (!result.ok) {
-        [self showError:ns(result.message)];
-        return;
-    }
-    self.editor = nil;
-    selectedBook_ = book.id;
-    selectedChapter_ = book.chapters[0].id;
-    if ([self flush])
-        [self showEditor];
-}
-- (void)capture:(NSString*)filename {
+- (void)capture:(NSString*)file {
     NSTask* task = [NSTask new];
     task.executableURL = [NSURL fileURLWithPath:@"/usr/sbin/screencapture"];
-    task.arguments = @[ @"-x", filename ];
+    task.arguments = @[ @"-x", file ];
     NSError* error = nil;
     if (![task launchAndReturnError:&error])
-        [self showError:error.localizedDescription];
+        [self showError:error];
     [task waitUntilExit];
-    if (task.terminationStatus != 0)
+    if (task.terminationStatus)
         exit(3);
 }
 - (void)captureLibrary {
     [self capture:@"native-bookshelf.png"];
-    NSButton* selection = [NSButton new];
-    selection.tag = 0;
-    [self openBook:selection];
+    NSInteger index = [self.projects
+        indexOfObjectPassingTest:^BOOL(NSDictionary* project, NSUInteger i, BOOL* stop) {
+          (void)i;
+          (void)stop;
+          return [project[@"title"] isEqualToString:@"The Quiet Sea"];
+        }];
+    NSButton* button = [NSButton new];
+    button.tag = index;
+    [self openProject:button];
     [self performSelector:@selector(captureEditor) withObject:nil afterDelay:1];
 }
 - (void)captureEditor {
     [self capture:@"native-editor.png"];
-    // Exercise the real AppKit editor -> C++ command -> repository -> reopen path.
-    [self.editor setSelectedRange:NSMakeRange(self.editor.string.length, 0)];
-    [self.editor insertText:@"\n\nA new beginning." replacementRange:self.editor.selectedRange];
-    [self saveAction:nil];
-    auto reopenedRepository = neon::mac::makeRepository(utf8(self.directory));
-    neon::core::Workspace reopened(*reopenedRepository);
-    if (!reopened.open().ok ||
-        reopened.library().books[0].chapters[0].text.find("A new beginning.") ==
-            std::string::npos ||
-        reopened.library().books[0].chapters[0].richText.empty())
+    [self.editor insertText:@"\n\nA new beginning."
+           replacementRange:NSMakeRange(self.editor.string.length, 0)];
+    if (![self flush])
         exit(4);
-    printf("Native editor persistence smoke passed\n");
+    NSError* error = nil;
+    NeonDocumentSession* reopened = [self.library openURL:self.selectedURL error:&error];
+    if (![reopened.text containsString:@"A new beginning."] || reopened.sections.count != 2)
+        exit(4);
+    NSString* first = self.session.selectedSectionID;
+    NSButton* second = [NSButton new];
+    second.tag = 1;
+    [self selectSection:second];
+    if (![self.editor.string containsString:@"By noon"])
+        exit(5);
+    if (![self.session selectSection:first error:&error])
+        exit(5);
+    [self showEditor];
+    self.window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    [self performSelector:@selector(captureDark) withObject:nil afterDelay:1];
+}
+- (void)captureDark {
+    [self capture:@"native-editor-dark.png"];
+    printf("Shared Mac editor/navigation/reopen passed\n");
     [NSApp terminate:nil];
 }
 @end
-
 int main(int argc, const char* argv[]) {
     (void)argc;
     (void)argv;

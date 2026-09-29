@@ -57,53 +57,55 @@ bool decode(id root, neon::core::Project* project) {
     if (!keys(doc, @[ @"id", @"title", @"sections" ]) || !strings(doc, @[ @"id", @"title" ]))
         return false;
     id sections = doc[@"sections"];
-    if (![sections isKindOfClass:NSArray.class] || [sections count] != 1)
+    if (![sections isKindOfClass:NSArray.class] || [sections count] == 0)
         return false;
-    id section = sections[0];
-    if (!keys(section, @[ @"id", @"title", @"blocks" ]) || !strings(section, @[ @"id", @"title" ]))
-        return false;
-    id blocks = section[@"blocks"];
-    if (![blocks isKindOfClass:NSArray.class] || [blocks count] != 1)
-        return false;
-    id block = blocks[0];
-    if (!keys(block, @[ @"id", @"text", @"createdBy", @"lastEditedBy" ]) ||
-        !strings(block, @[ @"id", @"text", @"createdBy", @"lastEditedBy" ]))
-        return false;
-    project->documents = {{utf8(doc[@"id"]),
-                           utf8(doc[@"title"]),
-                           {{utf8(section[@"id"]),
-                             utf8(section[@"title"]),
-                             {{utf8(block[@"id"]), utf8(block[@"text"]), utf8(block[@"createdBy"]),
-                               utf8(block[@"lastEditedBy"])}}}}}};
+    neon::core::Document document{utf8(doc[@"id"]), utf8(doc[@"title"]), {}};
+    for (id section in sections) {
+        if (!keys(section, @[ @"id", @"title", @"blocks" ]) ||
+            !strings(section, @[ @"id", @"title" ]))
+            return false;
+        id blocks = section[@"blocks"];
+        if (![blocks isKindOfClass:NSArray.class] || [blocks count] != 1)
+            return false;
+        id block = blocks[0];
+        if (!keys(block, @[ @"id", @"text", @"createdBy", @"lastEditedBy" ]) ||
+            !strings(block, @[ @"id", @"text", @"createdBy", @"lastEditedBy" ]))
+            return false;
+        document.sections.push_back({utf8(section[@"id"]),
+                                     utf8(section[@"title"]),
+                                     {{utf8(block[@"id"]), utf8(block[@"text"]),
+                                       utf8(block[@"createdBy"]), utf8(block[@"lastEditedBy"])}}});
+    }
+    project->documents = {document};
     return neon::core::validate(*project).ok;
 }
 NSData* encode(const neon::core::Project& project, NSError** error) {
     const auto& document = project.documents[0];
-    const auto& section = document.sections[0];
-    const auto& block = section.blocks[0];
-    return
-        [NSJSONSerialization dataWithJSONObject:@{
-            @"schema" : @(project.schemaVersion),
-            @"revision" : ns(std::to_string(project.revision)),
-            @"id" : ns(project.id),
-            @"title" : ns(project.title),
-            @"documents" : @[ @{
-                @"id" : ns(document.id),
-                @"title" : ns(document.title),
-                @"sections" : @[ @{
-                    @"id" : ns(section.id),
-                    @"title" : ns(section.title),
-                    @"blocks" : @[ @{
-                        @"id" : ns(block.id),
-                        @"text" : ns(block.text),
-                        @"createdBy" : ns(block.createdBy),
-                        @"lastEditedBy" : ns(block.lastEditedBy)
-                    } ]
-                } ]
+    NSMutableArray* sections = [NSMutableArray array];
+    for (const auto& section : document.sections) {
+        const auto& block = section.blocks[0];
+        [sections addObject:@{
+            @"id" : ns(section.id),
+            @"title" : ns(section.title),
+            @"blocks" : @[ @{
+                @"id" : ns(block.id),
+                @"text" : ns(block.text),
+                @"createdBy" : ns(block.createdBy),
+                @"lastEditedBy" : ns(block.lastEditedBy)
             } ]
-        }
-                                        options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys
-                                          error:error];
+        }];
+    }
+    return [NSJSONSerialization dataWithJSONObject:@{
+        @"schema" : @(project.schemaVersion),
+        @"revision" : ns(std::to_string(project.revision)),
+        @"id" : ns(project.id),
+        @"title" : ns(project.title),
+        @"documents" :
+            @[ @{@"id" : ns(document.id), @"title" : ns(document.title), @"sections" : sections} ]
+    }
+                                           options:NSJSONWritingPrettyPrinted |
+                                                   NSJSONWritingSortedKeys
+                                             error:error];
 }
 } // namespace
 
@@ -113,6 +115,7 @@ NSData* encode(const neon::core::Project& project, NSError** error) {
     NSString* _actor;
     NSData* _lastSaved;
     BOOL _dirty;
+    std::size_t _selected = 0;
 }
 - (instancetype)initWithURL:(NSURL*)url actor:(NSString*)actor error:(NSError**)error {
     self = [super init];
@@ -147,7 +150,50 @@ NSData* encode(const neon::core::Project& project, NSError** error) {
     return self;
 }
 - (NSString*)text {
-    return ns(_project.documents[0].sections[0].blocks[0].text);
+    return ns(_project.documents[0].sections[_selected].blocks[0].text);
+}
+- (NSString*)title {
+    return ns(_project.title);
+}
+- (NSString*)sectionTitle {
+    return ns(_project.documents[0].sections[_selected].title);
+}
+- (NSString*)selectedSectionID {
+    return ns(_project.documents[0].sections[_selected].id);
+}
+- (NSArray<NSDictionary<NSString*, NSString*>*>*)sections {
+    NSMutableArray* result = [NSMutableArray array];
+    for (const auto& section : _project.documents[0].sections)
+        [result addObject:@{@"id" : ns(section.id), @"title" : ns(section.title)}];
+    return result;
+}
+- (BOOL)selectSection:(NSString*)identifier error:(NSError**)error {
+    for (std::size_t i = 0; i < _project.documents[0].sections.size(); ++i)
+        if (_project.documents[0].sections[i].id == utf8(identifier)) {
+            _selected = i;
+            return YES;
+        }
+    return fail(error, @"This section is no longer available.");
+}
+- (BOOL)renameProject:(NSString*)title error:(NSError**)error {
+    auto result = neon::core::renameProject(&_project, utf8(title));
+    if (!result.ok)
+        return fail(error, ns(result.message));
+    _dirty = YES;
+    return YES;
+}
+- (BOOL)addSection:(NSString*)title error:(NSError**)error {
+    auto identifier = utf8(NSUUID.UUID.UUIDString);
+    auto result =
+        neon::core::addSection(&_project, _project.documents[0].id,
+                               {identifier,
+                                utf8(title),
+                                {{utf8(NSUUID.UUID.UUIDString), "", utf8(_actor), utf8(_actor)}}});
+    if (!result.ok)
+        return fail(error, ns(result.message));
+    _selected = _project.documents[0].sections.size() - 1;
+    _dirty = YES;
+    return YES;
 }
 - (BOOL)dirty {
     return _dirty;
@@ -156,8 +202,9 @@ NSData* encode(const neon::core::Project& project, NSError** error) {
     if (![text canBeConvertedToEncoding:NSUTF8StringEncoding])
         return fail(error, @"The input cannot be represented as Unicode text.");
     const auto previous = _project.revision;
-    auto result = neon::core::replaceText(&_project, _project.documents[0].sections[0].blocks[0].id,
-                                          utf8(text), utf8(_actor));
+    auto result =
+        neon::core::replaceText(&_project, _project.documents[0].sections[_selected].blocks[0].id,
+                                utf8(text), utf8(_actor));
     if (!result.ok)
         return fail(error, ns(result.message));
     _dirty |= previous != _project.revision;

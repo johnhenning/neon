@@ -1,115 +1,198 @@
-#import "DocumentSession.h"
+#import "EditorialTheme.h"
+#import "LibraryStore.h"
 #import <UIKit/UIKit.h>
 
+@class NeonCoordinator;
 @interface NeonEditor : UIViewController <UITextViewDelegate>
 @property(nonatomic, strong) UITextView* editor;
 @property(nonatomic, strong) UILabel* status;
+@property(nonatomic, strong) UILabel* heading;
 @property(nonatomic, strong) NeonDocumentSession* session;
+@property(nonatomic, weak) NeonCoordinator* coordinator;
 @property(nonatomic, strong) NSTimer* saveTimer;
-@property(nonatomic, strong) NSURL* fileURL;
-- (void)flush;
+- (BOOL)flush;
+- (void)applyTypography;
 @end
+@interface NeonList : UITableViewController
+@property(nonatomic, weak) NeonCoordinator* coordinator;
+@property(nonatomic) BOOL chapters;
+@end
+@interface NeonTypography : UIViewController
+@property(nonatomic, weak) NeonEditor* editor;
+@end
+@interface NeonCoordinator : UISplitViewController <UISplitViewControllerDelegate>
+@property(nonatomic, strong) NeonLibraryStore* library;
+@property(nonatomic, strong) NSArray<NSDictionary*>* projects;
+@property(nonatomic, strong) NeonDocumentSession* session;
+@property(nonatomic, strong) NSURL* selectedURL;
+@property(nonatomic, strong) NeonEditor* editor;
+@property(nonatomic, strong) NeonList* libraryList;
+@property(nonatomic, strong) NeonList* chapterList;
+@property(nonatomic, strong) UINavigationController* navigation;
+@property(nonatomic) BOOL sidebarHidden;
+@property(nonatomic) BOOL smoke;
+- (void)reloadLibrary;
+- (void)openProject:(NSInteger)index;
+- (void)openSection:(NSInteger)index;
+- (void)newProject;
+- (void)newSection;
+- (void)toggleChapters;
+- (void)showProblem:(NSError*)error;
+- (void)applyAppearance;
+@end
+namespace {
+UIFont* scaledSerif(CGFloat size) {
+    return
+        [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody] scaledFontForFont:NeonSerif(size)];
+}
+UILabel* label(NSString* text, UIFont* font, UIColor* color) {
+    UILabel* label = [UILabel new];
+    label.text = text;
+    label.font = font;
+    label.textColor = color;
+    label.numberOfLines = 0;
+    label.adjustsFontForContentSizeCategory = YES;
+    return label;
+}
+NSUInteger wordCount(NSString* text) {
+    __block NSUInteger count = 0;
+    [text enumerateSubstringsInRange:NSMakeRange(0, text.length)
+                             options:NSStringEnumerationByWords
+                          usingBlock:^(NSString*, NSRange, NSRange, BOOL*) {
+                            ++count;
+                          }];
+    return count;
+}
+UIImage* cover(NSString* title) {
+    UIGraphicsImageRenderer* renderer =
+        [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(88, 124)];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext* context) {
+      (void)context;
+      [[UIColor colorWithRed:0.86 green:0.83 blue:0.76 alpha:1] setFill];
+      UIRectFill(CGRectMake(0, 0, 88, 124));
+      [[UIColor colorWithRed:0.25 green:0.39 blue:0.42 alpha:1] setFill];
+      UIRectFill(CGRectMake(0, 88, 88, 36));
+      [[UIColor colorWithRed:0.13 green:0.26 blue:0.29 alpha:1] setFill];
+      [[UIBezierPath bezierPathWithOvalInRect:CGRectMake(-10, 105, 120, 40)] fill];
+      [title drawInRect:CGRectMake(10, 14, 68, 72)
+          withAttributes:@{
+              NSFontAttributeName : NeonSerif(14),
+              NSForegroundColorAttributeName : UIColor.blackColor
+          }];
+    }];
+}
+void marker(NSURL* directory, NSString* name, BOOL pass) {
+    [(pass ? @"PASS" : @"FAIL") writeToURL:[directory URLByAppendingPathComponent:name]
+                                atomically:YES
+                                  encoding:NSUTF8StringEncoding
+                                     error:nil];
+}
+} // namespace
 @implementation NeonEditor
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"My writing";
-    self.view.backgroundColor = UIColor.systemBackgroundColor;
-    self.status = [[UILabel alloc] init];
-    self.status.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];
-    self.status.adjustsFontForContentSizeCategory = YES;
-    self.status.numberOfLines = 0;
-    self.status.accessibilityIdentifier = @"saveStatus";
-    self.editor = [[UITextView alloc] init];
+    self.title = self.session.title;
+    self.view.backgroundColor = NeonPaper();
+    self.view.tintColor = NeonAccent();
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+    self.navigationItem.leftBarButtonItem =
+        [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"sidebar.left"]
+                                         style:UIBarButtonItemStylePlain
+                                        target:self
+                                        action:@selector(chapters)];
+    self.navigationItem.leftBarButtonItem.title = @"Chapters";
+    self.navigationItem.leftBarButtonItem.accessibilityLabel = @"Show or hide chapters";
+    UIBarButtonItem* typography =
+        [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"textformat"]
+                                         style:UIBarButtonItemStylePlain
+                                        target:self
+                                        action:@selector(typography)];
+    typography.accessibilityLabel = @"Typography";
+    self.navigationItem.rightBarButtonItems = @[
+        typography, [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave
+                                                                  target:self
+                                                                  action:@selector(save)]
+    ];
+    UILabel* kicker = label(@"MANUSCRIPT", NeonUI(12), NeonMuted());
+    kicker.textAlignment = NSTextAlignmentCenter;
+    self.heading = label(self.session.sectionTitle, scaledSerif(32), NeonInk());
+    self.heading.textAlignment = NSTextAlignmentCenter;
+    UIView* rule = [UIView new];
+    rule.backgroundColor = [NeonAccent() colorWithAlphaComponent:0.5];
+    UIStackView* header =
+        [[UIStackView alloc] initWithArrangedSubviews:@[ kicker, self.heading, rule ]];
+    header.axis = UILayoutConstraintAxisVertical;
+    header.alignment = UIStackViewAlignmentCenter;
+    header.spacing = 20;
+    self.editor = [UITextView new];
     self.editor.delegate = self;
-    self.editor.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
-    self.editor.adjustsFontForContentSizeCategory = YES;
+    self.editor.backgroundColor = NeonPaper();
+    self.editor.textColor = NeonInk();
+    self.editor.text = self.session.text;
     self.editor.accessibilityLabel = @"Manuscript";
     self.editor.accessibilityIdentifier = @"manuscript";
-    self.editor.textContainerInset = UIEdgeInsetsMake(20, 16, 20, 16);
-    self.editor.backgroundColor =
-        [UIColor colorWithDynamicProvider:^UIColor*(UITraitCollection* t) {
-          return t.userInterfaceStyle == UIUserInterfaceStyleDark
-                     ? [UIColor colorWithRed:0.12 green:0.11 blue:0.10 alpha:1]
-                     : [UIColor colorWithRed:0.98 green:0.96 blue:0.91 alpha:1];
-        }];
-    for (UIView* view in @[ self.editor, self.status ]) {
+    self.editor.adjustsFontForContentSizeCategory = YES;
+    self.editor.textContainer.lineFragmentPadding = 0;
+    self.status = label(@"Saved on this device", NeonUI(13), NeonMuted());
+    self.status.accessibilityIdentifier = @"saveStatus";
+    for (UIView* view in @[ header, self.editor, self.status ]) {
         view.translatesAutoresizingMaskIntoConstraints = NO;
         [self.view addSubview:view];
     }
     UILayoutGuide* safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [self.status.topAnchor constraintEqualToAnchor:safe.topAnchor constant:8],
-        [self.status.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:16],
-        [self.status.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-16],
-        [self.editor.topAnchor constraintEqualToAnchor:self.status.bottomAnchor constant:8],
+        [header.topAnchor constraintEqualToAnchor:safe.topAnchor constant:28],
+        [header.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:24],
+        [header.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-24],
+        [rule.widthAnchor constraintEqualToConstant:130],
+        [rule.heightAnchor constraintEqualToConstant:1],
+        [self.editor.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:20],
         [self.editor.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
         [self.editor.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
-        [self.editor.bottomAnchor constraintEqualToAnchor:self.view.keyboardLayoutGuide.topAnchor]
+        [self.editor.bottomAnchor constraintEqualToAnchor:self.status.topAnchor constant:-8],
+        [self.status.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:24],
+        [self.status.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-24],
+        [self.status.bottomAnchor constraintEqualToAnchor:self.view.keyboardLayoutGuide.topAnchor
+                                                 constant:-10]
     ]];
-    self.navigationItem.rightBarButtonItem =
-        [[UIBarButtonItem alloc] initWithTitle:@"Save"
-                                         style:UIBarButtonItemStylePlain
-                                        target:self
-                                        action:@selector(flush)];
-    NSUserDefaults* defaults = NSUserDefaults.standardUserDefaults;
-    NSString* actor = [defaults stringForKey:@"localActor"];
-    if (!actor) {
-        actor = NSUUID.UUID.UUIDString;
-        [defaults setObject:actor forKey:@"localActor"];
-    }
-    NSURL* directory =
-        [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
-                                               inDomains:NSUserDomainMask]
-            .firstObject;
-    BOOL smoke = [NSProcessInfo.processInfo.arguments containsObject:@"--smoke-test"];
-    BOOL reopenSmoke = [NSProcessInfo.processInfo.arguments containsObject:@"--smoke-reopen"];
-    self.fileURL = [[directory
-        URLByAppendingPathComponent:(smoke || reopenSmoke) ? @"Smoke" : @"Neon Apple Preview"]
-        URLByAppendingPathComponent:@"project-v1.json"];
-    if (smoke)
-        [[NSFileManager defaultManager] removeItemAtURL:self.fileURL error:nil];
-    NSError* error = nil;
-    self.session = [[NeonDocumentSession alloc] initWithURL:self.fileURL actor:actor error:&error];
-    self.editor.editable = self.session != nil;
-    self.editor.text = self.session.text ?: @"";
-    self.status.text =
-        self.session ? @"Local draft · no account required" : error.localizedDescription;
-    if (reopenSmoke) {
-        NSString* marker =
-            self.session && [self.editor.text
-                                isEqualToString:
-                                    @"A native Apple draft.\nCafé 👩🏽‍💻 العربية"]
-                ? @"PASS"
-                : @"FAIL";
-        [marker writeToURL:[directory URLByAppendingPathComponent:@"smoke-reopen.txt"]
-                atomically:YES
-                  encoding:NSUTF8StringEncoding
-                     error:nil];
-    }
-    if (smoke && self.session) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-          [self.editor insertText:@"A native Apple draft.\nCafé 👩🏽‍💻 العربية"];
-          [self textViewDidChange:self.editor];
-          [self flush];
-          NSError* reopenError = nil;
-          NeonDocumentSession* reopened = [[NeonDocumentSession alloc] initWithURL:self.fileURL
-                                                                             actor:actor
-                                                                             error:&reopenError];
-          BOOL passed =
-              reopened && !self.session.dirty && [reopened.text isEqualToString:self.editor.text];
-          NSString* marker = passed ? @"PASS" : @"FAIL";
-          [marker writeToURL:[directory URLByAppendingPathComponent:@"smoke-result.txt"]
-                  atomically:YES
-                    encoding:NSUTF8StringEncoding
-                       error:nil];
-        });
-    }
+    [self applyTypography];
 }
-- (void)textViewDidChange:(UITextView*)textView {
-    if (textView.markedTextRange)
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    CGFloat margin = MAX(24, (self.editor.bounds.size.width - 700) / 2);
+    self.editor.textContainerInset = UIEdgeInsetsMake(12, margin, 30, margin);
+}
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    self.navigationController.interactivePopGestureRecognizer.enabled = NO;
+}
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [self flush];
+    self.navigationController.interactivePopGestureRecognizer.enabled = YES;
+}
+- (void)applyTypography {
+    if (!self.editor || self.editor.markedTextRange)
+        return;
+    NSRange selection = self.editor.selectedRange;
+    NSMutableParagraphStyle* style = [NSMutableParagraphStyle new];
+    style.lineSpacing = NeonLineSpacing();
+    style.paragraphSpacing = 18;
+    NSDictionary* attrs = @{
+        NSFontAttributeName : scaledSerif(NeonTextSize()),
+        NSForegroundColorAttributeName : NeonInk(),
+        NSParagraphStyleAttributeName : style
+    };
+    [self.editor.textStorage addAttributes:attrs range:NSMakeRange(0, self.editor.text.length)];
+    self.editor.typingAttributes = attrs;
+    self.editor.selectedRange = selection;
+    self.editor.font = scaledSerif(NeonTextSize());
+}
+- (void)textViewDidChange:(UITextView*)view {
+    if (view.markedTextRange)
         return;
     NSError* error = nil;
-    if (![self.session replaceText:textView.text error:&error]) {
+    if (![self.session replaceText:view.text error:&error]) {
         self.status.text = error.localizedDescription;
         return;
     }
@@ -123,48 +206,543 @@
                                                          [weakSelf flush];
                                                        }];
 }
-- (void)flush {
+- (BOOL)flush {
     [self.saveTimer invalidate];
-    if (!self.session || self.editor.markedTextRange)
-        return;
+    if (!self.isViewLoaded || !self.session)
+        return YES;
+    if (self.editor.markedTextRange)
+        [self.editor unmarkText];
     NSError* error = nil;
     BOOL saved =
         [self.session replaceText:self.editor.text error:&error] && [self.session save:&error];
-    self.status.text = saved ? @"Saved on this device" : error.localizedDescription;
+    self.status.text = saved ? [NSString stringWithFormat:@"%lu words  ·  Saved on this device",
+                                                          wordCount(self.editor.text)]
+                             : error.localizedDescription;
+    return saved;
+}
+- (void)save {
+    [self flush];
+}
+- (void)chapters {
+    if ([self flush])
+        [self.coordinator toggleChapters];
+}
+- (void)typography {
+    NeonTypography* controller = [NeonTypography new];
+    controller.editor = self;
+    UINavigationController* nav =
+        [[UINavigationController alloc] initWithRootViewController:controller];
+    nav.modalPresentationStyle = UIModalPresentationPageSheet;
+    nav.sheetPresentationController.detents = @[
+        UISheetPresentationControllerDetent.mediumDetent,
+        UISheetPresentationControllerDetent.largeDetent
+    ];
+    nav.view.tintColor = NeonAccent();
+    [self presentViewController:nav animated:YES completion:nil];
 }
 @end
-
+@implementation NeonTypography
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"Typography";
+    self.view.backgroundColor = NeonPanel();
+    self.navigationItem.rightBarButtonItem =
+        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+                                                      target:self
+                                                      action:@selector(done)];
+    UISlider* size = [UISlider new];
+    size.minimumValue = 16;
+    size.maximumValue = 32;
+    size.value = NeonTextSize();
+    size.accessibilityLabel = @"Text size";
+    [size addTarget:self
+                  action:@selector(sizeChanged:)
+        forControlEvents:UIControlEventValueChanged];
+    UISlider* spacing = [UISlider new];
+    spacing.minimumValue = 2;
+    spacing.maximumValue = 16;
+    spacing.value = NeonLineSpacing();
+    spacing.accessibilityLabel = @"Line spacing";
+    [spacing addTarget:self
+                  action:@selector(spacingChanged:)
+        forControlEvents:UIControlEventValueChanged];
+    UISegmentedControl* appearance =
+        [[UISegmentedControl alloc] initWithItems:@[ @"System", @"Light", @"Dark" ]];
+    appearance.selectedSegmentIndex = NeonAppearance();
+    [appearance addTarget:self
+                   action:@selector(appearanceChanged:)
+         forControlEvents:UIControlEventValueChanged];
+    UIStackView* stack = [[UIStackView alloc] initWithArrangedSubviews:@[
+        label(@"Literata", scaledSerif(25), NeonInk()),
+        label(@"Text size", NeonUI(15), NeonMuted()), size,
+        label(@"Line spacing", NeonUI(15), NeonMuted()), spacing,
+        label(@"Appearance", NeonUI(15), NeonMuted()), appearance
+    ]];
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.spacing = 12;
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:stack];
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor
+                                            constant:24],
+        [stack.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor
+                                             constant:-24],
+        [stack.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor
+                                        constant:20]
+    ]];
+}
+- (void)sizeChanged:(UISlider*)sender {
+    [NSUserDefaults.standardUserDefaults setDouble:sender.value forKey:@"manuscriptSize"];
+    [self.editor applyTypography];
+}
+- (void)spacingChanged:(UISlider*)sender {
+    [NSUserDefaults.standardUserDefaults setDouble:sender.value forKey:@"manuscriptSpacing"];
+    [self.editor applyTypography];
+}
+- (void)appearanceChanged:(UISegmentedControl*)sender {
+    [NSUserDefaults.standardUserDefaults setInteger:sender.selectedSegmentIndex
+                                             forKey:@"appearance"];
+    [self.editor.coordinator applyAppearance];
+}
+- (void)done {
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+@end
+@implementation NeonList
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = self.chapters ? self.coordinator.session.title : @"Library";
+    self.view.backgroundColor = NeonPanel();
+    self.tableView.backgroundColor = NeonPanel();
+    self.tableView.tintColor = NeonAccent();
+    self.tableView.rowHeight = UITableViewAutomaticDimension;
+    self.tableView.estimatedRowHeight = self.chapters ? 72 : 142;
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    self.navigationItem.rightBarButtonItem =
+        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
+                                                      target:self
+                                                      action:@selector(create)];
+    if (self.chapters)
+        self.navigationItem.leftBarButtonItem =
+            [[UIBarButtonItem alloc] initWithTitle:@"Library"
+                                             style:UIBarButtonItemStylePlain
+                                            target:self
+                                            action:@selector(library)];
+}
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    if (!self.chapters)
+        [self.coordinator reloadLibrary];
+    [self.tableView reloadData];
+}
+- (NSInteger)tableView:(UITableView*)tableView numberOfRowsInSection:(NSInteger)section {
+    (void)tableView;
+    (void)section;
+    return self.chapters ? self.coordinator.session.sections.count
+                         : self.coordinator.projects.count;
+}
+- (NSString*)tableView:(UITableView*)tableView titleForHeaderInSection:(NSInteger)section {
+    (void)tableView;
+    (void)section;
+    return self.chapters ? @"MANUSCRIPT" : @"ON THIS DEVICE";
+}
+- (UITableViewCell*)tableView:(UITableView*)tableView cellForRowAtIndexPath:(NSIndexPath*)path {
+    UITableViewCell* cell = [tableView dequeueReusableCellWithIdentifier:@"project"];
+    if (!cell)
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
+                                      reuseIdentifier:@"project"];
+    UIListContentConfiguration* content = [cell defaultContentConfiguration];
+    if (self.chapters) {
+        NSDictionary* section = self.coordinator.session.sections[path.row];
+        content.text = section[@"title"];
+        content.secondaryText = [NSString stringWithFormat:@"Section %ld", path.row + 1];
+        content.image = [UIImage systemImageNamed:@"doc.text"];
+        content.textProperties.font = NeonUI(18);
+        content.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(18, 20, 18, 20);
+    } else {
+        NSDictionary* project = self.coordinator.projects[path.row];
+        content.text = project[@"title"];
+        content.secondaryText =
+            [project[@"error"] length]
+                ? project[@"error"]
+                : [NSString stringWithFormat:@"%@ sections · Local project", project[@"sections"]];
+        content.image = cover(project[@"title"]);
+        content.imageProperties.maximumSize = CGSizeMake(74, 108);
+        content.textProperties.font = scaledSerif(21);
+        content.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(14, 20, 14, 16);
+    }
+    content.textProperties.color = NeonInk();
+    content.secondaryTextProperties.color = NeonMuted();
+    content.secondaryTextProperties.font = NeonUI(14);
+    content.textToSecondaryTextVerticalPadding = 8;
+    content.imageToTextPadding = 18;
+    content.imageProperties.tintColor = NeonAccent();
+    cell.contentConfiguration = content;
+    cell.backgroundColor = NeonPanel();
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    UIView* selected = [UIView new];
+    selected.backgroundColor = [NeonAccent() colorWithAlphaComponent:0.12];
+    cell.selectedBackgroundView = selected;
+    cell.accessibilityIdentifier =
+        [NSString stringWithFormat:@"%@-%ld", self.chapters ? @"section" : @"project", path.row];
+    return cell;
+}
+- (void)tableView:(UITableView*)tableView didSelectRowAtIndexPath:(NSIndexPath*)path {
+    (void)tableView;
+    if (self.chapters)
+        [self.coordinator openSection:path.row];
+    else
+        [self.coordinator openProject:path.row];
+}
+- (void)create {
+    if (self.chapters)
+        [self.coordinator newSection];
+    else
+        [self.coordinator newProject];
+}
+- (void)library {
+    if (![self.coordinator.editor flush])
+        return;
+    [self.coordinator.navigation popToRootViewControllerAnimated:YES];
+    [self.coordinator reloadLibrary];
+}
+@end
+@implementation NeonCoordinator
+- (instancetype)init {
+    self = [super initWithStyle:UISplitViewControllerStyleDoubleColumn];
+    if (self) {
+        self.delegate = self;
+        self.preferredDisplayMode = UISplitViewControllerDisplayModeOneBesideSecondary;
+        self.preferredPrimaryColumnWidthFraction = 0.30;
+        self.minimumPrimaryColumnWidth = 280;
+        self.maximumPrimaryColumnWidth = 360;
+    }
+    return self;
+}
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    NeonRegisterFonts();
+    self.view.tintColor = NeonAccent();
+    NSArray* args = NSProcessInfo.processInfo.arguments;
+    self.smoke = [args containsObject:@"--smoke-test"];
+    BOOL reopen = [args containsObject:@"--smoke-reopen"] ||
+                  [args containsObject:@"--smoke-library"] ||
+                  [args containsObject:@"--smoke-focus"];
+    NSURL* support = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
+                                                            inDomains:NSUserDomainMask]
+                         .firstObject;
+    NSURL* directory =
+        [support URLByAppendingPathComponent:(self.smoke || reopen) ? @"SmokeLibrary"
+                                                                    : @"Neon Apple Preview"];
+    if (self.smoke)
+        [[NSFileManager defaultManager] removeItemAtURL:directory error:nil];
+    self.library = [[NeonLibraryStore alloc] initWithDirectory:directory];
+    NSError* error = nil;
+    if (self.smoke && ![self.library seedPreview:&error])
+        [self showProblem:error];
+    self.libraryList = [[NeonList alloc] initWithStyle:UITableViewStyleInsetGrouped];
+    self.libraryList.coordinator = self;
+    self.navigation = [[UINavigationController alloc] initWithRootViewController:self.libraryList];
+    self.navigation.navigationBar.prefersLargeTitles = YES;
+    [self setViewController:self.navigation forColumn:UISplitViewControllerColumnPrimary];
+    UIViewController* welcome = [UIViewController new];
+    welcome.view.backgroundColor = NeonPaper();
+    UILabel* hint = label(@"A quiet place for your next idea.", scaledSerif(28), NeonMuted());
+    hint.textAlignment = NSTextAlignmentCenter;
+    hint.translatesAutoresizingMaskIntoConstraints = NO;
+    [welcome.view addSubview:hint];
+    [NSLayoutConstraint activateConstraints:@[
+        [hint.centerYAnchor constraintEqualToAnchor:welcome.view.centerYAnchor],
+        [hint.leadingAnchor constraintEqualToAnchor:welcome.view.leadingAnchor constant:32],
+        [hint.trailingAnchor constraintEqualToAnchor:welcome.view.trailingAnchor constant:-32]
+    ]];
+    [self setViewController:welcome forColumn:UISplitViewControllerColumnSecondary];
+    [self reloadLibrary];
+    [self applyAppearance];
+    if (self.smoke || reopen)
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [self runSmoke:args support:support];
+        });
+}
+- (void)applyAppearance {
+    UIUserInterfaceStyle style = NeonAppearance() == 1   ? UIUserInterfaceStyleLight
+                                 : NeonAppearance() == 2 ? UIUserInterfaceStyleDark
+                                                         : UIUserInterfaceStyleUnspecified;
+    self.view.window.overrideUserInterfaceStyle = style;
+    self.overrideUserInterfaceStyle = style;
+    UINavigationBarAppearance* appearance = [UINavigationBarAppearance new];
+    [appearance configureWithOpaqueBackground];
+    appearance.backgroundColor = NeonPaper();
+    appearance.titleTextAttributes =
+        @{NSFontAttributeName : NeonUI(18), NSForegroundColorAttributeName : NeonInk()};
+    appearance.largeTitleTextAttributes =
+        @{NSFontAttributeName : NeonSerif(34), NSForegroundColorAttributeName : NeonInk()};
+    self.navigation.navigationBar.standardAppearance = appearance;
+    self.navigation.navigationBar.scrollEdgeAppearance = appearance;
+    self.navigation.navigationBar.tintColor = NeonAccent();
+    UINavigationController* detail =
+        (id)[self viewControllerForColumn:UISplitViewControllerColumnSecondary];
+    if ([detail isKindOfClass:UINavigationController.class]) {
+        detail.navigationBar.standardAppearance = appearance;
+        detail.navigationBar.scrollEdgeAppearance = appearance;
+        detail.navigationBar.tintColor = NeonAccent();
+    }
+}
+- (void)reloadLibrary {
+    NSError* error = nil;
+    NSArray* projects = [self.library projects:&error];
+    if (!projects) {
+        [self showProblem:error];
+        return;
+    }
+    self.projects = projects;
+    [self.libraryList.tableView reloadData];
+}
+- (void)showProblem:(NSError*)error {
+    UIAlertController* alert =
+        [UIAlertController alertControllerWithTitle:@"Could not open or save"
+                                            message:error.localizedDescription
+                                     preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                              style:UIAlertActionStyleDefault
+                                            handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+- (void)openProject:(NSInteger)index {
+    if (index < 0 || index >= static_cast<NSInteger>(self.projects.count))
+        return;
+    if (self.editor && ![self.editor flush])
+        return;
+    NSError* error = nil;
+    NSURL* url = self.projects[index][@"url"];
+    NeonDocumentSession* session = [self.library openURL:url error:&error];
+    if (!session) {
+        [self showProblem:error];
+        return;
+    }
+    self.session = session;
+    self.selectedURL = url;
+    self.chapterList = [[NeonList alloc] initWithStyle:UITableViewStyleInsetGrouped];
+    self.chapterList.chapters = YES;
+    self.chapterList.coordinator = self;
+    [self.navigation setViewControllers:@[ self.libraryList, self.chapterList ] animated:NO];
+    if (!self.collapsed)
+        [self openSection:0];
+}
+- (void)openSection:(NSInteger)index {
+    if (index < 0 || index >= static_cast<NSInteger>(self.session.sections.count))
+        return;
+    if (self.editor && ![self.editor flush])
+        return;
+    NSError* error = nil;
+    self.editor.session = nil;
+    self.editor = nil;
+    if (![self.session selectSection:self.session.sections[index][@"id"] error:&error]) {
+        [self showProblem:error];
+        return;
+    }
+    // Detach the old editor before changing its shared session selection.
+    self.editor = nil;
+    NeonEditor* editor = [NeonEditor new];
+    editor.session = self.session;
+    editor.coordinator = self;
+    if (self.collapsed)
+        [self.navigation setViewControllers:@[ self.libraryList, self.chapterList, editor ]
+                                   animated:NO];
+    else {
+        [self setViewController:[[UINavigationController alloc] initWithRootViewController:editor]
+                      forColumn:UISplitViewControllerColumnSecondary];
+        [self showColumn:UISplitViewControllerColumnSecondary];
+    }
+    self.editor = editor;
+    [editor loadViewIfNeeded];
+    [self applyAppearance];
+    [self.chapterList.tableView reloadData];
+}
+- (void)toggleChapters {
+    if (self.collapsed) {
+        [self.navigation popToViewController:self.chapterList animated:YES];
+        return;
+    }
+    self.sidebarHidden = !self.sidebarHidden;
+    if (self.sidebarHidden)
+        [self hideColumn:UISplitViewControllerColumnPrimary];
+    else
+        [self showColumn:UISplitViewControllerColumnPrimary];
+    self.editor.navigationItem.leftBarButtonItem.accessibilityLabel =
+        self.sidebarHidden ? @"Show chapters sidebar" : @"Hide chapters sidebar";
+}
+- (UISplitViewControllerColumn)splitViewController:(UISplitViewController*)controller
+         topColumnForCollapsingToProposedTopColumn:(UISplitViewControllerColumn)column {
+    (void)controller;
+    (void)column;
+    return UISplitViewControllerColumnPrimary;
+}
+- (void)viewWillTransitionToSize:(CGSize)size
+       withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)transition {
+    [super viewWillTransitionToSize:size withTransitionCoordinator:transition];
+    [transition
+        animateAlongsideTransition:nil
+                        completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+                          (void)context;
+                          if (!self.editor)
+                              return;
+                          if (![self.editor flush])
+                              return;
+                          if (self.collapsed) {
+                              [self setViewController:nil
+                                            forColumn:UISplitViewControllerColumnSecondary];
+                              [self.navigation setViewControllers:@[
+                                  self.libraryList, self.chapterList, self.editor
+                              ]
+                                                         animated:NO];
+                          } else {
+                              [self.navigation
+                                  setViewControllers:@[ self.libraryList, self.chapterList ]
+                                            animated:NO];
+                              [self setViewController:[[UINavigationController alloc]
+                                                          initWithRootViewController:self.editor]
+                                            forColumn:UISplitViewControllerColumnSecondary];
+                              if (self.sidebarHidden)
+                                  [self hideColumn:UISplitViewControllerColumnPrimary];
+                          }
+                          [self applyAppearance];
+                        }];
+}
+- (void)askTitle:(BOOL)section {
+    if (self.editor && ![self.editor flush])
+        return;
+    UIAlertController* alert =
+        [UIAlertController alertControllerWithTitle:section ? @"New section" : @"New project"
+                                            message:@"Give it a working title."
+                                     preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField* field) {
+      field.placeholder = @"Working title";
+    }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                              style:UIAlertActionStyleCancel
+                                            handler:nil]];
+    [alert addAction:[UIAlertAction
+                         actionWithTitle:@"Create"
+                                   style:UIAlertActionStyleDefault
+                                 handler:^(UIAlertAction* action) {
+                                   (void)action;
+                                   NSString* title = [alert.textFields.firstObject.text
+                                       stringByTrimmingCharactersInSet:
+                                           NSCharacterSet.whitespaceAndNewlineCharacterSet];
+                                   NSError* error = nil;
+                                   if (section) {
+                                       if (![self.session addSection:title error:&error]) {
+                                           [self showProblem:error];
+                                           return;
+                                       }
+                                       self.editor.session = nil;
+                                       self.editor = nil;
+                                       [self openSection:self.session.sections.count - 1];
+                                       if (![self.editor flush])
+                                           [self showProblem:
+                                                     [NSError
+                                                         errorWithDomain:@"Neon"
+                                                                    code:1
+                                                                userInfo:@{
+                                                                    NSLocalizedDescriptionKey :
+                                                                        @"The new section is open "
+                                                                        @"but could not be saved. "
+                                                                        @"Your draft is retained."
+                                                                }]];
+                                   } else {
+                                       NSURL* url = [self.library createProject:title error:&error];
+                                       if (!url) {
+                                           [self showProblem:error];
+                                           return;
+                                       }
+                                       [self reloadLibrary];
+                                       NSInteger i = [self.projects
+                                           indexOfObjectPassingTest:^BOOL(
+                                               NSDictionary* item, NSUInteger index, BOOL* stop) {
+                                             (void)index;
+                                             (void)stop;
+                                             return [item[@"url"] isEqual:url];
+                                           }];
+                                       [self openProject:i];
+                                   }
+                                 }]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+- (void)newProject {
+    [self askTitle:NO];
+}
+- (void)newSection {
+    [self askTitle:YES];
+}
+- (void)runSmoke:(NSArray*)args support:(NSURL*)support {
+    if ([args containsObject:@"--smoke-library"]) {
+        marker(support, @"smoke-library.txt", self.projects.count == 3);
+        return;
+    }
+    NSInteger index = [self.projects
+        indexOfObjectPassingTest:^BOOL(NSDictionary* item, NSUInteger i, BOOL* stop) {
+          (void)i;
+          (void)stop;
+          return [item[@"title"] isEqualToString:@"The Quiet Sea"];
+        }];
+    [self openProject:index];
+    [self openSection:0];
+    if (self.smoke) {
+        [self.editor.editor
+            insertText:@"\n\nA native Apple draft. Café 👩🏽‍💻 العربية"];
+        [self.editor textViewDidChange:self.editor.editor];
+        BOOL saved = [self.editor flush];
+        NSError* error = nil;
+        NeonDocumentSession* reopened = [self.library openURL:self.selectedURL error:&error];
+        BOOL valid = saved && [reopened.text containsString:@"A native Apple draft."] &&
+                     reopened.sections.count == 2;
+        [self openSection:1];
+        valid = valid && [self.editor.editor.text containsString:@"By noon"];
+        [self openSection:0];
+        valid = valid && [self.editor.editor.text containsString:@"A native Apple draft."];
+        marker(support, @"smoke-result.txt", valid);
+    } else if ([args containsObject:@"--smoke-focus"]) {
+        [self toggleChapters];
+        marker(support, @"smoke-focus.txt",
+               [self.editor.editor.text containsString:@"A native Apple draft."]);
+    } else {
+        marker(support, @"smoke-reopen.txt",
+               [self.editor.editor.text containsString:@"A native Apple draft."]);
+    }
+}
+@end
 @interface NeonSceneDelegate : UIResponder <UIWindowSceneDelegate>
 @property(nonatomic, strong) UIWindow* window;
-@property(nonatomic, strong) NeonEditor* editor;
+@property(nonatomic, strong) NeonCoordinator* coordinator;
 @end
 @implementation NeonSceneDelegate
 - (void)scene:(UIScene*)scene
     willConnectToSession:(UISceneSession*)session
-                 options:(UISceneConnectionOptions*)connectionOptions {
+                 options:(UISceneConnectionOptions*)options {
     (void)session;
-    (void)connectionOptions;
+    (void)options;
     if (![scene isKindOfClass:UIWindowScene.class])
         return;
     self.window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene*)scene];
-    self.editor = [[NeonEditor alloc] init];
-    self.window.rootViewController =
-        [[UINavigationController alloc] initWithRootViewController:self.editor];
+    self.coordinator = [NeonCoordinator new];
+    self.window.rootViewController = self.coordinator;
     [self.window makeKeyAndVisible];
+    [self.coordinator applyAppearance];
 }
 - (void)sceneDidEnterBackground:(UIScene*)scene {
     (void)scene;
-    [self.editor.view endEditing:YES];
-    [self.editor flush];
+    [self.coordinator.editor.view endEditing:YES];
+    [self.coordinator.editor flush];
 }
 @end
 @interface NeonAppDelegate : UIResponder <UIApplicationDelegate>
 @end
 @implementation NeonAppDelegate
-- (UISceneConfiguration*)application:(UIApplication*)application
+- (UISceneConfiguration*)application:(UIApplication*)app
     configurationForConnectingSceneSession:(UISceneSession*)session
                                    options:(UISceneConnectionOptions*)options {
-    (void)application;
+    (void)app;
     (void)options;
     UISceneConfiguration* config = [[UISceneConfiguration alloc] initWithName:@"Writing"
                                                                   sessionRole:session.role];

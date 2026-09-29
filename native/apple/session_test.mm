@@ -1,4 +1,5 @@
 #import "DocumentSession.h"
+#import "LibraryStore.h"
 #include <cstdlib>
 #include <iostream>
 
@@ -30,6 +31,26 @@ int main() {
         check([session replaceText:@"Retained draft" error:&error] && ![session save:&error] &&
                   session.dirty && [session.text isEqualToString:@"Retained draft"],
               "conflict retains draft");
+        NSString* first = reopened.selectedSectionID;
+        check([reopened addSection:@"Second section" error:&error], "add section");
+        check([reopened replaceText:@"Separate text" error:&error] && [reopened save:&error],
+              "save second");
+        check([reopened selectSection:first error:&error] &&
+                  [reopened.text isEqualToString:@"Another editor"],
+              "first section preserved");
+        NeonDocumentSession* multi = [[NeonDocumentSession alloc] initWithURL:file
+                                                                        actor:@"author"
+                                                                        error:&error];
+        check(multi.sections.count == 2 &&
+                  [multi selectSection:multi.sections[1][@"id"] error:&error] &&
+                  [multi.text isEqualToString:@"Separate text"],
+              "all sections reopen");
+        NeonLibraryStore* store = [[NeonLibraryStore alloc]
+            initWithDirectory:[directory URLByAppendingPathComponent:@"library"]];
+        NSURL* created = [store createProject:@"Essay / one" error:&error];
+        check(created && [[store projects:&error] count] == 1, "project title never becomes path");
+        check(![store createProject:@"  " error:&error] && [[store projects:&error] count] == 1,
+              "empty title creates no file");
         NSData* data = [NSData dataWithContentsOfURL:file];
         NSMutableDictionary* future = [[NSJSONSerialization JSONObjectWithData:data
                                                                        options:0

@@ -31,6 +31,8 @@ struct Project {
 };
 // IDs are project-wide unique. Vector order is semantic reading order.
 Result validate(const Project& project);
+Result renameProject(Project* project, const std::string& title);
+Result addSection(Project* project, const std::string& documentId, Section section);
 // Whole-block UTF-8 replacement avoids mixing UIKit UTF-16 offsets with core offsets.
 // No-op edits do not advance revision. Failed commands leave the project untouched.
 Result replaceText(Project* project, const std::string& blockId, const std::string& text,
