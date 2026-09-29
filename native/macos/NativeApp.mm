@@ -401,7 +401,9 @@ NSUInteger words(NSString* text) {
     return result;
 }
 - (void)toggleSidebar:(id)sender {
-    [self.split toggleSidebar:sender];
+    (void)sender;
+    NSSplitViewItem* sidebar = self.split.splitViewItems.firstObject;
+    sidebar.collapsed = !sidebar.collapsed;
 }
 - (void)clear:(NSView*)view {
     for (NSView* child in view.subviews.copy)
@@ -1231,8 +1233,10 @@ NSUInteger words(NSString* text) {
         if ([item.itemIdentifier isEqual:@"sidebar"]) {
             BOOL collapsed = self.split.splitViewItems.firstObject.collapsed;
             [NSApp sendAction:item.action to:item.target from:item];
-            if (self.split.splitViewItems.firstObject.collapsed == collapsed)
+            if (self.split.splitViewItems.firstObject.collapsed == collapsed) {
+                fprintf(stderr, "Toolbar sidebar action did not toggle the pane\n");
                 exit(8);
+            }
             [NSApp sendAction:item.action to:item.target from:item];
         }
     }
