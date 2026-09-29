@@ -161,10 +161,13 @@ QString Controller::docPath() const {
     return bookId() + "/" + (tab_ == "manuscript" ? "chapters/" + chapter_ : tab_) + ".html";
 }
 void Controller::attach(QQuickTextDocument* d) {
+    quick_ = d;
+    attachDocument(d ? d->textDocument() : nullptr);
+}
+void Controller::attachDocument(QTextDocument* document) {
     if (document_)
         disconnect(document_, nullptr, this, nullptr);
-    quick_ = d;
-    document_ = d ? d->textDocument() : nullptr;
+    document_ = document;
     if (document_)
         connect(document_, &QTextDocument::contentsChanged, this, &Controller::changed);
     loadDocument();
@@ -319,12 +322,15 @@ void Controller::openBook(const QString& id) {
         stickies_ = store_->array(id + "/stickies.json", true);
         baseline_[id + "/darlings.json"] = store_->read(id + "/darlings.json", true);
         baseline_[id + "/stickies.json"] = store_->read(id + "/stickies.json", true);
-        chapter_ = book_["chapterOrder"].toArray().first().toString();
+        const auto order = book_["chapterOrder"].toArray();
+        chapter_ = order.isEmpty() ? QString() : order.first().toString();
         tab_ = "manuscript";
         undo_.clear();
         redo_.clear();
         loadDocument();
         emit bookChanged();
+        if (chapter_.isEmpty())
+            newChapter();
     } catch (const std::exception& e) {
         fail(e);
     }
@@ -448,18 +454,22 @@ void Controller::moveChapter(const QString& id, int direction) {
         }
 }
 void Controller::splitChapter() {
-    if (!document_ || tab_ != "manuscript" || !save())
+    if (!document_ || !opened() || tab_ != "manuscript" || !save())
         return;
     checkpoint();
     auto c = cursor();
     c.clearSelection();
-    auto tail = c;
     c.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
-    QString next = c.selection().toHtml();
+    const auto next = c.selection().toHtml();
     c.removeSelectedText();
     capture();
-    auto old = chapter_;
-    newChapter();
+    auto order = book_["chapterOrder"].toArray();
+    int at = 0;
+    while (at < order.size() && order[at] != chapter_)
+        ++at;
+    chapter_ = Store::id("ch-");
+    order.insert(at + 1, chapter_);
+    book_["chapterOrder"] = order;
     html_[chapter_] = next;
     mark(docPath(), next.toUtf8());
     markBook();
@@ -697,40 +707,83 @@ void Controller::moveBook(const QString& id, const QString& shelf) {
     markLibrary();
 }
 void Controller::find(const QString& text, bool backwards) {
-    if (!document_ || text.isEmpty())
+    if (!document_ || !opened() || text.isEmpty() || !save())
         return;
-    auto flags = backwards ? QTextDocument::FindBackward : QTextDocument::FindFlags();
-    auto c = document_->find(text, cursor_, flags);
-    if (c.isNull())
-        c = document_->find(text, backwards ? document_->characterCount() - 1 : 0, flags);
-    if (!c.isNull())
-        emit cursorRequested(c.position(), c.anchor());
-    else
-        emit notice("No matches in this chapter");
+    const auto order = book_["chapterOrder"].toArray();
+    if (order.isEmpty())
+        return;
+    int start = 0;
+    while (start < order.size() && order[start] != chapter_)
+        ++start;
+    if (start == order.size())
+        start = 0;
+    const auto flags = backwards ? QTextDocument::FindBackward : QTextDocument::FindFlags();
+    for (int step = 0; step <= order.size(); ++step) {
+        const int index = (start + (backwards ? -step : step) + order.size()) % order.size();
+        const auto id = order[index].toString();
+        QTextDocument candidate;
+        candidate.setHtml(html_.value(id));
+        int from = backwards ? candidate.characterCount() - 1 : 0;
+        if (step == 0 && tab_ == "manuscript")
+            from = backwards ? qMin(selectionStart_, selectionEnd_)
+                             : qMax(selectionStart_, selectionEnd_);
+        const auto match = candidate.find(text, from, flags);
+        if (match.isNull())
+            continue;
+        if (chapter_ != id || tab_ != "manuscript") {
+            chapter_ = id;
+            tab_ = "manuscript";
+            loadDocument();
+        }
+        selectionStart_ = match.selectionStart();
+        selectionEnd_ = match.selectionEnd();
+        cursor_ = match.position();
+        emit cursorRequested(match.position(), match.anchor());
+        return;
+    }
+    emit notice("No matches in this manuscript");
 }
 void Controller::replace(const QString& text, const QString& replacement, bool all) {
-    if (!document_ || text.isEmpty())
+    if (!document_ || !opened() || text.isEmpty())
         return;
-    auto c = cursor();
     if (!all) {
-        if (c.selectedText() == text)
+        auto c = cursor();
+        if (c.selectedText().compare(text, Qt::CaseInsensitive) == 0)
             c.insertText(replacement);
+        selectionStart_ = selectionEnd_ = cursor_ = c.position();
         find(text);
         return;
     }
-    QTextCursor transaction(document_);
-    transaction.beginEditBlock();
-    int pos = 0, count = 0;
-    while (true) {
-        auto match = document_->find(text, pos);
-        if (match.isNull())
-            break;
-        match.insertText(replacement);
-        pos = match.position();
-        ++count;
+    if (!save())
+        return;
+    checkpoint();
+    int count = 0;
+    for (const auto& value : book_["chapterOrder"].toArray()) {
+        const auto id = value.toString();
+        QTextDocument candidate;
+        candidate.setHtml(html_.value(id));
+        int from = 0, chapterCount = 0;
+        while (true) {
+            auto match = candidate.find(text, from);
+            if (match.isNull())
+                break;
+            match.insertText(replacement);
+            from = match.position();
+            ++chapterCount;
+        }
+        if (chapterCount == 0)
+            continue;
+        count += chapterCount;
+        html_[id] = candidate.toHtml();
+        mark(bookId() + "/chapters/" + id + ".html", html_[id].toUtf8());
     }
-    transaction.endEditBlock();
-    emit notice(QString("Replaced %1 matches in this chapter").arg(count));
+    if (count) {
+        markBook();
+        loadDocument();
+    } else {
+        undo_.removeLast();
+    }
+    emit notice(QString("Replaced %1 matches in this manuscript").arg(count));
 }
 QStringList Controller::spellcheck(const QString& lang) {
     return document_ ? platform::misspellings(document_->toPlainText(), lang) : QStringList();

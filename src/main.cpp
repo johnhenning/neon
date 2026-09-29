@@ -1,14 +1,20 @@
 #include "controller.h"
 #include <QFile>
 #include <QGuiApplication>
+#include <QProcess>
 #include <QQmlApplicationEngine>
+#include <QQuickStyle>
 #include <QQuickWindow>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QStyleHints>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <cstdio>
 int main(int argc, char** argv) {
+#ifdef Q_OS_MACOS
+    QQuickStyle::setStyle("macOS");
+#endif
     QGuiApplication app(argc, argv);
     app.setOrganizationName("Neon");
     app.setApplicationName("Neon");
@@ -23,6 +29,18 @@ int main(int argc, char** argv) {
         root = app.arguments()[arg + 1];
     try {
         Controller controller(root);
+        QString appliedTheme;
+        auto applyTheme = [&] {
+            const auto theme = controller.settings().value("pageTheme", "system").toString();
+            if (theme == appliedTheme)
+                return;
+            appliedTheme = theme;
+            app.styleHints()->setColorScheme(theme == "night" ? Qt::ColorScheme::Dark
+                                             : theme == "day" ? Qt::ColorScheme::Light
+                                                              : Qt::ColorScheme::Unknown);
+        };
+        QObject::connect(&controller, &Controller::libraryChanged, &app, applyTheme);
+        applyTheme();
         QQmlApplicationEngine engine;
         engine.setInitialProperties({{"backend", QVariant::fromValue(&controller)}});
         QObject::connect(
@@ -47,12 +65,15 @@ int main(int argc, char** argv) {
             controller.createBook("Letters from Elsewhere", "A. Writer", "");
             controller.closeBook();
             controller.updateSetting("pageTheme", "day");
-            QTimer::singleShot(5000, &app, [&, demoId] {
+            QTimer::singleShot(6500, &app, [&, demoId] {
                 if (engine.rootObjects().isEmpty())
                     return app.exit(1);
                 auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
                 if (!window || !window->grabWindow().save("bookshelf.png"))
                     return app.exit(2);
+#ifdef Q_OS_MACOS
+                QProcess::execute("/usr/sbin/screencapture", {"-x", "bookshelf-desktop.png"});
+#endif
                 controller.openBook(demoId);
                 QTimer::singleShot(1000, &app, [&] {
                     auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
@@ -60,6 +81,9 @@ int main(int argc, char** argv) {
                         controller.chapters().size() != 2 ||
                         !window->grabWindow().save("editor.png"))
                         return app.exit(3);
+#ifdef Q_OS_MACOS
+                    QProcess::execute("/usr/sbin/screencapture", {"-x", "editor-desktop.png"});
+#endif
                     controller.updateSetting("pageTheme", "night");
                     QTimer::singleShot(800, &app, [&] {
                         auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());

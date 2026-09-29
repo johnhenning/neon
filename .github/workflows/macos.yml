@@ -41,6 +41,8 @@ jobs:
             build/bookshelf.png
             build/editor.png
             build/editor-dark.png
+            build/bookshelf-desktop.png
+            build/editor-desktop.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -49,4 +51,6 @@ jobs:
             build/bookshelf.png
             build/editor.png
             build/editor-dark.png
+            build/bookshelf-desktop.png
+            build/editor-desktop.png
             build/Testing/Temporary/LastTest.log

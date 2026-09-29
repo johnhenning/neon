@@ -13,29 +13,24 @@ ApplicationWindow {
     minimumWidth: 760
     minimumHeight: 540
     title: backend.opened ? backend.book.title + " — Neon" : "Neon"
-    property bool dark: backend.settings.pageTheme === "night"
+    property bool dark: Qt.styleHints.colorScheme === Qt.Dark
     property bool focusMode: false
     property bool typewriter: false
     property string activeShelf: ""
     property string panel: "Chapters"
     property string exportFormat: "docx"
-    property color ink: dark ? "#ece8df" : "#2d302e"
-    property color surface: dark ? "#202622" : "#f0f1eb"
-    property color paper: dark ? "#262d27" : "#fffdf7"
-    property color muted: dark ? "#b5bbae" : "#697468"
-    property color accent: dark ? "#a8c5aa" : "#3c674b"
+    property color ink: systemColors.text
+    property color surface: systemColors.window
+    property color paper: systemColors.base
+    property color muted: dark ? "#a8a8ad" : "#6e6e73"
+    property color accent: systemColors.highlight
     property int sprintStart: 0
     property int sprintTarget: 0
-    property int enterCount: 0
     color: surface
-    palette.window: surface
-    palette.windowText: ink
-    palette.base: paper
-    palette.text: ink
-    palette.button: surface
-    palette.buttonText: ink
-    palette.highlight: accent
-    palette.highlightedText: "#ffffff"
+    SystemPalette {
+        id: systemColors
+        colorGroup: SystemPalette.Active
+    }
     onClosing: function (close) {
         close.accepted = backend.save();
     }
@@ -283,10 +278,14 @@ ApplicationWindow {
         Menu {
             title: qsTr("View")
             Action {
-                text: qsTr("Dark Page")
+                text: qsTr("Dark Appearance")
                 checkable: true
                 checked: win.dark
                 onTriggered: win.backend.updateSetting("pageTheme", checked ? "night" : "day")
+            }
+            Action {
+                text: qsTr("Follow System Appearance")
+                onTriggered: win.backend.updateSetting("pageTheme", "system")
             }
             Action {
                 text: qsTr("Distraction-Free")
@@ -367,7 +366,7 @@ ApplicationWindow {
             Layout.margins: 12
             TextField {
                 id: searchText
-                placeholderText: "Find in chapter"
+                placeholderText: "Find in manuscript"
                 Layout.fillWidth: true
                 onAccepted: win.backend.find(text)
             }
@@ -375,6 +374,10 @@ ApplicationWindow {
                 id: replacementText
                 placeholderText: "Replace with"
                 Layout.fillWidth: true
+            }
+            Button {
+                text: "Previous"
+                onClicked: win.backend.find(searchText.text, true)
             }
             Button {
                 text: "Next"
@@ -385,7 +388,7 @@ ApplicationWindow {
                 onClicked: win.backend.replace(searchText.text, replacementText.text, false)
             }
             Button {
-                text: "All"
+                text: "Replace all"
                 onClicked: win.backend.replace(searchText.text, replacementText.text, true)
             }
             ToolButton {
@@ -577,7 +580,7 @@ ApplicationWindow {
                             width: ListView.view.width
                             height: itemColumn.implicitHeight + 20
                             radius: 6
-                            color: modelData.id === win.backend.chapterId ? (win.dark ? "#39483a" : "#dce5d7") : "transparent"
+                            color: modelData.id === win.backend.chapterId ? (win.dark ? "#38383d" : "#e4e4e8") : "transparent"
                             ColumnLayout {
                                 id: itemColumn
                                 anchors.left: parent.left
@@ -649,8 +652,8 @@ ApplicationWindow {
                             delegate: Button {
                                 required property string modelData
                                 text: modelData.charAt(0).toUpperCase() + modelData.slice(1)
-                                flat: true
-                                highlighted: win.backend.tab === modelData
+                                checkable: true
+                                checked: win.backend.tab === modelData
                                 onClicked: win.backend.selectTab(modelData)
                             }
                         }
@@ -686,7 +689,7 @@ ApplicationWindow {
                             bottomPadding: win.typewriter ? scroll.height / 2 : 90
                             color: win.ink
                             selectionColor: win.accent
-                            selectedTextColor: win.paper
+                            selectedTextColor: systemColors.highlightedText
                             font.family: win.backend.settings.fontFamily || "Georgia"
                             font.pointSize: win.backend.settings.fontSize || 16
                             textFormat: TextEdit.RichText
@@ -713,8 +716,6 @@ ApplicationWindow {
                                     win.backend.format("poetry");
                                     return;
                                 }
-                                if (event.key !== Qt.Key_Return)
-                                    win.enterCount = 0;
                             }
                         }
                     }
@@ -926,9 +927,13 @@ ApplicationWindow {
                 onValueModified: win.backend.updateSetting("fontSize", value)
             }
             CheckBox {
-                text: "Dark page"
+                text: "Dark appearance"
                 checked: win.dark
                 onToggled: win.backend.updateSetting("pageTheme", checked ? "night" : "day")
+            }
+            Button {
+                text: "Follow system appearance"
+                onClicked: win.backend.updateSetting("pageTheme", "system")
             }
             CheckBox {
                 text: "Typewriter scrolling"

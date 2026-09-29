@@ -65,6 +65,7 @@ class Controller : public QObject {
     int todayCount() const;
     QVariantList progress() const;
     Q_INVOKABLE void attach(QQuickTextDocument* document);
+    void attachDocument(QTextDocument* document);
     Q_INVOKABLE void selection(int start, int end, int cursor);
     Q_INVOKABLE bool save();
     Q_INVOKABLE void createBook(const QString& title, const QString& author, const QString& shelf);

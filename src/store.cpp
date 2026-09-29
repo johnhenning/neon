@@ -112,7 +112,7 @@ void Store::initialize() {
     if (!exists("library.json"))
         write("library.json",
               encode(QJsonObject{{"authorName", ""},
-                                 {"pageTheme", "night"},
+                                 {"pageTheme", "system"},
                                  {"shelves", QJsonArray{QJsonObject{{"id", "shelf-1"},
                                                                     {"name", "Works in Progress"},
                                                                     {"bookIds", QJsonArray{}}}}}}));
