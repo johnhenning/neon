@@ -414,6 +414,8 @@ NSUInteger words(NSString* text) {
         NSToolbarItem* spacer = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
         self.workspaceSpacerItem = spacer;
         spacer.view = [NSView new];
+        spacer.bordered = NO;
+        spacer.navigational = YES;
         self.workspaceSpacing = [spacer.view.widthAnchor constraintEqualToConstant:0];
         self.workspaceSpacing.active = YES;
         [spacer.view.heightAnchor constraintEqualToConstant:1].active = YES;
@@ -422,6 +424,7 @@ NSUInteger words(NSString* text) {
     if ([identifier isEqual:@"workspace"]) {
         self.workspaceItem = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
         self.workspaceItem.label = @"Workspace view";
+        self.workspaceItem.bordered = NO;
         self.workspaceItem.visibilityPriority = NSToolbarItemVisibilityPriorityHigh;
         [self updateWorkspacePill];
         return self.workspaceItem;
