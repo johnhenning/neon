@@ -1,0 +1,21 @@
+cmake_minimum_required(VERSION 3.24)
+project(NeonNative VERSION 0.2.0 LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+add_subdirectory(core)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  enable_language(OBJCXX)
+  set(CMAKE_OBJCXX_STANDARD 23)
+  set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+  add_executable(NeonNative MACOSX_BUNDLE macos/NativeApp.mm macos/MacRepository.mm)
+  target_link_libraries(NeonNative PRIVATE neon_portable_core "-framework AppKit" "-framework Foundation" "-framework QuartzCore")
+  target_compile_options(NeonNative PRIVATE -fobjc-arc -Wall -Wextra)
+  set_target_properties(NeonNative PROPERTIES
+    MACOSX_BUNDLE_GUI_IDENTIFIER com.johnhenning.neon.nativeprototype
+    MACOSX_BUNDLE_BUNDLE_NAME "Neon Native"
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/macos/Info.plist")
+  enable_testing()
+  add_test(NAME native_ui COMMAND NeonNative --smoke-test)
+  set_tests_properties(native_ui PROPERTIES TIMEOUT 45)
+endif()

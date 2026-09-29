@@ -1,0 +1,44 @@
+name: Native AppKit prototype
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  portable-core:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S native/core -B build-portable -DCMAKE_BUILD_TYPE=Debug
+      - run: cmake --build build-portable --parallel 2
+      - run: ctest --test-dir build-portable --output-on-failure
+  macos-native:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install quality tools
+        run: python3 -m pip install --break-system-packages clang-format==19.1.7 cpplint==2.0.2
+      - name: Format and lint
+        run: python3 native/scripts/quality.py
+      - name: Configure without Qt
+        run: cmake -S native -B build-native -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
+      - name: Build native app
+        run: cmake --build build-native --parallel 3
+      - name: Native tests and desktop captures
+        run: ctest --test-dir build-native --output-on-failure
+      - name: Package
+        run: |
+          codesign --force --deep --sign - build-native/NeonNative.app
+          otool -L build-native/NeonNative.app/Contents/MacOS/NeonNative > build-native/dependencies.txt
+          if rg -i 'Qt|Electron|Chromium' build-native/dependencies.txt; then exit 1; fi
+          ditto -c -k --sequesterRsrc --keepParent build-native/NeonNative.app build-native/Neon-Native-Preview.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-Native-macOS
+          path: |
+            build-native/Neon-Native-Preview.zip
+            build-native/native-bookshelf.png
+            build-native/native-editor.png
+            build-native/dependencies.txt
+            build-native/Testing/Temporary/LastTest.log
