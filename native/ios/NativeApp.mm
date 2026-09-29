@@ -640,6 +640,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
                                       reuseIdentifier:@"project"];
     [[cell.contentView viewWithTag:901] removeFromSuperview];
+    [[cell.contentView viewWithTag:902] removeFromSuperview];
     UIListContentConfiguration* content = [cell defaultContentConfiguration];
     if (self.chapters) {
         NSDictionary* section = self.coordinator.session.sections[path.row];
@@ -717,8 +718,19 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         row.tag = 901;
         row.translatesAutoresizingMaskIntoConstraints = NO;
         [cell.contentView addSubview:row];
+        UIImageView* check =
+            [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"checkmark"]];
+        check.tintColor = NeonAccent();
+        check.alpha = current ? 1 : 0;
+        check.tag = 902;
+        check.translatesAutoresizingMaskIntoConstraints = NO;
+        [cell.contentView addSubview:check];
         [NSLayoutConstraint activateConstraints:@[
-            [row.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:20],
+            [check.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor
+                                                constant:20],
+            [check.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+            [check.widthAnchor constraintEqualToConstant:12],
+            [row.leadingAnchor constraintEqualToAnchor:check.trailingAnchor constant:7],
             [row.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor
                                                constant:-8],
             [row.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:10],
