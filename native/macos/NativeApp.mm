@@ -301,7 +301,9 @@ NSUInteger words(NSString* text) {
     } else if (@available(macOS 26.0, *)) {
         NSGlassEffectView* glass = [NSGlassEffectView new];
         glass.tintColor = [NeonPanel() colorWithAlphaComponent:0.25];
-        glass.cornerRadius = 12;
+        // This material fills a docked pane, rather than an inset card.
+        // Rounded corners expose a wedge beside the straight split divider.
+        glass.cornerRadius = 0;
         self.sidebarMaterial = glass;
     } else {
         NSVisualEffectView* material = [NSVisualEffectView new];
