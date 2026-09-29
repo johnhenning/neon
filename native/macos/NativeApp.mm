@@ -5,6 +5,36 @@
 #include <cstdlib>
 #include <string>
 
+@interface NeonColumn : NSStackView
+@end
+@implementation NeonColumn
+- (BOOL)isFlipped {
+    return YES;
+}
+@end
+@interface NeonChapterButton : NSButton
+@end
+@implementation NeonChapterButton
+- (NSSize)intrinsicContentSize {
+    return NSMakeSize(180, 36);
+}
+- (void)drawRect:(NSRect)rect {
+    (void)rect;
+    [NSGraphicsContext saveGraphicsState];
+    [NSBezierPath clipRect:self.bounds];
+    if (self.state == NSControlStateValueOn) {
+        [[NeonAccent() colorWithAlphaComponent:0.16] setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:6 yRadius:6] fill];
+    }
+    [self.title drawInRect:NSInsetRect(self.bounds, 10, 8)
+            withAttributes:@{
+                NSFontAttributeName : NeonUI(15),
+                NSForegroundColorAttributeName : NeonInk()
+            }];
+    [NSGraphicsContext restoreGraphicsState];
+}
+@end
+
 namespace {
 NSTextField* label(NSString* text, NSFont* font, NSColor* color) {
     NSTextField* label = [NSTextField wrappingLabelWithString:text];
@@ -15,6 +45,7 @@ NSTextField* label(NSString* text, NSFont* font, NSColor* color) {
 NSButton* button(NSString* title, NSString* symbol, id target, SEL action) {
     NSButton* button = [NSButton buttonWithTitle:title target:target action:action];
     button.bezelStyle = NSBezelStyleRecessed;
+    button.bordered = NO;
     button.font = NeonUI(15);
     button.contentTintColor = NeonAccent();
     if (symbol)
@@ -23,7 +54,7 @@ NSButton* button(NSString* title, NSString* symbol, id target, SEL action) {
     return button;
 }
 NSStackView* column(NSArray<NSView*>* views, CGFloat spacing) {
-    NSStackView* stack = [NSStackView stackViewWithViews:views];
+    NSStackView* stack = [NeonColumn stackViewWithViews:views];
     stack.orientation = NSUserInterfaceLayoutOrientationVertical;
     stack.alignment = NSLayoutAttributeLeading;
     stack.spacing = spacing;
@@ -64,6 +95,8 @@ NSUInteger words(NSString* text) {
 @implementation NeonBookCover
 - (void)drawRect:(NSRect)rect {
     (void)rect;
+    [NSGraphicsContext saveGraphicsState];
+    [NSBezierPath clipRect:self.bounds];
     [[NSColor colorWithSRGBRed:0.84 green:0.81 blue:0.72 alpha:1] setFill];
     NSRectFill(self.bounds);
     [[NSColor colorWithSRGBRed:0.24 green:0.37 blue:0.39 alpha:1] setFill];
@@ -74,9 +107,10 @@ NSUInteger words(NSString* text) {
                                                       self.bounds.size.height - 80),
                                            18, 12)
                 withAttributes:@{
-                    NSFontAttributeName : NeonSerif(21),
+                    NSFontAttributeName : NeonSerif(15),
                     NSForegroundColorAttributeName : NSColor.blackColor
                 }];
+    [NSGraphicsContext restoreGraphicsState];
 }
 @end
 @interface NeonApp
@@ -145,6 +179,7 @@ NSUInteger words(NSString* text) {
     [self applyAppearance];
     [self installMenu];
     [self showLibrary:nil];
+    [self.window setFrame:NSInsetRect(NSScreen.mainScreen.visibleFrame, 24, 24) display:YES];
     [self.window center];
     [self.window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
@@ -257,9 +292,10 @@ NSUInteger words(NSString* text) {
         [rows addObject:label(@"MANUSCRIPT", NeonUI(11), NeonMuted())];
         NSInteger index = 0;
         for (NSDictionary* section in self.session.sections) {
-            NSButton* row =
-                button([NSString stringWithFormat:@"%ld   %@", ++index, section[@"title"]], nil,
-                       self, @selector(selectSection:));
+            NSButton* row = [NeonChapterButton
+                buttonWithTitle:[NSString stringWithFormat:@"%ld   %@", ++index, section[@"title"]]
+                         target:self
+                         action:@selector(selectSection:)];
             row.tag = index - 1;
             row.alignment = NSTextAlignmentLeft;
             row.buttonType = NSButtonTypePushOnPushOff;
