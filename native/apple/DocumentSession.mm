@@ -115,7 +115,7 @@ NSData* encode(const neon::core::Project& project, NSError** error) {
     NSString* _actor;
     NSData* _lastSaved;
     BOOL _dirty;
-    std::size_t _selected = 0;
+    std::size_t _selected;
 }
 - (instancetype)initWithURL:(NSURL*)url actor:(NSString*)actor error:(NSError**)error {
     self = [super init];

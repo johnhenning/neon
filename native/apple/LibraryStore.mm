@@ -50,6 +50,17 @@
     return projects;
 }
 - (NeonDocumentSession*)openURL:(NSURL*)url error:(NSError**)error {
+    if (![[NSFileManager defaultManager] fileExistsAtPath:url.path]) {
+        if (error)
+            *error = [NSError
+                errorWithDomain:@"NeonLibrary"
+                           code:1
+                       userInfo:@{
+                           NSLocalizedDescriptionKey : @"This project file is missing. Its library "
+                                                       @"entry has not been replaced."
+                       }];
+        return nil;
+    }
     return [[NeonDocumentSession alloc] initWithURL:url actor:self.actor error:error];
 }
 - (NSURL*)createProject:(NSString*)title error:(NSError**)error {
@@ -58,7 +69,9 @@
     NSURL* file =
         [self.directory URLByAppendingPathComponent:[NSUUID.UUID.UUIDString
                                                         stringByAppendingPathExtension:@"json"]];
-    NeonDocumentSession* session = [self openURL:file error:error];
+    NeonDocumentSession* session = [[NeonDocumentSession alloc] initWithURL:file
+                                                                      actor:self.actor
+                                                                      error:error];
     if (!session || ![session renameProject:clean error:error] || ![session save:error])
         return nil;
     return file;
