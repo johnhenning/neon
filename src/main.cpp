@@ -46,7 +46,8 @@ int main(int argc, char** argv) {
             controller.createBook("The Orchard at Dusk", "A. Writer", "");
             controller.createBook("Letters from Elsewhere", "A. Writer", "");
             controller.closeBook();
-            QTimer::singleShot(1200, &app, [&, demoId] {
+            controller.updateSetting("pageTheme", "day");
+            QTimer::singleShot(5000, &app, [&, demoId] {
                 if (engine.rootObjects().isEmpty())
                     return app.exit(1);
                 auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
@@ -59,7 +60,13 @@ int main(int argc, char** argv) {
                         controller.chapters().size() != 2 ||
                         !window->grabWindow().save("editor.png"))
                         return app.exit(3);
-                    app.quit();
+                    controller.updateSetting("pageTheme", "night");
+                    QTimer::singleShot(800, &app, [&] {
+                        auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+                        if (!window->grabWindow().save("editor-dark.png"))
+                            return app.exit(4);
+                        app.quit();
+                    });
                 });
             });
         }

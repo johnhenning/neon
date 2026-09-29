@@ -28,6 +28,14 @@ ApplicationWindow {
     property int sprintTarget: 0
     property int enterCount: 0
     color: surface
+    palette.window: surface
+    palette.windowText: ink
+    palette.base: paper
+    palette.text: ink
+    palette.button: surface
+    palette.buttonText: ink
+    palette.highlight: accent
+    palette.highlightedText: "#ffffff"
     onClosing: function (close) {
         close.accepted = backend.save();
     }
@@ -441,11 +449,13 @@ ApplicationWindow {
                 }
             }
             ScrollView {
+                id: bookshelfScroll
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                contentWidth: availableWidth
                 clip: true
                 Flow {
-                    width: parent.width
+                    width: bookshelfScroll.availableWidth
                     spacing: 32
                     padding: 32
                     Repeater {
