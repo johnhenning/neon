@@ -82,7 +82,7 @@ jobs:
       - name: Package simulator app
         run: ditto -c -k --sequesterRsrc --keepParent build-ios/Debug-iphonesimulator/Neon.app build-ios/Neon-Simulator.zip
       - name: Install UI driver generator
-        run: brew install xcodegen
+        run: brew install xcodegen ffmpeg
       - name: iPhone and iPad edit-save-reopen smoke
         run: python3 native/scripts/ios_smoke.py build-ios/Debug-iphonesimulator/Neon.app build-ios/evidence
       - uses: actions/upload-artifact@v4

@@ -55,6 +55,9 @@ final class Walkthrough: XCTestCase {
         XCTAssertTrue(project.waitForExistence(timeout: 15))
         capture("01-library")
         activate(project)
+        #if !os(macOS)
+        XCTAssertFalse(app.buttons["Move to Trash…"].exists, "A normal tap must open the project, not its context menu")
+        #endif
         #if os(macOS)
         activate(element("section-0"))
         #else

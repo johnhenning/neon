@@ -134,22 +134,26 @@ def main():
                     '--output-path', str(output / 'attachments'))
             except subprocess.SubprocessError as error:
                 result['attachment_error'] = str(error)
-        if platform == 'macOS':
-            try:
+        try:
+            if platform == 'macOS':
                 recordings = list((output / 'attachments').glob('*.mp4'))
                 if len(recordings) != 1:
                     raise RuntimeError(f'Expected one XCTest recording, found {len(recordings)}')
-                movie = output / 'macOS-walkthrough.mp4'
-                with (output / 'recording.log').open('w') as record_log:
-                    run('ffmpeg', '-y', '-i', str(recordings[0]), '-an',
-                        '-vf', 'scale=960:-2,fps=24', '-c:v', 'libx264',
-                        '-b:v', '800k', '-maxrate', '1000k', '-bufsize', '2000k',
-                        '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(movie),
-                        stdout=record_log, stderr=subprocess.STDOUT)
-                result['recording_source'] = 'XCTest system attachment'
-            except (OSError, subprocess.SubprocessError, RuntimeError) as error:
-                result['recording_error'] = str(error)
-                result['status'] = 'failed'
+                original = recordings[0]
+            else:
+                original = movie
+            movie = output / f'{args.platform}-walkthrough.mp4'
+            with (output / 'video-export.log').open('w') as record_log:
+                run('ffmpeg', '-y', '-i', str(original), '-an',
+                    '-vf', 'scale=960:960:force_original_aspect_ratio=decrease:force_divisible_by=2,fps=24',
+                    '-c:v', 'libx264', '-b:v', '500k', '-maxrate', '650k', '-bufsize', '1300k',
+                    '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(movie),
+                    stdout=record_log, stderr=subprocess.STDOUT)
+            result['recording_source'] = ('XCTest system attachment' if platform == 'macOS'
+                                          else 'simctl recordVideo')
+        except (OSError, subprocess.SubprocessError, RuntimeError) as error:
+            result['recording_error'] = str(error)
+            result['status'] = 'failed'
         if movie.exists() and movie.stat().st_size >= 1024:
             result['video'] = movie.name
             result['video_complete'] = result['status'] == 'passed'

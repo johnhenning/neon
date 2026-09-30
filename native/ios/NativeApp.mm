@@ -610,6 +610,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     UITapGestureRecognizer* secondary =
         [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(context:)];
     secondary.buttonMaskRequired = UIEventButtonMaskSecondary;
+    // A right-click recognizer must not consume ordinary finger taps.
+    secondary.allowedTouchTypes = @[ @(UITouchTypeIndirectPointer) ];
     [self.tableView addGestureRecognizer:secondary];
     if (self.chapters)
         self.navigationItem.leftBarButtonItem =
