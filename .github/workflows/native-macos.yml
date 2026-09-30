@@ -1,0 +1,142 @@
+name: Native Apple foundation
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  portable-core:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S native/core -B build-portable -DCMAKE_BUILD_TYPE=Debug
+      - run: cmake --build build-portable --parallel 2
+      - run: ctest --test-dir build-portable --output-on-failure
+  macos-native:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install quality tools
+        run: python3 -m pip install --break-system-packages clang-format==19.1.7 cpplint==2.0.2
+      - name: Format and lint
+        run: python3 native/scripts/quality.py
+      - name: Configure without Qt
+        run: cmake -S native -B build-native -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
+      - name: Build native app
+        run: cmake --build build-native --parallel 3
+      - name: Install UI driver generator
+        run: brew install xcodegen ffmpeg
+      - name: Native tests and desktop captures
+        run: ctest --test-dir build-native --output-on-failure
+      - name: Package
+        run: |
+          codesign --force --deep --sign - build-native/Neon.app
+          otool -L build-native/Neon.app/Contents/MacOS/Neon > build-native/dependencies.txt
+          if rg -i 'Qt|Electron|Chromium' build-native/dependencies.txt; then exit 1; fi
+          ditto -c -k --sequesterRsrc --keepParent build-native/Neon.app build-native/Neon.zip
+      - name: Record Mac UI walkthrough
+        if: ${{ !cancelled() && hashFiles('build-native/Neon.app/Contents/MacOS/Neon') != '' }}
+        run: python3 native/scripts/ui_walkthrough.py macOS build-native/Neon.app build-native/walkthrough
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-Native-macOS
+          path: build-native/Neon.zip
+      - name: Stage separate media artifacts
+        if: always()
+        run: python3 native/scripts/stage_evidence.py macOS build-native staged-macOS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-macOS-Evidence-Screenshots
+          path: staged-macOS/Screenshots/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-macOS-Evidence-Recordings
+          path: staged-macOS/Recordings/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-macOS-Evidence-Diagnostics
+          path: staged-macOS/Diagnostics/
+
+  ios-native:
+    timeout-minutes: 50
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record Apple toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+      - name: Configure iPhone and iPad simulator app
+        run: >-
+          cmake -S native -B build-ios -G Xcode
+          -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0
+          -DCMAKE_OSX_ARCHITECTURES=arm64
+          -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
+      - name: Build native mobile app
+        run: cmake --build build-ios --config Debug --target NeonMobile
+      - name: Package simulator app
+        run: ditto -c -k --sequesterRsrc --keepParent build-ios/Debug-iphonesimulator/Neon.app build-ios/Neon-Simulator.zip
+      - name: Install UI driver generator
+        run: brew install xcodegen ffmpeg
+      - name: iPhone and iPad edit-save-reopen smoke
+        run: python3 native/scripts/ios_smoke.py build-ios/Debug-iphonesimulator/Neon.app build-ios/evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-Native-iOS-Simulator
+          path: build-ios/Neon-Simulator.zip
+      - name: Stage separate media artifacts
+        if: always()
+        run: python3 native/scripts/stage_evidence.py iOS build-ios/evidence staged-iOS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-iOS-Evidence-Screenshots
+          path: staged-iOS/Screenshots/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-iOS-Evidence-Recordings
+          path: staged-iOS/Recordings/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-iOS-Evidence-Diagnostics
+          path: staged-iOS/Diagnostics/
+
+  report-macos:
+    needs: macos-native
+    if: ${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+      copilot-requests: write
+    uses: ./.github/workflows/apple-report.yml
+    with:
+      platform: macOS
+      build-result: ${{ needs.macos-native.result }}
+      artifact: Neon-macOS-Evidence
+    secrets:
+      NEON_ATTACHMENT_TOKEN: ${{ secrets.NEON_ATTACHMENT_TOKEN }}
+
+  report-ios:
+    needs: ios-native
+    if: ${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+      copilot-requests: write
+    uses: ./.github/workflows/apple-report.yml
+    with:
+      platform: iOS
+      build-result: ${{ needs.ios-native.result }}
+      artifact: Neon-iOS-Evidence
+    secrets:
+      NEON_ATTACHMENT_TOKEN: ${{ secrets.NEON_ATTACHMENT_TOKEN }}
