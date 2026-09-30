@@ -398,12 +398,12 @@ NSUInteger words(NSString* text) {
 - (NSArray*)toolbarDefaultItemIdentifiers:(NSToolbar*)toolbar {
     (void)toolbar;
     return @[
-        @"projectTitle", @"sidebar", @"library", @"workspaceSpacing", @"workspace",
+        @"projectTitle", @"library", @"workspaceSpacing", @"workspace",
         NSToolbarFlexibleSpaceItemIdentifier, @"type", @"more", @"new", NSToolbarSpaceItemIdentifier
     ];
 }
 - (NSArray*)toolbarAllowedItemIdentifiers:(NSToolbar*)toolbar {
-    return [self toolbarDefaultItemIdentifiers:toolbar];
+    return [[self toolbarDefaultItemIdentifiers:toolbar] arrayByAddingObject:@"sidebar"];
 }
 - (NSToolbarItem*)toolbar:(NSToolbar*)toolbar
         itemForItemIdentifier:(NSString*)identifier
@@ -467,6 +467,18 @@ NSUInteger words(NSString* text) {
     (void)sender;
     NSSplitViewItem* sidebar = self.split.splitViewItems.firstObject;
     BOOL collapsed = !sidebar.collapsed;
+    if (collapsed) {
+        [self.window.toolbar insertItemWithItemIdentifier:@"sidebar" atIndex:1];
+    } else {
+        NSUInteger index = [self.window.toolbar.items
+            indexOfObjectPassingTest:^BOOL(NSToolbarItem* item, NSUInteger i, BOOL* stop) {
+              (void)i;
+              (void)stop;
+              return [item.itemIdentifier isEqual:@"sidebar"];
+            }];
+        if (index != NSNotFound)
+            [self.window.toolbar removeItemAtIndex:index];
+    }
     if (NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) {
         sidebar.collapsed = collapsed;
         [self workspaceGeometryChanged:nil];
@@ -491,8 +503,14 @@ NSUInteger words(NSString* text) {
 }
 - (void)buildSidebar {
     [self clear:self.sidebarBody];
+    NSButton* toggle = button(@"", @"sidebar.left", self, @selector(toggleSidebar:));
+    toggle.accessibilityLabel = @"Toggle sidebar";
+    toggle.toolTip = @"Hide sidebar";
+    NSStackView* header = [NSStackView
+        stackViewWithViews:@[ label(@"NEON", NeonUI(12), NeonMuted()), [NSView new], toggle ]];
+    header.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     NSMutableArray* rows = [NSMutableArray
-        arrayWithObjects:label(@"NEON", NeonUI(12), NeonMuted()),
+        arrayWithObjects:header,
                          button(@"Library", @"books.vertical", self, @selector(showLibrary:)), nil];
     [rows addObject:button(@"Trash", @"trash", self, @selector(showTrash:))];
     if (self.session) {

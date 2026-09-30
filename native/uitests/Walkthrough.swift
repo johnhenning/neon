@@ -41,7 +41,7 @@ final class Walkthrough: XCTestCase {
     func chapters() {
         #if !os(macOS)
         if !element("section-1").isHittable {
-            activate(app.buttons["Show or hide Chapters"])
+            activate(app.buttons["navigation-toggle"])
         }
         #endif
     }
@@ -73,6 +73,25 @@ final class Walkthrough: XCTestCase {
             XCTAssertEqual(pill.midX, element("manuscript").frame.midX, accuracy: 4, file: file, line: line)
         }
         assertPillCentered()
+        #endif
+        #if !os(macOS)
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            XCTAssertEqual(app.buttons.matching(identifier: "navigation-toggle").count, 1)
+            XCTAssertLessThanOrEqual(element("section-0").frame.maxX, editor.frame.minX)
+            let expandedWidth = editor.frame.width
+            activate(app.buttons["navigation-toggle"])
+            XCTAssertFalse(element("section-0").isHittable)
+            XCTAssertGreaterThan(editor.frame.width, expandedWidth)
+            capture("02-ipad-focus")
+            activate(app.buttons["navigation-toggle"])
+            XCTAssertTrue(element("section-0").isHittable)
+            XCTAssertLessThanOrEqual(element("section-0").frame.maxX, editor.frame.minX)
+        } else {
+            activate(app.buttons["navigation-toggle"])
+            XCTAssertTrue(element("section-0").isHittable)
+            XCTAssertFalse(editor.isHittable)
+            activate(element("section-0"))
+        }
         #endif
         capture("02-editor")
         activate(editor)

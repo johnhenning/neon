@@ -63,6 +63,7 @@
 - (void)newProject;
 - (void)newSection;
 - (void)toggleChapters;
+- (void)updateNavigationControls;
 - (void)showProblem:(NSError*)error;
 - (void)applyAppearance;
 - (void)showSettings;
@@ -146,14 +147,6 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.view.backgroundColor = NeonPaper();
     self.view.tintColor = NeonAccent();
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
-    self.navigationItem.leftBarButtonItem =
-        [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"sidebar.left"]
-                                         style:UIBarButtonItemStylePlain
-                                        target:self
-                                        action:@selector(chapters)];
-    self.navigationItem.leftBarButtonItem.title = self.session.preset[@"sectionsLabel"];
-    self.navigationItem.leftBarButtonItem.accessibilityLabel =
-        [@"Show or hide " stringByAppendingString:self.session.preset[@"sectionsLabel"]];
     UIBarButtonItem* typography =
         [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"textformat"]
                                          style:UIBarButtonItemStylePlain
@@ -632,6 +625,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     if (!self.chapters)
         [self.coordinator reloadLibrary];
     [self.tableView reloadData];
+    [self.coordinator updateNavigationControls];
 }
 - (NSInteger)tableView:(UITableView*)tableView numberOfRowsInSection:(NSInteger)section {
     (void)tableView;
@@ -824,9 +818,12 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     if (self) {
         self.delegate = self;
         self.preferredDisplayMode = UISplitViewControllerDisplayModeOneBesideSecondary;
-        self.preferredPrimaryColumnWidthFraction = 0.30;
-        self.minimumPrimaryColumnWidth = 280;
-        self.maximumPrimaryColumnWidth = 360;
+        self.preferredSplitBehavior = UISplitViewControllerSplitBehaviorTile;
+        self.displayModeButtonVisibility = UISplitViewControllerDisplayModeButtonVisibilityNever;
+        self.presentsWithGesture = NO;
+        self.preferredPrimaryColumnWidthFraction = 0.24;
+        self.minimumPrimaryColumnWidth = 220;
+        self.maximumPrimaryColumnWidth = 290;
     }
     return self;
 }
@@ -870,7 +867,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [hint.leadingAnchor constraintEqualToAnchor:welcome.view.leadingAnchor constant:32],
         [hint.trailingAnchor constraintEqualToAnchor:welcome.view.trailingAnchor constant:-32]
     ]];
-    [self setViewController:welcome forColumn:UISplitViewControllerColumnSecondary];
+    [self setViewController:[[UINavigationController alloc] initWithRootViewController:welcome]
+                  forColumn:UISplitViewControllerColumnSecondary];
     [NSNotificationCenter.defaultCenter
         addObserver:self
            selector:@selector(accessibilityChanged:)
@@ -882,6 +880,10 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         dispatch_async(dispatch_get_main_queue(), ^{
           [self runSmoke:args support:support];
         });
+}
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    [self updateNavigationControls];
 }
 - (void)accessibilityChanged:(NSNotification*)note {
     (void)note;
@@ -935,6 +937,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         detail.navigationBar.scrollEdgeAppearance = appearance;
         detail.navigationBar.tintColor = NeonAccent();
     }
+    [self updateNavigationControls];
 }
 - (BOOL)renameInline:(NSString*)title section:(NSString*)identifier {
     if (!self.session || (self.editor && ![self.editor flush]))
@@ -1121,9 +1124,40 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [self hideColumn:UISplitViewControllerColumnPrimary];
     else
         [self showColumn:UISplitViewControllerColumnPrimary];
-    self.editor.navigationItem.leftBarButtonItem.accessibilityLabel =
-        [NSString stringWithFormat:@"%@ %@ sidebar", self.sidebarHidden ? @"Show" : @"Hide",
-                                   self.session.preset[@"sectionsLabel"]];
+    [self updateNavigationControls];
+}
+- (void)updateNavigationControls {
+    BOOL compact = self.collapsed;
+    UIBarButtonItem* toggle = [[UIBarButtonItem alloc]
+        initWithImage:[UIImage systemImageNamed:compact ? @"list.bullet" : @"sidebar.left"]
+                style:UIBarButtonItemStylePlain
+               target:self
+               action:@selector(toggleChapters)];
+    toggle.accessibilityIdentifier = @"navigation-toggle";
+    toggle.accessibilityLabel = compact ? (self.session.preset[@"sectionsLabel"] ?: @"Contents")
+                                        : (self.sidebarHidden ? @"Show sidebar" : @"Hide sidebar");
+    toggle.title = toggle.accessibilityLabel;
+    for (NeonList* list in
+         @[ self.libraryList ?: (id)NSNull.null, self.chapterList ?: (id)NSNull.null ]) {
+        if (![list isKindOfClass:NeonList.class])
+            continue;
+        NSMutableArray* items = [NSMutableArray array];
+        if (!compact && !self.sidebarHidden && list == self.navigation.topViewController)
+            [items addObject:toggle];
+        if (list.chapters)
+            [items addObject:[[UIBarButtonItem alloc] initWithTitle:@"Library"
+                                                              style:UIBarButtonItemStylePlain
+                                                             target:self
+                                                             action:@selector(showLibrary)]];
+        list.navigationItem.leftBarButtonItems = items;
+    }
+    UIViewController* content = self.historyController ?: (UIViewController*)self.editor;
+    UINavigationController* detail =
+        (id)[self viewControllerForColumn:UISplitViewControllerColumnSecondary];
+    if (!content && [detail isKindOfClass:UINavigationController.class])
+        content = detail.topViewController;
+    content.navigationItem.hidesBackButton = YES;
+    content.navigationItem.leftBarButtonItem = (compact || self.sidebarHidden) ? toggle : nil;
 }
 - (UISplitViewControllerColumn)splitViewController:(UISplitViewController*)controller
          topColumnForCollapsingToProposedTopColumn:(UISplitViewControllerColumn)column {
@@ -1138,15 +1172,19 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         animateAlongsideTransition:nil
                         completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
                           (void)context;
-                          if (!self.editor)
+                          UIViewController* content =
+                              self.historyController ?: (UIViewController*)self.editor;
+                          if (!content) {
+                              [self updateNavigationControls];
                               return;
-                          if (![self.editor flush])
+                          }
+                          if (self.editor && ![self.editor flush])
                               return;
                           if (self.collapsed) {
                               [self setViewController:nil
                                             forColumn:UISplitViewControllerColumnSecondary];
                               [self.navigation setViewControllers:@[
-                                  self.libraryList, self.chapterList, self.editor
+                                  self.libraryList, self.chapterList, content
                               ]
                                                          animated:NO];
                           } else {
@@ -1154,7 +1192,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                   setViewControllers:@[ self.libraryList, self.chapterList ]
                                             animated:NO];
                               [self setViewController:[[UINavigationController alloc]
-                                                          initWithRootViewController:self.editor]
+                                                          initWithRootViewController:content]
                                             forColumn:UISplitViewControllerColumnSecondary];
                               if (self.sidebarHidden)
                                   [self hideColumn:UISplitViewControllerColumnPrimary];
@@ -1326,9 +1364,12 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     [self.navigation setViewControllers:@[ self.libraryList ] animated:NO];
     UIViewController* blank = [UIViewController new];
     blank.view.backgroundColor = NeonPaper();
-    [self setViewController:blank forColumn:UISplitViewControllerColumnSecondary];
+    [self setViewController:[[UINavigationController alloc] initWithRootViewController:blank]
+                  forColumn:UISplitViewControllerColumnSecondary];
+    self.sidebarHidden = NO;
     [self showColumn:UISplitViewControllerColumnPrimary];
     [self reloadLibrary];
+    [self applyAppearance];
 }
 - (void)showTrash {
     [self showLibrary];
