@@ -10,7 +10,7 @@ const publish = require('./publish_report.cjs');
   process.chdir(temp);
   process.env.PLATFORM = 'iOS';
   process.env.BUILD_RESULT = 'failure';
-  process.env.SOURCE_ARTIFACT = 'Neon-Apple-Simulator-Evidence';
+  process.env.SOURCE_ARTIFACT = 'Neon-iOS-Evidence';
   const context = {repo: {owner: 'test', repo: 'neon'}, serverUrl: 'https://github.com', runId: 123,
     payload: {pull_request: {number: 6, head: {sha: 'abcdef'}}, repository: {private: false}}};
   let posted, currentSha = 'abcdef', previous = [], artifacts = [];
@@ -29,11 +29,15 @@ const publish = require('./publish_report.cjs');
     assert.match(posted, /AI review unavailable/);
     fs.mkdirSync('evidence');
     fs.writeFileSync('evidence/iPad.png', 'fixture');
-    artifacts = [{id: 456, name: 'Neon-iOS-Report'}];
+    artifacts = [{id: 456, name: 'Neon-iOS-Evidence-Screenshots'},
+      {id: 457, name: 'Neon-iOS-Evidence-Recordings'}, {id: 458, name: 'Neon-Native-iOS-Simulator'}];
+    fs.writeFileSync('evidence/iPad-walkthrough.mp4', 'fixture');
     await publish({github, context, core});
     assert.match(posted, /Open screenshot artifact \(1 captures\)/);
     assert.match(posted, /runs\/123\/artifacts\/456/);
     assert.match(posted, /`iPad.png`/);
+    assert.match(posted, /Video recording.*artifacts\/457/);
+    assert.match(posted, /Download app.*artifacts\/458/);
     assert.doesNotMatch(posted, /raw.githubusercontent|ci-evidence|!\[/);
     // The mock deliberately has no Git mutation API: all evidence is artifact-backed.
     previous = [{id: 9, user: {login: 'github-actions[bot]'}, body: posted.replace('[Build 123]', '[Build 124]')}];

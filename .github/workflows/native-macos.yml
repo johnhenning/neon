@@ -41,19 +41,25 @@ jobs:
         if: always()
         with:
           name: Neon-Native-macOS
-          path: |
-            build-native/Neon.zip
-            build-native/native-bookshelf.png
-            build-native/native-editor.png
-            build-native/native-editor-dark.png
-            build-native/native-typography.png
-            build-native/native-context-menu.png
-            build-native/native-settings.png
-            build-native/native-history*.png
-            build-native/native-research.png
-            build-native/walkthrough
-            build-native/dependencies.txt
-            build-native/Testing/Temporary/LastTest.log
+          path: build-native/Neon.zip
+      - name: Stage separate media artifacts
+        if: always()
+        run: python3 native/scripts/stage_evidence.py macOS build-native staged-macOS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-macOS-Evidence-Screenshots
+          path: staged-macOS/Screenshots/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-macOS-Evidence-Recordings
+          path: staged-macOS/Recordings/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-macOS-Evidence-Diagnostics
+          path: staged-macOS/Diagnostics/
 
   ios-native:
     timeout-minutes: 50
@@ -73,6 +79,8 @@ jobs:
           -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
       - name: Build native mobile app
         run: cmake --build build-ios --config Debug --target NeonMobile
+      - name: Package simulator app
+        run: ditto -c -k --sequesterRsrc --keepParent build-ios/Debug-iphonesimulator/Neon.app build-ios/Neon-Simulator.zip
       - name: Install UI driver generator
         run: brew install xcodegen
       - name: iPhone and iPad edit-save-reopen smoke
@@ -80,8 +88,26 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Neon-Apple-Simulator-Evidence
-          path: build-ios/evidence
+          name: Neon-Native-iOS-Simulator
+          path: build-ios/Neon-Simulator.zip
+      - name: Stage separate media artifacts
+        if: always()
+        run: python3 native/scripts/stage_evidence.py iOS build-ios/evidence staged-iOS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-iOS-Evidence-Screenshots
+          path: staged-iOS/Screenshots/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-iOS-Evidence-Recordings
+          path: staged-iOS/Recordings/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Neon-iOS-Evidence-Diagnostics
+          path: staged-iOS/Diagnostics/
 
   report-macos:
     needs: macos-native
@@ -95,7 +121,7 @@ jobs:
     with:
       platform: macOS
       build-result: ${{ needs.macos-native.result }}
-      artifact: Neon-Native-macOS
+      artifact: Neon-macOS-Evidence
     secrets:
       NEON_ATTACHMENT_TOKEN: ${{ secrets.NEON_ATTACHMENT_TOKEN }}
 
@@ -111,6 +137,6 @@ jobs:
     with:
       platform: iOS
       build-result: ${{ needs.ios-native.result }}
-      artifact: Neon-Apple-Simulator-Evidence
+      artifact: Neon-iOS-Evidence
     secrets:
       NEON_ATTACHMENT_TOKEN: ${{ secrets.NEON_ATTACHMENT_TOKEN }}

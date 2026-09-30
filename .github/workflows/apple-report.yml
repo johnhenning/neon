@@ -29,7 +29,8 @@ jobs:
         id: evidence
         continue-on-error: true
         with:
-          name: ${{ inputs.artifact }}
+          pattern: ${{ inputs.artifact }}-*
+          merge-multiple: true
           path: evidence
       - name: Prepare review inputs
         env:
@@ -79,7 +80,9 @@ jobs:
         if: always()
         with:
           name: Neon-${{ inputs.platform }}-Report
-          path: evidence
+          path: |
+            evidence/agent-review.md
+            evidence/build-status.json
 
   publish:
     needs: review
@@ -100,6 +103,12 @@ jobs:
         continue-on-error: true
         with:
           name: Neon-${{ inputs.platform }}-Report
+          path: evidence
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: ${{ inputs.artifact }}-*
+          merge-multiple: true
           path: evidence
       - name: Install attachment-capable GitHub CLI
         continue-on-error: true

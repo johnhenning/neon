@@ -25,7 +25,10 @@ module.exports = async ({github, context, core, cli = execFileSync}) => {
   const all = files('evidence');
   const artifacts = (await github.rest.actions.listWorkflowRunArtifacts({owner, repo,
     run_id: context.runId, per_page: 100})).data.artifacts;
-  const source = artifacts.find(item => item.name === process.env.SOURCE_ARTIFACT);
+  const source = artifacts.find(item => item.name === `${process.env.SOURCE_ARTIFACT}-Diagnostics`);
+  const recordings = artifacts.find(item => item.name === `${process.env.SOURCE_ARTIFACT}-Recordings`);
+  const captures = artifacts.find(item => item.name === `${process.env.SOURCE_ARTIFACT}-Screenshots`);
+  const build = artifacts.find(item => item.name === (platform === 'macOS' ? 'Neon-Native-macOS' : 'Neon-Native-iOS-Simulator'));
   const report = artifacts.find(item => item.name === `Neon-${platform}-Report`);
   const lines = [marker, `## Neon ${platform} build report`,
     `Commit: \`${sha.slice(0, 12)}\` · [Build ${context.runId}](${run})`,
@@ -36,20 +39,22 @@ module.exports = async ({github, context, core, cli = execFileSync}) => {
     const results = all.filter(name => name.endsWith('/result.json'))
       .map(name => { try { return JSON.parse(fs.readFileSync(name, 'utf8')); } catch { return {}; } });
     const result = results.find(item => item.platform === family);
-    const movie = all.find(name => path.basename(name) === `${family}-walkthrough.mov`);
-    const link = movie && source ? `[Video in build artifacts](${run}/artifacts/${source.id})` : 'Missing';
+    const movie = all.find(name => [`${family}-walkthrough.mov`, `${family}-walkthrough.mp4`].includes(path.basename(name)));
+    const link = movie && recordings ? `[Video recording](${run}/artifacts/${recordings.id})` : 'Missing';
     lines.push(`| ${family} | ${result?.status || 'Not completed'} | ${link} |`);
   }
   lines.push('', 'UI assertions cover navigation, editing and saved text after chapter changes, history and settings. '
     + 'The Mac walkthrough also checks sidebar collapse. Videos are recordings of XCTest input, not generated demos.');
-  if (source) lines.push('', `[Download build evidence](${run}/artifacts/${source.id})`);
-  if (report) lines.push(`[Download review and evidence](${run}/artifacts/${report.id})`);
+  if (build) lines.push('', `[Download app](${run}/artifacts/${build.id})`);
+  if (recordings) lines.push(`[Download recordings](${run}/artifacts/${recordings.id})`);
+  if (source) lines.push('', `[Download test diagnostics](${run}/artifacts/${source.id})`);
+  if (report) lines.push(`[Download review](${run}/artifacts/${report.id})`);
 
   // Screenshots and videos live only in Actions artifacts, never in Git branches.
   const screenshots = all.filter(name => /\.png$/i.test(name)).sort();
   lines.push('', '### Screenshots', '');
-  if (screenshots.length && report) {
-    lines.push(`[Open screenshot artifact (${screenshots.length} captures)](${run}/artifacts/${report.id})`, '',
+  if (screenshots.length && captures) {
+    lines.push(`[Open screenshot artifact (${screenshots.length} captures)](${run}/artifacts/${captures.id})`, '',
       '<details><summary>Screenshot files</summary>', '');
     for (const file of screenshots) {
       const relative = path.relative('evidence', file).replaceAll('`', '');
@@ -59,7 +64,7 @@ module.exports = async ({github, context, core, cli = execFileSync}) => {
       'Images and videos are stored in build artifacts and expire under repository retention settings.');
   } else if (source) {
     lines.push(`[Open build evidence](${run}/artifacts/${source.id})`, '',
-      'The report could not inventory screenshots; check the build artifact for available captures.');
+      'The report could not inventory screenshots; check the diagnostics for capture failures.');
   } else {
     lines.push('Screenshot artifact unavailable; see the build logs.');
   }

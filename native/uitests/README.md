@@ -32,8 +32,13 @@ and disables built-in MCPs and repository instructions. It has no PR write token
 or attachment secret. A separate publisher posts reports for same-repository PRs;
 fork builds never receive secrets or write permissions through this workflow.
 
-Original screenshots, videos and full XCTest result bundles stay in Actions
-artifacts and expire under repository retention policy. PR comments link to the
+App downloads contain only the packaged software (`Neon-Native-macOS` and
+`Neon-Native-iOS-Simulator`). For each platform, screenshots, recordings and test
+diagnostics are uploaded separately as `Neon-{platform}-Evidence-Screenshots`,
+`-Recordings` and `-Diagnostics`. Diagnostics retain the full XCTest result bundles.
+Reports merge those evidence artifacts by relative path for review and inline
+attachments; the Report artifact contains only the review and build status.
+All artifacts expire under repository retention policy. PR comments link to the
 artifacts and list screenshot filenames. Configure NEON_ATTACHMENT_TOKEN as a
 repository secret containing a supported GitHub user token with repository write
 access to enable inline previews. GitHub CLI uploads selected captures downloaded
