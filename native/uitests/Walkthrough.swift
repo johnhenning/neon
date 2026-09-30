@@ -1,4 +1,7 @@
 import XCTest
+#if !os(macOS)
+import UIKit
+#endif
 
 /// Operates the shipping CMake-built app through accessibility, never smoke selectors.
 final class Walkthrough: XCTestCase {
@@ -76,7 +79,7 @@ final class Walkthrough: XCTestCase {
         #endif
         #if !os(macOS)
         if UIDevice.current.userInterfaceIdiom == .pad {
-            XCTAssertEqual(app.buttons.matching(identifier: "navigation-toggle").count, 1)
+            XCTAssertEqual(app.buttons.matching(identifier: "navigation-toggle").allElementsBoundByIndex.filter { $0.isHittable }.count, 1)
             XCTAssertLessThanOrEqual(element("section-0").frame.maxX, editor.frame.minX)
             let expandedWidth = editor.frame.width
             activate(app.buttons["navigation-toggle"])
