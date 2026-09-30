@@ -145,6 +145,7 @@ NSString* entryDetail(NSDictionary* entry) {
     self.view.backgroundColor = NeonPaper();
     self.view.tintColor = NeonAccent();
     self.title = @"Version History";
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
     self.navigationItem.leftBarButtonItem =
         [[UIBarButtonItem alloc] initWithTitle:@"Search History"
                                          style:UIBarButtonItemStylePlain
@@ -161,6 +162,14 @@ NSString* entryDetail(NSDictionary* entry) {
     _search = search;
     search.hidden = YES;
     search.searchBarStyle = UISearchBarStyleMinimal;
+    // Keep search tappable when the keyboard reduces the available height.
+    [search setContentCompressionResistancePriority:UILayoutPriorityRequired
+                                            forAxis:UILayoutConstraintAxisVertical];
+    NSLayoutConstraint* searchHeight =
+        [search.heightAnchor constraintGreaterThanOrEqualToConstant:56];
+    // UIStackView's required zero-height constraint must still win while hidden.
+    searchHeight.priority = 999;
+    searchHeight.active = YES;
     _detail = [UILabel new];
     _detail.text = @"Automatic snapshots: at most once a minute while saving. Checkpoints capture "
                    @"an exact version. Scope: entire project, including Trash.";
@@ -176,7 +185,7 @@ NSString* entryDetail(NSDictionary* entry) {
     _table.accessibilityLabel = @"Saved versions, newest first";
     _table.separatorColor = [NeonMuted() colorWithAlphaComponent:0.18];
     _previewTitle = [UILabel new];
-    _previewTitle.numberOfLines = 0;
+    _previewTitle.numberOfLines = 2;
     _previewTitle.font = NeonUI(14);
     _previewTitle.textColor = NeonMuted();
     _preview = [UITextView new];
@@ -194,6 +203,8 @@ NSString* entryDetail(NSDictionary* entry) {
     [_restore addTarget:self
                   action:@selector(restore)
         forControlEvents:UIControlEventTouchUpInside];
+    [checkpoint.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
+    [_restore.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
     UIStackView* buttons = [[UIStackView alloc] initWithArrangedSubviews:@[ checkpoint, _restore ]];
     buttons.axis = UILayoutConstraintAxisVertical;
     buttons.spacing = 4;
@@ -205,9 +216,9 @@ NSString* entryDetail(NSDictionary* entry) {
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:stack];
     UILayoutGuide* safe = self.view.safeAreaLayoutGuide;
-    NSLayoutConstraint* listHeight = [_table.heightAnchor constraintEqualToAnchor:safe.heightAnchor
+    NSLayoutConstraint* listHeight = [_table.heightAnchor constraintEqualToAnchor:stack.heightAnchor
                                                                        multiplier:0.28];
-    listHeight.priority = UILayoutPriorityDefaultHigh;
+    listHeight.priority = UILayoutPriorityDefaultLow;
     [NSLayoutConstraint activateConstraints:@[
         [stack.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:16],
         [stack.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-16],

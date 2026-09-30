@@ -128,7 +128,11 @@ final class Walkthrough: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 5), .completed)
         #else
         chapters()
-        activate(app.buttons["Settings"])
+        // A narrow iPad sidebar moves native bar items into its overflow menu.
+        if !element("Settings").isHittable {
+            activate(app.buttons["OverflowBarButtonItem"])
+        }
+        activate(element("Settings"))
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
         capture("07-settings")
         activate(app.buttons["Done"])

@@ -594,6 +594,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                         action:@selector(trash)]
     ];
     self.navigationItem.rightBarButtonItems.firstObject.accessibilityLabel = @"Settings";
+    self.navigationItem.rightBarButtonItems.firstObject.title = @"Settings";
     if (self.chapters) {
         UIBarButtonItem* history = [[UIBarButtonItem alloc]
             initWithImage:[UIImage systemImageNamed:@"clock.arrow.circlepath"]
