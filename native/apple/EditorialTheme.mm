@@ -38,7 +38,7 @@ void NeonRegisterFonts() {
     }
 }
 NeonColor* NeonPaper() {
-    return tone(0.978, 0.965, 0.937, 0.125, 0.128, 0.120);
+    return tone(249.0 / 255, 246.0 / 255, 239.0 / 255, 0.125, 0.128, 0.120);
 }
 NeonColor* NeonPanel() {
     return tone(0.953, 0.937, 0.906, 0.155, 0.158, 0.150);
@@ -64,19 +64,16 @@ NeonFont* NeonSerif(CGFloat size) {
 #endif
 }
 NeonFont* NeonUI(CGFloat size) {
-#if TARGET_OS_IPHONE
-    return regular([UIFont fontWithName:@"SourceSans3-Roman" size:size]
-                       ?: [UIFont systemFontOfSize:size],
-                   size);
-#else
-    return regular([NSFont fontWithName:@"SourceSans3-Roman" size:size]
-                       ?: [NSFont systemFontOfSize:size],
-                   size);
-#endif
+    return [NeonFont systemFontOfSize:size];
 }
 CGFloat NeonTextSize() {
     double size = [NSUserDefaults.standardUserDefaults doubleForKey:@"manuscriptSize"];
-    return size >= 16 && size <= 32 ? size : 22;
+    return size >= 16 && size <= 32 ? size :
+#if TARGET_OS_IPHONE
+                                    18;
+#else
+                                    20;
+#endif
 }
 CGFloat NeonLineSpacing() {
     double spacing = [NSUserDefaults.standardUserDefaults doubleForKey:@"manuscriptSpacing"];
@@ -91,7 +88,8 @@ NSString* NeonFontChoice() {
 }
 NeonFont* NeonFontNamed(NSString* choice, CGFloat size) {
     if ([choice isEqualToString:@"Source Sans 3"])
-        return NeonUI(size);
+        return regular([NeonFont fontWithName:@"SourceSans3-Roman" size:size] ?: NeonUI(size),
+                       size);
     if ([choice isEqualToString:@"System Serif"]) {
 #if TARGET_OS_IPHONE
         UIFontDescriptor* descriptor = [[UIFont systemFontOfSize:size].fontDescriptor
@@ -115,7 +113,7 @@ CGFloat NeonParagraphSpacing() {
 }
 CGFloat NeonTextMeasure() {
     double value = [NSUserDefaults.standardUserDefaults doubleForKey:@"textMeasure"];
-    return value >= 480 && value <= 960 ? value : 780;
+    return value >= 480 && value <= 960 ? value : 640;
 }
 BOOL NeonWritingPreference(NSString* key) {
     NSNumber* value = [NSUserDefaults.standardUserDefaults objectForKey:key];

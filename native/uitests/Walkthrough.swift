@@ -70,17 +70,14 @@ final class Walkthrough: XCTestCase {
         #endif
         let editor = element("manuscript")
         XCTAssertTrue(editor.waitForExistence(timeout: 15))
-        #if os(macOS)
-        func assertPillCentered(file: StaticString = #filePath, line: UInt = #line) {
-            let pill = app.buttons["Editor"].frame.union(app.buttons["History"].frame)
-            XCTAssertEqual(pill.midX, element("manuscript").frame.midX, accuracy: 4, file: file, line: line)
-        }
-        assertPillCentered()
-        #endif
         #if !os(macOS)
         if UIDevice.current.userInterfaceIdiom == .pad {
             XCTAssertEqual(app.buttons.matching(identifier: "navigation-toggle").allElementsBoundByIndex.filter { $0.isHittable }.count, 1)
-            XCTAssertLessThanOrEqual(element("section-0").frame.maxX, editor.frame.minX)
+            if !element("section-0").isHittable {
+                capture("02-ipad-portrait-writing")
+                activate(app.buttons["navigation-toggle"])
+            }
+            XCTAssertTrue(element("section-0").isHittable)
             let expandedWidth = editor.frame.width
             activate(app.buttons["navigation-toggle"])
             XCTAssertFalse(element("section-0").isHittable)
@@ -112,16 +109,16 @@ final class Walkthrough: XCTestCase {
         #if os(macOS)
         activate(app.buttons["Toggle sidebar"])
         XCTAssertFalse(element("section-1").isHittable)
-        assertPillCentered()
+        XCTAssertTrue(app.buttons["Version history"].isHittable)
         capture("05-focus")
         activate(app.buttons["Toggle sidebar"])
         XCTAssertTrue(element("section-1").isHittable)
-        assertPillCentered()
+        XCTAssertTrue(app.buttons["Version history"].isHittable)
         #else
         chapters()
         #endif
-        activate(app.buttons["History"].firstMatch)
-        XCTAssertTrue(app.buttons["Editor"].waitForExistence(timeout: 10))
+        activate(app.buttons["Version history"].firstMatch)
+        XCTAssertTrue(app.buttons["Back to editor"].waitForExistence(timeout: 10))
         XCTAssertFalse(element("manuscript").exists)
         XCTAssertFalse(app.searchFields.firstMatch.isHittable)
         capture("06-history")
@@ -135,7 +132,7 @@ final class Walkthrough: XCTestCase {
         activate(app.buttons["Search History"])
         XCTAssertFalse(historySearch.isHittable)
         XCTAssertFalse((revisionPreview.value as? String ?? "").contains("No matching revisions"))
-        activate(app.buttons["Editor"])
+        activate(app.buttons["Back to editor"])
         XCTAssertTrue(element("manuscript").waitForExistence(timeout: 10))
         XCTAssertTrue((element("manuscript").value as? String ?? "").contains("Neon recorded UI persistence check."))
         #if os(macOS)
