@@ -867,8 +867,8 @@ NSUInteger words(NSString* text) {
     self.editor.textColor = NeonInk();
     [self styleEditor];
     scroll.documentView = self.editor;
-    [heading.widthAnchor constraintEqualToAnchor:scroll.widthAnchor].active = YES;
     [stack addArrangedSubview:scroll];
+    [heading.widthAnchor constraintEqualToAnchor:scroll.widthAnchor].active = YES;
     [scroll.widthAnchor constraintLessThanOrEqualToAnchor:stack.widthAnchor constant:-96].active =
         YES;
     self.measureConstraint =
