@@ -70,6 +70,17 @@ final class Walkthrough: XCTestCase {
         #endif
         let editor = element("manuscript")
         XCTAssertTrue(editor.waitForExistence(timeout: 15))
+        #if os(macOS)
+        func assertSidebarTogglePlacement() {
+            let toggle = app.buttons["Toggle sidebar"]
+            let history = app.buttons["Version history"]
+            XCTAssertEqual(app.buttons.matching(identifier: "Toggle sidebar").count, 1)
+            XCTAssertEqual(toggle.frame.midY, history.frame.midY, accuracy: 8)
+            XCTAssertGreaterThan(toggle.frame.midX, element("section-0").frame.midX)
+            XCTAssertLessThanOrEqual(toggle.frame.maxX, element("section-0").frame.maxX + 24)
+        }
+        assertSidebarTogglePlacement()
+        #endif
         #if !os(macOS)
         if UIDevice.current.userInterfaceIdiom == .pad {
             XCTAssertEqual(app.buttons.matching(identifier: "navigation-toggle").allElementsBoundByIndex.filter { $0.isHittable }.count, 1)
@@ -113,6 +124,7 @@ final class Walkthrough: XCTestCase {
         capture("05-focus")
         activate(app.buttons["Toggle sidebar"])
         XCTAssertTrue(element("section-1").isHittable)
+        assertSidebarTogglePlacement()
         XCTAssertTrue(app.buttons["Version history"].isHittable)
         #else
         chapters()

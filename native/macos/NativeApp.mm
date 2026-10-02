@@ -29,16 +29,18 @@
 @property(nonatomic) BOOL currentChapter;
 @end
 @implementation NeonChapterRow
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    self.needsDisplay = YES;
+}
 - (void)drawRect:(NSRect)rect {
     (void)rect;
     if (self.currentChapter) {
-        [[NeonAccent() colorWithAlphaComponent:0.16] setFill];
+        [NeonSelection() setFill];
         NSRectFill(self.bounds);
-        [NeonAccent() setFill];
-        NSRectFill(NSMakeRect(0, 0, 3, self.bounds.size.height));
     }
     // Continuous, translucent rules remain visible on unselected rows too.
-    [[NeonInk() colorWithAlphaComponent:0.16] setFill];
+    [NeonLine() setFill];
     CGFloat pixel = 1.0 / (self.window.backingScaleFactor ?: 2.0);
     CGFloat bottom = self.isFlipped ? self.bounds.size.height - pixel : 0;
     NSRectFill(NSMakeRect(0, bottom, self.bounds.size.width, pixel));
@@ -124,6 +126,10 @@ NSUInteger words(NSString* text) {
 @property(nonatomic) BOOL panel;
 @end
 @implementation NeonSurface
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    self.needsDisplay = YES;
+}
 - (void)drawRect:(NSRect)rect {
     [(self.panel ? NeonPanel() : NeonPaper()) setFill];
     NSRectFill(rect);
@@ -273,7 +279,6 @@ NSUInteger words(NSString* text) {
     NSToolbar* toolbar = [[NSToolbar alloc] initWithIdentifier:@"NeonEditorial"];
     toolbar.delegate = self;
     toolbar.displayMode = NSToolbarDisplayModeIconOnly;
-    self.window.toolbar = toolbar;
 
     self.split = [NSSplitViewController new];
     self.sidebar = [NSViewController new];
@@ -289,6 +294,7 @@ NSUInteger words(NSString* text) {
     self.content.view = [NeonSurface new];
     [self.split addSplitViewItem:[NSSplitViewItem splitViewItemWithViewController:self.content]];
     self.window.contentViewController = self.split;
+    self.window.toolbar = toolbar;
     [NSWorkspace.sharedWorkspace.notificationCenter
         addObserver:self
            selector:@selector(accessibilityChanged:)
@@ -298,6 +304,7 @@ NSUInteger words(NSString* text) {
     [self installMenu];
     [self showLibrary:nil];
     [self.window setFrame:NSInsetRect(NSScreen.mainScreen.visibleFrame, 24, 24) display:YES];
+    [self.split.splitView setPosition:264 ofDividerAtIndex:0];
     [self.window center];
     [self.window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
@@ -313,26 +320,11 @@ NSUInteger words(NSString* text) {
         NeonAppearance() == 1   ? [NSAppearance appearanceNamed:NSAppearanceNameAqua]
         : NeonAppearance() == 2 ? [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua]
                                 : nil;
-    self.window.backgroundColor = NeonPaper();
+    self.window.backgroundColor = NeonPanel();
     [self.sidebarMaterial removeFromSuperview];
-    if (NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceTransparency) {
-        NeonSurface* opaque = [NeonSurface new];
-        opaque.panel = YES;
-        self.sidebarMaterial = opaque;
-    } else if (@available(macOS 26.0, *)) {
-        NSGlassEffectView* glass = [NSGlassEffectView new];
-        glass.tintColor = [NeonPanel() colorWithAlphaComponent:0.25];
-        // This material fills a docked pane, rather than an inset card.
-        // Rounded corners expose a wedge beside the straight split divider.
-        glass.cornerRadius = 0;
-        self.sidebarMaterial = glass;
-    } else {
-        NSVisualEffectView* material = [NSVisualEffectView new];
-        material.material = NSVisualEffectMaterialSidebar;
-        material.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-        material.state = NSVisualEffectStateFollowsWindowActiveState;
-        self.sidebarMaterial = material;
-    }
+    NeonSurface* panel = [NeonSurface new];
+    panel.panel = YES;
+    self.sidebarMaterial = panel;
     pin(self.sidebarMaterial, self.sidebar.view);
     [self.sidebar.view addSubview:self.sidebarBody
                        positioned:NSWindowAbove
@@ -395,8 +387,9 @@ NSUInteger words(NSString* text) {
 - (NSArray*)toolbarDefaultItemIdentifiers:(NSToolbar*)toolbar {
     (void)toolbar;
     return @[
-        @"projectTitle", NSToolbarFlexibleSpaceItemIdentifier, @"workspace", @"type", @"more",
-        @"new", NSToolbarSpaceItemIdentifier
+        NSToolbarFlexibleSpaceItemIdentifier, @"sidebar", @"sidebarDivider", @"projectTitle",
+        NSToolbarFlexibleSpaceItemIdentifier, @"workspace", @"type", @"more", @"new",
+        NSToolbarSpaceItemIdentifier
     ];
 }
 - (NSArray*)toolbarAllowedItemIdentifiers:(NSToolbar*)toolbar {
@@ -407,6 +400,11 @@ NSUInteger words(NSString* text) {
     willBeInsertedIntoToolbar:(BOOL)flag {
     (void)toolbar;
     (void)flag;
+    if ([identifier isEqual:@"sidebarDivider"])
+        return [NSTrackingSeparatorToolbarItem
+            trackingSeparatorToolbarItemWithIdentifier:identifier
+                                             splitView:self.split.splitView
+                                          dividerIndex:0];
     if ([identifier isEqual:@"workspace"]) {
         self.workspaceItem = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
         self.workspaceItem.label = @"Version history";
@@ -453,17 +451,15 @@ NSUInteger words(NSString* text) {
     (void)sender;
     NSSplitViewItem* sidebar = self.split.splitViewItems.firstObject;
     BOOL collapsed = !sidebar.collapsed;
+    // Keep one toolbar toggle: against the sidebar edge when open, before the
+    // document title when closed. The native separator tracks divider resizing.
     if (collapsed) {
-        [self.window.toolbar insertItemWithItemIdentifier:@"sidebar" atIndex:1];
+        [self.window.toolbar removeItemAtIndex:2];
+        [self.window.toolbar removeItemAtIndex:0];
     } else {
-        NSUInteger index = [self.window.toolbar.items
-            indexOfObjectPassingTest:^BOOL(NSToolbarItem* item, NSUInteger i, BOOL* stop) {
-              (void)i;
-              (void)stop;
-              return [item.itemIdentifier isEqual:@"sidebar"];
-            }];
-        if (index != NSNotFound)
-            [self.window.toolbar removeItemAtIndex:index];
+        [self.window.toolbar insertItemWithItemIdentifier:NSToolbarFlexibleSpaceItemIdentifier
+                                                  atIndex:0];
+        [self.window.toolbar insertItemWithItemIdentifier:@"sidebarDivider" atIndex:2];
     }
     if (NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) {
         sidebar.collapsed = collapsed;
@@ -486,25 +482,31 @@ NSUInteger words(NSString* text) {
 }
 - (void)buildSidebar {
     [self clear:self.sidebarBody];
-    NSButton* toggle = button(@"", @"sidebar.left", self, @selector(toggleSidebar:));
-    toggle.accessibilityLabel = @"Toggle sidebar";
-    toggle.toolTip = @"Hide sidebar";
-    NSStackView* header = [NSStackView
-        stackViewWithViews:@[ label(@"NEON", NeonUI(12), NeonMuted()), [NSView new], toggle ]];
-    header.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-    NSMutableArray* rows = [NSMutableArray arrayWithObject:header];
+    NSMutableArray* rows = [NSMutableArray array];
+    NSMutableArray* actions = [NSMutableArray array];
     if (self.session) {
         __weak NeonApp* weakSelf = self;
         NeonInlineTitle* book = [NeonInlineTitle new];
         book.stringValue = self.session.title;
-        book.font = NeonSerif(23);
+        book.font = NeonSerif(24);
         book.accessibilityLabel = @"Project title";
         book.commitTitle = ^BOOL(NSString* title) {
           return [weakSelf renameInline:title section:nil];
         };
-        [rows addObject:book];
-        [rows addObject:label([self.session.preset[@"documentLabel"] uppercaseString], NeonUI(11),
-                              NeonMuted())];
+        NSStackView* project = column(
+            @[
+                book,
+                label([self.session.preset[@"documentLabel"] uppercaseString], NeonUI(13),
+                      NeonMuted()),
+                label([NSString
+                          stringWithFormat:@"%lu %@", self.session.sections.count,
+                                           [self.session.preset[@"sectionsLabel"] lowercaseString]],
+                      NeonUI(13), NeonMuted())
+            ],
+            8);
+        project.edgeInsets = NSEdgeInsetsMake(24, 24, 24, 24);
+        [project.heightAnchor constraintGreaterThanOrEqualToConstant:138].active = YES;
+        [rows addObject:project];
         NSInteger index = 0;
         for (NSDictionary* section in self.session.sections) {
             NeonInlineTitle* row = [NeonInlineTitle new];
@@ -538,22 +540,14 @@ NSUInteger words(NSString* text) {
             [row setContentHuggingPriority:200
                             forOrientation:NSLayoutConstraintOrientationHorizontal];
             [row.heightAnchor constraintGreaterThanOrEqualToConstant:32].active = YES;
-            NSButton* more = button(@"", @"ellipsis", self, @selector(chapterActions:));
-            more.tag = index - 1;
             BOOL selected = [identifier isEqual:self.session.selectedSectionID];
-            NSImageView* check =
-                [NSImageView imageViewWithImage:[NSImage imageWithSystemSymbolName:@"checkmark"
-                                                          accessibilityDescription:nil]];
-            check.contentTintColor = NeonAccent();
-            check.alphaValue = selected ? 1 : 0;
-            [check.widthAnchor constraintEqualToConstant:12].active = YES;
-            [more.widthAnchor constraintEqualToConstant:28].active = YES;
-            [more.heightAnchor constraintEqualToConstant:28].active = YES;
-            more.toolTip =
-                [self.session.preset[@"sectionLabel"] stringByAppendingString:@" actions"];
             NeonChapterRow* chapter = [[NeonChapterRow alloc] initWithFrame:NSZeroRect];
-            for (NSView* child in @[ check, row, more ])
-                [chapter addArrangedSubview:child];
+            if ([self.session.preset[@"numberedSections"] boolValue]) {
+                NSTextField* number = label([NSString stringWithFormat:@"%02ld", index], NeonUI(14),
+                                            selected ? NeonAccent() : NeonInk());
+                [chapter addArrangedSubview:number];
+            }
+            [chapter addArrangedSubview:row];
             chapter.currentChapter = selected;
             chapter.spacing = 7;
             chapter.edgeInsets = NSEdgeInsetsMake(10, 16, 10, 16);
@@ -564,37 +558,50 @@ NSUInteger words(NSString* text) {
                     : self.session.preset[@"sectionLabel"];
             [rows addObject:chapter];
         }
-        [rows
-            addObject:button([@"New " stringByAppendingString:self.session.preset[@"sectionLabel"]],
+        [actions
+            addObject:button([@"Add " stringByAppendingString:self.session.preset[@"sectionLabel"]],
                              @"plus", self, @selector(newSection:))];
         if (self.session.trashedSections.count)
-            [rows
+            [actions
                 addObject:button([@"Deleted "
                                      stringByAppendingString:self.session.preset[@"sectionsLabel"]],
                                  @"arrow.uturn.backward", self, @selector(sectionTrash:))];
     } else {
         [rows addObject:label(@"ON THIS MAC", NeonUI(11), NeonMuted())];
     }
-    [rows addObject:button(@"Library", @"books.vertical", self, @selector(showLibrary:))];
-    [rows addObject:button(@"Trash", @"trash", self, @selector(showTrash:))];
+    [actions addObject:button(@"Library", @"chevron.left", self, @selector(showLibrary:))];
+    if (!self.session)
+        [actions addObject:button(@"Trash", @"trash", self, @selector(showTrash:))];
     NSScrollView* scroll = [NSScrollView new];
     scroll.drawsBackground = NO;
     scroll.hasVerticalScroller = YES;
     scroll.autohidesScrollers = YES;
     scroll.scrollerStyle = NSScrollerStyleOverlay;
-    pin(scroll, self.sidebarBody);
-    NSMutableArray<NSView*>* arranged = [NSMutableArray array];
-    for (NSView* row in rows) {
-        if ([row isKindOfClass:NeonChapterRow.class]) {
-            [arranged addObject:row];
-        } else {
-            NSStackView* inset = [NSStackView stackViewWithViews:@[ row ]];
-            inset.edgeInsets = NSEdgeInsetsMake(0, 20, 0, 16);
-            [arranged addObject:inset];
-        }
+    NSStackView* footer = column(actions, 8);
+    footer.edgeInsets = NSEdgeInsetsMake(16, 16, 16, 16);
+    footer.translatesAutoresizingMaskIntoConstraints = NO;
+    scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.sidebarBody addSubview:scroll];
+    [self.sidebarBody addSubview:footer];
+    for (NSButton* action in actions) {
+        action.bordered = YES;
+        action.bezelStyle = NSBezelStyleRounded;
+        action.font = NeonUI(14);
+        action.contentTintColor = NeonInk();
+        [action.heightAnchor constraintEqualToConstant:40].active = YES;
+        [action.widthAnchor constraintEqualToAnchor:footer.widthAnchor constant:-32].active = YES;
     }
-    NSStackView* stack = column(arranged, 22);
-    stack.edgeInsets = NSEdgeInsetsMake(28, 0, 28, 0);
+    [NSLayoutConstraint activateConstraints:@[
+        [scroll.topAnchor constraintEqualToAnchor:self.sidebarBody.topAnchor],
+        [scroll.leadingAnchor constraintEqualToAnchor:self.sidebarBody.leadingAnchor],
+        [scroll.trailingAnchor constraintEqualToAnchor:self.sidebarBody.trailingAnchor],
+        [scroll.bottomAnchor constraintEqualToAnchor:footer.topAnchor],
+        [footer.leadingAnchor constraintEqualToAnchor:self.sidebarBody.leadingAnchor],
+        [footer.trailingAnchor constraintEqualToAnchor:self.sidebarBody.trailingAnchor],
+        [footer.bottomAnchor constraintEqualToAnchor:self.sidebarBody.bottomAnchor]
+    ]];
+    NSArray<NSView*>* arranged = rows;
+    NSStackView* stack = column(arranged, 0);
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     scroll.documentView = stack;
     [stack.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor].active = YES;

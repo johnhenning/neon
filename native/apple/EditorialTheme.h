@@ -15,6 +15,8 @@ NeonColor* NeonPanel();
 NeonColor* NeonInk();
 NeonColor* NeonMuted();
 NeonColor* NeonAccent();
+NeonColor* NeonSelection();
+NeonColor* NeonLine();
 NeonFont* NeonSerif(CGFloat size);
 NeonFont* NeonUI(CGFloat size);
 CGFloat NeonTextSize();

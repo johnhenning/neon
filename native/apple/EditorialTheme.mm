@@ -2,11 +2,15 @@
 #import <CoreText/CoreText.h>
 
 namespace {
-NeonColor* tone(CGFloat r, CGFloat g, CGFloat b, CGFloat dr, CGFloat dg, CGFloat db) {
+NeonColor* tone(CGFloat r, CGFloat g, CGFloat b, CGFloat dr, CGFloat dg, CGFloat db,
+                CGFloat alpha = 1, CGFloat darkAlpha = 1) {
 #if TARGET_OS_IPHONE
     return [UIColor colorWithDynamicProvider:^UIColor*(UITraitCollection* traits) {
       BOOL dark = traits.userInterfaceStyle == UIUserInterfaceStyleDark;
-      return [UIColor colorWithRed:dark ? dr : r green:dark ? dg : g blue:dark ? db : b alpha:1];
+      return [UIColor colorWithRed:dark ? dr : r
+                             green:dark ? dg : g
+                              blue:dark ? db : b
+                             alpha:dark ? darkAlpha : alpha];
     }];
 #else
     return [NSColor
@@ -18,7 +22,7 @@ NeonColor* tone(CGFloat r, CGFloat g, CGFloat b, CGFloat dr, CGFloat dg, CGFloat
           return [NSColor colorWithSRGBRed:dark ? dr : r
                                      green:dark ? dg : g
                                       blue:dark ? db : b
-                                     alpha:1];
+                                     alpha:dark ? darkAlpha : alpha];
         }];
 #endif
 }
@@ -38,19 +42,27 @@ void NeonRegisterFonts() {
     }
 }
 NeonColor* NeonPaper() {
-    return tone(249.0 / 255, 246.0 / 255, 239.0 / 255, 0.125, 0.128, 0.120);
+    return tone(249.0 / 255, 246.0 / 255, 239.0 / 255, 32.0 / 255, 33.0 / 255, 31.0 / 255);
 }
 NeonColor* NeonPanel() {
-    return tone(0.953, 0.937, 0.906, 0.155, 0.158, 0.150);
+    return tone(243.0 / 255, 239.0 / 255, 231.0 / 255, 40.0 / 255, 40.0 / 255, 38.0 / 255);
 }
 NeonColor* NeonInk() {
-    return tone(0.125, 0.116, 0.098, 0.94, 0.925, 0.89);
+    return tone(32.0 / 255, 30.0 / 255, 25.0 / 255, 240.0 / 255, 236.0 / 255, 227.0 / 255);
 }
 NeonColor* NeonMuted() {
-    return tone(0.39, 0.37, 0.33, 0.70, 0.69, 0.65);
+    return tone(99.0 / 255, 94.0 / 255, 84.0 / 255, 178.0 / 255, 176.0 / 255, 166.0 / 255);
 }
 NeonColor* NeonAccent() {
-    return tone(0.46, 0.32, 0.15, 0.80, 0.67, 0.45);
+    return tone(117.0 / 255, 82.0 / 255, 38.0 / 255, 204.0 / 255, 171.0 / 255, 115.0 / 255);
+}
+NeonColor* NeonSelection() {
+    return tone(117.0 / 255, 82.0 / 255, 38.0 / 255, 204.0 / 255, 171.0 / 255, 115.0 / 255, .14,
+                .18);
+}
+NeonColor* NeonLine() {
+    return tone(32.0 / 255, 30.0 / 255, 25.0 / 255, 240.0 / 255, 236.0 / 255, 227.0 / 255, .16,
+                .18);
 }
 NeonFont* NeonSerif(CGFloat size) {
 #if TARGET_OS_IPHONE
