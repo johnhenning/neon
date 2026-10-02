@@ -19,7 +19,7 @@ NSArray<NSDictionary*>* settings() {
             @"min" : @16,
             @"max" : @32,
             @"step" : @1,
-            @"default" : @22,
+            @"default" : @(TARGET_OS_IPHONE ? 18 : 20),
             @"unit" : @"pt"
         },
         @{
@@ -52,7 +52,7 @@ NSArray<NSDictionary*>* settings() {
             @"min" : @480,
             @"max" : @960,
             @"step" : @40,
-            @"default" : @780,
+            @"default" : @640,
             @"unit" : @"pt",
             @"detail" : @"Maximum width; adapts to smaller windows"
         },

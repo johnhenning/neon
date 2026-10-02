@@ -2,11 +2,15 @@
 #import <CoreText/CoreText.h>
 
 namespace {
-NeonColor* tone(CGFloat r, CGFloat g, CGFloat b, CGFloat dr, CGFloat dg, CGFloat db) {
+NeonColor* tone(CGFloat r, CGFloat g, CGFloat b, CGFloat dr, CGFloat dg, CGFloat db,
+                CGFloat alpha = 1, CGFloat darkAlpha = 1) {
 #if TARGET_OS_IPHONE
     return [UIColor colorWithDynamicProvider:^UIColor*(UITraitCollection* traits) {
       BOOL dark = traits.userInterfaceStyle == UIUserInterfaceStyleDark;
-      return [UIColor colorWithRed:dark ? dr : r green:dark ? dg : g blue:dark ? db : b alpha:1];
+      return [UIColor colorWithRed:dark ? dr : r
+                             green:dark ? dg : g
+                              blue:dark ? db : b
+                             alpha:dark ? darkAlpha : alpha];
     }];
 #else
     return [NSColor
@@ -18,7 +22,7 @@ NeonColor* tone(CGFloat r, CGFloat g, CGFloat b, CGFloat dr, CGFloat dg, CGFloat
           return [NSColor colorWithSRGBRed:dark ? dr : r
                                      green:dark ? dg : g
                                       blue:dark ? db : b
-                                     alpha:1];
+                                     alpha:dark ? darkAlpha : alpha];
         }];
 #endif
 }
@@ -38,19 +42,27 @@ void NeonRegisterFonts() {
     }
 }
 NeonColor* NeonPaper() {
-    return tone(0.978, 0.965, 0.937, 0.125, 0.128, 0.120);
+    return tone(249.0 / 255, 246.0 / 255, 239.0 / 255, 32.0 / 255, 33.0 / 255, 31.0 / 255);
 }
 NeonColor* NeonPanel() {
-    return tone(0.953, 0.937, 0.906, 0.155, 0.158, 0.150);
+    return tone(243.0 / 255, 239.0 / 255, 231.0 / 255, 40.0 / 255, 40.0 / 255, 38.0 / 255);
 }
 NeonColor* NeonInk() {
-    return tone(0.125, 0.116, 0.098, 0.94, 0.925, 0.89);
+    return tone(32.0 / 255, 30.0 / 255, 25.0 / 255, 240.0 / 255, 236.0 / 255, 227.0 / 255);
 }
 NeonColor* NeonMuted() {
-    return tone(0.39, 0.37, 0.33, 0.70, 0.69, 0.65);
+    return tone(99.0 / 255, 94.0 / 255, 84.0 / 255, 178.0 / 255, 176.0 / 255, 166.0 / 255);
 }
 NeonColor* NeonAccent() {
-    return tone(0.46, 0.32, 0.15, 0.80, 0.67, 0.45);
+    return tone(117.0 / 255, 82.0 / 255, 38.0 / 255, 204.0 / 255, 171.0 / 255, 115.0 / 255);
+}
+NeonColor* NeonSelection() {
+    return tone(117.0 / 255, 82.0 / 255, 38.0 / 255, 204.0 / 255, 171.0 / 255, 115.0 / 255, .14,
+                .18);
+}
+NeonColor* NeonLine() {
+    return tone(32.0 / 255, 30.0 / 255, 25.0 / 255, 240.0 / 255, 236.0 / 255, 227.0 / 255, .16,
+                .18);
 }
 NeonFont* NeonSerif(CGFloat size) {
 #if TARGET_OS_IPHONE
@@ -64,19 +76,16 @@ NeonFont* NeonSerif(CGFloat size) {
 #endif
 }
 NeonFont* NeonUI(CGFloat size) {
-#if TARGET_OS_IPHONE
-    return regular([UIFont fontWithName:@"SourceSans3-Roman" size:size]
-                       ?: [UIFont systemFontOfSize:size],
-                   size);
-#else
-    return regular([NSFont fontWithName:@"SourceSans3-Roman" size:size]
-                       ?: [NSFont systemFontOfSize:size],
-                   size);
-#endif
+    return [NeonFont systemFontOfSize:size];
 }
 CGFloat NeonTextSize() {
     double size = [NSUserDefaults.standardUserDefaults doubleForKey:@"manuscriptSize"];
-    return size >= 16 && size <= 32 ? size : 22;
+    return size >= 16 && size <= 32 ? size :
+#if TARGET_OS_IPHONE
+                                    18;
+#else
+                                    20;
+#endif
 }
 CGFloat NeonLineSpacing() {
     double spacing = [NSUserDefaults.standardUserDefaults doubleForKey:@"manuscriptSpacing"];
@@ -91,7 +100,8 @@ NSString* NeonFontChoice() {
 }
 NeonFont* NeonFontNamed(NSString* choice, CGFloat size) {
     if ([choice isEqualToString:@"Source Sans 3"])
-        return NeonUI(size);
+        return regular([NeonFont fontWithName:@"SourceSans3-Roman" size:size] ?: NeonUI(size),
+                       size);
     if ([choice isEqualToString:@"System Serif"]) {
 #if TARGET_OS_IPHONE
         UIFontDescriptor* descriptor = [[UIFont systemFontOfSize:size].fontDescriptor
@@ -115,7 +125,7 @@ CGFloat NeonParagraphSpacing() {
 }
 CGFloat NeonTextMeasure() {
     double value = [NSUserDefaults.standardUserDefaults doubleForKey:@"textMeasure"];
-    return value >= 480 && value <= 960 ? value : 780;
+    return value >= 480 && value <= 960 ? value : 640;
 }
 BOOL NeonWritingPreference(NSString* key) {
     NSNumber* value = [NSUserDefaults.standardUserDefaults objectForKey:key];
