@@ -1,5 +1,6 @@
 #include "Controls.h"
 #import <QuartzCore/QuartzCore.h>
+#include <string>
 
 #if !TARGET_OS_IPHONE
 @interface NeonFieldCell : NSTextFieldCell
