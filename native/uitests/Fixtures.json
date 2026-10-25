@@ -1,0 +1,479 @@
+{
+  "schema": 1,
+  "provenance": {
+    "text": "Existing seedPreview canonical prototype sample; approved cover assets not supplied. Null artwork means neutral fallback, never fabricated design art.",
+    "figma_file": "DOW2IVUIDIt2Z4cM4XtM8I"
+  },
+  "preference_profiles": {
+    "canonical": {
+      "manuscriptFont": "Literata",
+      "manuscriptSize": 20,
+      "manuscriptSpacing": 8,
+      "appearance": 1,
+      "textMeasure": 640
+    }
+  },
+  "variants": {
+    "0": {
+      "projects": []
+    },
+    "1": {
+      "projects": [
+        {
+          "title": "The Quiet Sea",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "The sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered."
+            },
+            {
+              "title": "Beyond the harbor",
+              "text": "By noon the water had drawn back from the old stone steps."
+            }
+          ]
+        }
+      ]
+    },
+    "3": {
+      "projects": [
+        {
+          "title": "The Quiet Sea",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "The sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered."
+            },
+            {
+              "title": "Beyond the harbor",
+              "text": "By noon the water had drawn back from the old stone steps."
+            }
+          ]
+        },
+        {
+          "title": "The Longer Road",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": ""
+            }
+          ]
+        },
+        {
+          "title": "North of Here",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": ""
+            }
+          ]
+        }
+      ]
+    },
+    "many": {
+      "projects": [
+        {
+          "title": "The Quiet Sea",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "The sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered."
+            },
+            {
+              "title": "Beyond the harbor",
+              "text": "By noon the water had drawn back from the old stone steps."
+            }
+          ]
+        },
+        {
+          "title": "The Longer Road",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": ""
+            }
+          ]
+        },
+        {
+          "title": "North of Here",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": ""
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 04",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 4."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 05",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 5."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 06",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 6."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 07",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 7."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 08",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 8."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 09",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 9."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 10",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 10."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 11",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 11."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 12",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 12."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 13",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 13."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 14",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 14."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 15",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 15."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 16",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 16."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 17",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 17."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 18",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 18."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 19",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 19."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 20",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 20."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 21",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 21."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 22",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 22."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 23",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 23."
+            }
+          ]
+        },
+        {
+          "title": "Fixture project 24",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": "Deterministic project 24."
+            }
+          ]
+        }
+      ]
+    },
+    "24chapters": {
+      "projects": [
+        {
+          "title": "The Quiet Sea",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "Chapter 01",
+              "text": "The sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered."
+            },
+            {
+              "title": "Chapter 02",
+              "text": "The sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered."
+            },
+            {
+              "title": "Chapter 03",
+              "text": "Chapter 3 text."
+            },
+            {
+              "title": "Chapter 04",
+              "text": "Chapter 4 text."
+            },
+            {
+              "title": "Chapter 05",
+              "text": "Chapter 5 text."
+            },
+            {
+              "title": "Chapter 06",
+              "text": "Chapter 6 text."
+            },
+            {
+              "title": "Chapter 07",
+              "text": "Chapter 7 text."
+            },
+            {
+              "title": "Chapter 08",
+              "text": "Chapter 8 text."
+            },
+            {
+              "title": "Chapter 09",
+              "text": "Chapter 9 text."
+            },
+            {
+              "title": "Chapter 10",
+              "text": "Chapter 10 text."
+            },
+            {
+              "title": "Chapter 11",
+              "text": "Chapter 11 text."
+            },
+            {
+              "title": "Chapter 12",
+              "text": "Chapter 12 text."
+            },
+            {
+              "title": "Chapter 13",
+              "text": "Chapter 13 text."
+            },
+            {
+              "title": "Chapter 14",
+              "text": "Chapter 14 text."
+            },
+            {
+              "title": "Chapter 15",
+              "text": "Chapter 15 text."
+            },
+            {
+              "title": "Chapter 16",
+              "text": "Chapter 16 text."
+            },
+            {
+              "title": "Chapter 17",
+              "text": "Chapter 17 text."
+            },
+            {
+              "title": "Chapter 18",
+              "text": "Chapter 18 text."
+            },
+            {
+              "title": "Chapter 19",
+              "text": "Chapter 19 text."
+            },
+            {
+              "title": "Chapter 20",
+              "text": "Chapter 20 text."
+            },
+            {
+              "title": "Chapter 21",
+              "text": "Chapter 21 text."
+            },
+            {
+              "title": "Chapter 22",
+              "text": "Chapter 22 text."
+            },
+            {
+              "title": "Chapter 23",
+              "text": "Chapter 23 text."
+            },
+            {
+              "title": "Chapter 24",
+              "text": "Chapter 24 text."
+            }
+          ]
+        }
+      ]
+    },
+    "longtext": {
+      "projects": [
+        {
+          "title": "The Quiet Sea — a long project title for narrow window and accessibility coverage",
+          "preset": "book",
+          "artwork": null,
+          "sections": [
+            {
+              "title": "A chapter heading long enough to wrap naturally across several lines in a narrow writing window",
+              "text": "The sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered.\n\nThe sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered."
+            },
+            {
+              "title": "Beyond the harbor",
+              "text": "The sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

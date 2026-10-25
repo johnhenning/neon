@@ -8,6 +8,9 @@ import shutil
 import signal
 import subprocess
 import time
+import uuid
+
+from visual_manifest import capture_context, write_manifest
 
 
 def run(*args, **kwargs):
@@ -20,6 +23,9 @@ def main():
     parser.add_argument('app', type=pathlib.Path)
     parser.add_argument('output', type=pathlib.Path)
     parser.add_argument('--device')
+    parser.add_argument('--fixture', choices=['0', '1', '3', 'many', '24chapters', 'longtext'], default='3')
+    parser.add_argument('--profile', default='canonical')
+    parser.add_argument('--figma-node', help='Override reviewed canonical editor Figma node ID')
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -28,6 +34,16 @@ def main():
     platform = 'macOS' if args.platform == 'macOS' else 'iOS'
     source = pathlib.Path(__file__).resolve().parents[1] / 'uitests/Walkthrough.swift'
     shutil.copy(source, work / source.name)
+    fixtures = json.loads((source.parent / 'Fixtures.json').read_text())
+    args.figma_node = args.figma_node or {'macOS': '34:72', 'iPhone': '34:81', 'iPad': '144:16148'}[args.platform]
+    preferences = fixtures['preference_profiles'][args.profile]
+    fixture = fixtures['variants'][args.fixture]
+    context = capture_context(source.parents[2], args.fixture, args.profile, args.figma_node, args.platform, args.device)
+    environment = {'NEON_UI_FIXTURE_JSON': json.dumps(fixture),
+                   'NEON_UI_FIXTURE': args.fixture,
+                   'NEON_UI_PREFERENCES_JSON': json.dumps(preferences),
+                   'NEON_UI_RUN_ID': str(uuid.uuid4()),
+                   'NEON_UI_CAPTURE_CONTEXT': json.dumps(context)}
     # Xcode requires a host target to generate its UI runner. This build-only shell
     # is replaced with the real CMake product before running any tests.
     (work / 'Host.swift').write_text('@main struct Host { static func main() {} }\n')
@@ -79,6 +95,7 @@ def main():
         if not targets:
             targets = [v for k, v in config.items() if not k.startswith('__') and isinstance(v, dict)]
         for target in targets:
+            target.setdefault('EnvironmentVariables', {}).update(environment)
             target['TestTimeoutsEnabled'] = True
             target['DefaultTestExecutionTimeAllowance'] = 120
             target['MaximumTestExecutionTimeAllowance'] = 180
@@ -160,6 +177,7 @@ def main():
         else:
             result['status'] = 'failed'
             result['recording_error'] = result.get('recording_error', 'No usable video was produced')
+        write_manifest(output, context)
         (output / 'result.json').write_text(json.dumps(result, indent=2))
         shutil.rmtree(work, ignore_errors=True)
     return 0 if result['status'] == 'passed' else 1

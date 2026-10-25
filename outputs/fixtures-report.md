@@ -1,0 +1,18 @@
+# Task 1 fixture and capture infrastructure
+
+Implemented deterministic fixture variants `0`, `1`, `3`, `many` (24 projects), `24chapters`, and `longtext`. The 24-chapter fixture deliberately repeats source text in its first two sections so the UI journey can detect editor cache identity leakage. The canonical sample paragraphs and three titles match the prior `seedPreview`; covers remain explicitly null because artwork rendering is Task 4. Approved assets exist in the review outputs but are not silently substituted into current native rendering.
+
+`NeonPreferences()` uses a separate UUID-named test suite for both reads and writes when `--ui-testing` is present. The driver supplies the same run ID to every translation unit, and explicit typography defaults. Production retains its existing default domain. UI test setup creates an isolated library and `NeonSeedUITestLibrary` uses the real session/repository interface, without schema changes or user file access. Both NativeApp integration points are owned by the platform workers.
+
+The driver accepts fixture/profile/node selection while preserving existing invocation compatibility. It records source SHA and dirty state, platform/device/profile and reviewed default editor Figma node. XCTest attaches measured point viewport and actual runtime OS on every screenshot; the final manifest aggregates those JSON records, screenshot checksums and source context. Mac Library uses 34:8; editor defaults Mac34:72/phone34:81/portrait-iPad144:16148; unreviewed destination captures have explicit null node. Native OS/viewport are not inferred from host OS or device names.
+
+Regression additions retain original toggle placement and editor focus assertions. They add distinct chapter AX IDs, section actions, repeated collapse/expand, a capture immediately after manuscript activation, bounded native iPhone keyboard assertion, Mac history undo/redo, and a two-identical-section editing check under the 24-chapter fixture. Exact caret/scroll preservation, restore-cache invalidation and iPad explicit-choice roundtrip remain acceptance gaps; this report does not claim those checks are covered or any recorded journey has passed locally.
+
+Validation performed locally:
+
+- `PATH=/private/tmp/neon-quality-env/bin:$PATH /private/tmp/neon-quality-env/bin/python native/scripts/quality.py`: passed (clang-format19/cpplint/dependency boundaries/git diff).
+- `python3 -m py_compile native/scripts/ui_walkthrough.py native/scripts/visual_manifest.py`: passed.
+- `xcrun swiftc -frontend -parse native/uitests/Walkthrough.swift`: passed syntax parsing, not XCTest type checking.
+- Fixture assertions: project counts 0/1/3/24, 24 chapters, equal source text for first two sections: passed.
+- Manifest test with exported PNG and JSON fixtures: checksum generation and native viewport aggregation passed.
+- `xcode-select -p`: `/Library/Developer/CommandLineTools`; `xcodegen`: absent. Full XCTest runs, simulator recording, screenshot inspection and native UI success remain unverified here. Platform workers/root own core/session builds and native smoke evidence.

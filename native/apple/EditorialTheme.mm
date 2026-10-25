@@ -1,4 +1,5 @@
 #include "EditorialTheme.h"
+#import "Preferences.h"
 #import <CoreText/CoreText.h>
 
 namespace {
@@ -79,7 +80,7 @@ NeonFont* NeonUI(CGFloat size) {
     return [NeonFont systemFontOfSize:size];
 }
 CGFloat NeonTextSize() {
-    double size = [NSUserDefaults.standardUserDefaults doubleForKey:@"manuscriptSize"];
+    double size = [NeonPreferences() doubleForKey:@"manuscriptSize"];
     return size >= 16 && size <= 32 ? size :
 #if TARGET_OS_IPHONE
                                     18;
@@ -88,15 +89,15 @@ CGFloat NeonTextSize() {
 #endif
 }
 CGFloat NeonLineSpacing() {
-    double spacing = [NSUserDefaults.standardUserDefaults doubleForKey:@"manuscriptSpacing"];
+    double spacing = [NeonPreferences() doubleForKey:@"manuscriptSpacing"];
     return spacing >= 2 && spacing <= 16 ? spacing : 8;
 }
 NSInteger NeonAppearance() {
-    return [NSUserDefaults.standardUserDefaults integerForKey:@"appearance"];
+    return [NeonPreferences() integerForKey:@"appearance"];
 }
 
 NSString* NeonFontChoice() {
-    return [NSUserDefaults.standardUserDefaults stringForKey:@"manuscriptFont"] ?: @"Literata";
+    return [NeonPreferences() stringForKey:@"manuscriptFont"] ?: @"Literata";
 }
 NeonFont* NeonFontNamed(NSString* choice, CGFloat size) {
     if ([choice isEqualToString:@"Source Sans 3"])
@@ -120,15 +121,15 @@ NeonFont* NeonManuscriptFont(CGFloat size) {
     return NeonFontNamed(NeonFontChoice(), size);
 }
 CGFloat NeonParagraphSpacing() {
-    NSNumber* value = [NSUserDefaults.standardUserDefaults objectForKey:@"paragraphSpacing"];
+    NSNumber* value = [NeonPreferences() objectForKey:@"paragraphSpacing"];
     return value && value.doubleValue >= 0 && value.doubleValue <= 24 ? value.doubleValue : 4;
 }
 CGFloat NeonTextMeasure() {
-    double value = [NSUserDefaults.standardUserDefaults doubleForKey:@"textMeasure"];
+    double value = [NeonPreferences() doubleForKey:@"textMeasure"];
     return value >= 480 && value <= 960 ? value : 640;
 }
 BOOL NeonWritingPreference(NSString* key) {
-    NSNumber* value = [NSUserDefaults.standardUserDefaults objectForKey:key];
+    NSNumber* value = [NeonPreferences() objectForKey:key];
     return value ? value.boolValue : YES;
 }
 

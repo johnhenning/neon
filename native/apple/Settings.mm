@@ -1,5 +1,6 @@
 #include "Settings.h"
 #import "ContextMenu.h"
+#import "Preferences.h"
 
 namespace {
 NSArray<NSDictionary*>* settings() {
@@ -112,14 +113,14 @@ NSArray<NSDictionary*>* matches(NSString* query) {
         }]];
 }
 id value(NSDictionary* item) {
-    return [NSUserDefaults.standardUserDefaults objectForKey:item[@"key"]] ?: item[@"default"];
+    return [NeonPreferences() objectForKey:item[@"key"]] ?: item[@"default"];
 }
 NSString* numberLabel(NSDictionary* item) {
     return [NSString stringWithFormat:@"%.0f %@", [value(item) doubleValue], item[@"unit"]];
 }
 void reset() {
     for (NSDictionary* item in settings())
-        [NSUserDefaults.standardUserDefaults removeObjectForKey:item[@"key"]];
+        [NeonPreferences() removeObjectForKey:item[@"key"]];
 }
 } // namespace
 
@@ -242,7 +243,7 @@ void reset() {
         __weak UIStepper* weakStepper = stepper;
         [stepper addAction:[UIAction actionWithHandler:^(UIAction* action) {
                    (void)action;
-                   [NSUserDefaults.standardUserDefaults setDouble:weakStepper.value forKey:key];
+                   [NeonPreferences() setDouble:weakStepper.value forKey:key];
                    current.text = numberLabel(item);
                    weakStepper.accessibilityValue = current.text;
                    [weakSelf changed];
@@ -266,7 +267,7 @@ void reset() {
             [font.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
             [font addAction:[UIAction actionWithHandler:^(UIAction* action) {
                     (void)action;
-                    [NSUserDefaults.standardUserDefaults setObject:name forKey:@"manuscriptFont"];
+                    [NeonPreferences() setObject:name forKey:@"manuscriptFont"];
                     [weakSelf changed];
                     [weakSelf.tableView reloadData];
                   }]
@@ -302,12 +303,11 @@ void reset() {
     return cell;
 }
 - (void)toggle:(UISwitch*)sender {
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:sender.accessibilityIdentifier];
+    [NeonPreferences() setBool:sender.on forKey:sender.accessibilityIdentifier];
     [self changed];
 }
 - (void)appearance:(UISegmentedControl*)sender {
-    [NSUserDefaults.standardUserDefaults setInteger:sender.selectedSegmentIndex
-                                             forKey:@"appearance"];
+    [NeonPreferences() setInteger:sender.selectedSegmentIndex forKey:@"appearance"];
     [self changed];
 }
 - (void)changed {
@@ -522,12 +522,11 @@ NSStackView* vertical(NSArray<NSView*>* children, CGFloat spacing) {
         self.preferencesChanged();
 }
 - (void)toggle:(NeonSettingsToggle*)sender {
-    [NSUserDefaults.standardUserDefaults setBool:sender.state == NSControlStateValueOn
-                                          forKey:sender.identifier];
+    [NeonPreferences() setBool:sender.state == NSControlStateValueOn forKey:sender.identifier];
     [self changed];
 }
 - (void)number:(NSStepper*)sender {
-    [NSUserDefaults.standardUserDefaults setDouble:sender.doubleValue forKey:sender.identifier];
+    [NeonPreferences() setDouble:sender.doubleValue forKey:sender.identifier];
     for (NSDictionary* item in settings())
         if ([item[@"key"] isEqual:sender.identifier]) {
             NSTextField* label = (id)((NSStackView*)sender.superview).arrangedSubviews.firstObject;
@@ -537,12 +536,11 @@ NSStackView* vertical(NSArray<NSView*>* children, CGFloat spacing) {
     [self changed];
 }
 - (void)font:(NSPopUpButton*)sender {
-    [NSUserDefaults.standardUserDefaults setObject:sender.titleOfSelectedItem
-                                            forKey:@"manuscriptFont"];
+    [NeonPreferences() setObject:sender.titleOfSelectedItem forKey:@"manuscriptFont"];
     [self changed];
 }
 - (void)appearance:(NSSegmentedControl*)sender {
-    [NSUserDefaults.standardUserDefaults setInteger:sender.selectedSegment forKey:@"appearance"];
+    [NeonPreferences() setInteger:sender.selectedSegment forKey:@"appearance"];
     [self changed];
 }
 - (void)resetPreferences:(id)sender {

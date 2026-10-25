@@ -15,6 +15,7 @@ final class Walkthrough: XCTestCase {
         app = XCUIApplication(bundleIdentifier: "com.johnhenning.neon.applepreview")
         #endif
         app.launchArguments = ["--ui-testing"]
+        app.launchEnvironment = ProcessInfo.processInfo.environment.filter { $0.key.hasPrefix("NEON_UI_") }
         app.launch()
     }
 
@@ -39,6 +40,28 @@ final class Walkthrough: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+        var metadata = (try? JSONSerialization.jsonObject(with:
+            Data((ProcessInfo.processInfo.environment["NEON_UI_CAPTURE_CONTEXT"] ?? "{}").utf8))) as? [String: Any] ?? [:]
+        let frame = app.frame
+        metadata["capture"] = name
+        if name == "01-library" {
+            #if os(macOS)
+            metadata["figma_node"] = "34:8"
+            #else
+            metadata["figma_node"] = NSNull()
+            #endif
+        } else if !name.hasPrefix("02-") {
+            metadata["figma_node"] = NSNull()
+        }
+        metadata["viewport"] = ["x": frame.minX, "y": frame.minY,
+                                "width": frame.width, "height": frame.height, "unit": "points"]
+        metadata["runtime_os"] = ProcessInfo.processInfo.operatingSystemVersionString
+        if let data = try? JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys]) {
+            let details = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+            details.name = name + "-metadata"
+            details.lifetime = .keepAlways
+            add(details)
+        }
     }
 
     func chapters() {
@@ -50,10 +73,17 @@ final class Walkthrough: XCTestCase {
     }
 
     func testRecordedEditorJourney() {
+        let variant = ProcessInfo.processInfo.environment["NEON_UI_FIXTURE"] ?? "3"
+        if variant == "0" {
+            XCTAssertFalse(app.staticTexts["The Quiet Sea"].exists)
+            XCTAssertFalse(app.buttons["The Quiet Sea"].exists)
+            capture("00-empty-library")
+            return
+        }
         #if os(macOS)
-        let project = app.buttons["The Quiet Sea"]
+        let project = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "The Quiet Sea")).firstMatch
         #else
-        let project = app.staticTexts["The Quiet Sea"]
+        let project = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "The Quiet Sea")).firstMatch
         #endif
         XCTAssertTrue(project.waitForExistence(timeout: 15))
         capture("01-library")
@@ -104,18 +134,43 @@ final class Walkthrough: XCTestCase {
             activate(element("section-0"))
         }
         #endif
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "section-0").count, 1)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "section-1").count, 1)
+        #if os(macOS)
+        XCTAssertTrue(app.buttons["section-actions-0"].exists)
+        for _ in 0..<3 {
+            activate(app.buttons["Toggle sidebar"])
+            XCTAssertFalse(element("section-1").isHittable)
+            activate(app.buttons["Toggle sidebar"])
+            XCTAssertTrue(element("section-1").isHittable)
+            assertSidebarTogglePlacement()
+        }
+        #endif
         capture("02-editor")
         activate(editor)
+        capture("02-editor-after-focus")
+        #if !os(macOS)
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                          "Tapping the manuscript must focus native text input")
+        }
+        #endif
         editor.typeText("\nNeon recorded UI persistence check.")
         chapters()
         activate(element("section-1"))
         XCTAssertFalse((element("manuscript").value as? String ?? "")
             .contains("Neon recorded UI persistence check."))
+        if variant == "24chapters" {
+            activate(element("manuscript"))
+            element("manuscript").typeText("\nIndependent second chapter marker.")
+        }
         capture("03-next-chapter")
         chapters()
         activate(element("section-0"))
         XCTAssertTrue((element("manuscript").value as? String ?? "")
             .contains("Neon recorded UI persistence check."))
+        XCTAssertFalse((element("manuscript").value as? String ?? "")
+            .contains("Independent second chapter marker."), "Equal source text must not share an editor")
         capture("04-saved-edit")
         #if os(macOS)
         activate(app.buttons["Toggle sidebar"])
@@ -148,6 +203,13 @@ final class Walkthrough: XCTestCase {
         XCTAssertTrue(element("manuscript").waitForExistence(timeout: 10))
         XCTAssertTrue((element("manuscript").value as? String ?? "").contains("Neon recorded UI persistence check."))
         #if os(macOS)
+        activate(element("manuscript"))
+        app.typeKey("z", modifierFlags: .command)
+        XCTAssertFalse((element("manuscript").value as? String ?? "")
+            .contains("Neon recorded UI persistence check."), "History return must preserve editor undo")
+        app.typeKey("z", modifierFlags: [.command, .shift])
+        XCTAssertTrue((element("manuscript").value as? String ?? "")
+            .contains("Neon recorded UI persistence check."), "History return must preserve editor redo")
         app.typeKey(",", modifierFlags: .command)
         // AppKit exposes the Settings NSPanel as an accessibility dialog.
         let settings = app.dialogs["Settings"]
