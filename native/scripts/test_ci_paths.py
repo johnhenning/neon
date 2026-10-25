@@ -20,7 +20,9 @@ class SelectionTests(unittest.TestCase):
             (['native/apple/Settings.mm'], (True, True, False)),
             (['native/resources/fonts/font.ttf'], (True, True, False)),
             (['native/CMakeLists.txt'], (True, True, False)),
-            (['native/scripts/ios_smoke.py'], (True, True, True)),
+            (['native/scripts/ios_smoke.py'], (False, True, False)),
+            (['native/scripts/focus_log.py'], (False, True, False)),
+            (['native/scripts/ui_walkthrough.py'], (True, True, True)),
             (['.github/workflows/apple-report.yml'], (True, True, True)),
             (['README.md', 'native/README.md', 'docs/design.md'], (False, False, False)),
         ]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select native CI jobs from the complete pull-request diff, without API writes."""
+"""Select native CI jobs from validated push or PR diffs, without API writes."""
 import json
 import os
 import pathlib
@@ -13,6 +13,8 @@ def classify(paths):
             selected.update(macos=True, ios=True, core=True)
         elif path.startswith('native/macos/'):
             selected['macos'] = True
+        elif path in {'native/scripts/ios_smoke.py', 'native/scripts/focus_log.py'}:
+            selected['ios'] = True
         elif path.startswith('native/ios/'):
             selected['ios'] = True
         elif (path.startswith(('native/apple/', 'native/resources/', 'native/scripts/'))
