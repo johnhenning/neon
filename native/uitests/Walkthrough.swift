@@ -121,10 +121,19 @@ final class Walkthrough: XCTestCase {
         func assertSidebarTogglePlacement() {
             let toggle = app.buttons["Toggle sidebar"]
             let history = app.buttons["Version history"]
+            let chapterRow = element("section-row-0")
+            XCTAssertTrue(chapterRow.waitForExistence(timeout: 5))
+            XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "section-row-0").count, 1)
+            let title = chapterRow.descendants(matching: .any).matching(identifier: "section-0").firstMatch
+            let actions = chapterRow.buttons["section-actions-0"]
+            XCTAssertTrue(title.exists, "Chapter title must remain independently accessible in its row")
+            XCTAssertTrue(actions.exists, "Chapter Actions must remain independently accessible in its row")
+            XCTAssertTrue(chapterRow.frame.contains(title.frame), "Chapter row must contain its title bounds")
+            XCTAssertTrue(chapterRow.frame.contains(actions.frame), "Chapter row must contain its Actions bounds")
             XCTAssertEqual(app.buttons.matching(identifier: "Toggle sidebar").count, 1)
             XCTAssertEqual(toggle.frame.midY, history.frame.midY, accuracy: 8)
-            XCTAssertGreaterThan(toggle.frame.midX, element("section-0").frame.midX)
-            XCTAssertLessThanOrEqual(toggle.frame.maxX, element("section-0").frame.maxX + 24)
+            XCTAssertGreaterThan(toggle.frame.midX, chapterRow.frame.midX)
+            XCTAssertLessThanOrEqual(toggle.frame.maxX, chapterRow.frame.maxX + 24)
         }
         assertSidebarTogglePlacement()
         #endif
