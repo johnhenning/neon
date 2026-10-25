@@ -33,18 +33,34 @@ module.exports = async ({github, context, core, cli = execFileSync}) => {
   const lines = [marker, `## Neon ${platform} build report`,
     `Commit: \`${sha.slice(0, 12)}\` · [Build ${context.runId}](${run})`,
     `**Build / test job: ${process.env.BUILD_RESULT}**`,
-    '', '### Recorded UI tests', '', '| Platform | UI assertions | Recording |',
-    '|---|---|---|'];
+    '', '### Recorded UI tests', '', '| Platform | UI assertions | Recording | Source |',
+    '|---|---|---|---|'];
+  const results = all.filter(name => name.endsWith('/result.json'))
+    .map(name => { try { return JSON.parse(fs.readFileSync(name, 'utf8')); } catch { return {}; } });
+  const videos = [];
   for (const family of platform === 'macOS' ? ['macOS'] : ['iPhone', 'iPad']) {
-    const results = all.filter(name => name.endsWith('/result.json'))
-      .map(name => { try { return JSON.parse(fs.readFileSync(name, 'utf8')); } catch { return {}; } });
     const result = results.find(item => item.platform === family);
-    const movie = all.find(name => [`${family}-walkthrough.mov`, `${family}-walkthrough.mp4`].includes(path.basename(name)));
-    const link = movie && recordings ? `[Video recording](${run}/artifacts/${recordings.id})` : 'Missing';
-    lines.push(`| ${family} | ${result?.status || 'Not completed'} | ${link} |`);
+    const ui = result?.ui_status || 'Not completed';
+    const source = result?.recording_source === 'XCTest system attachment' ? 'XCTest system attachment'
+      : ['simctl recordVideo (XCTest recording unavailable)', 'simctl fallback (no XCTest recording)']
+        .includes(result?.recording_source)
+        ? 'Simulator fallback (no XCTest recording; may include startup or idle frames)'
+        : 'Unknown recording source';
+    const movie = all.find(name => path.basename(name) === `${family}-walkthrough.mp4`);
+    const validation = result?.media_validation;
+    const validated = result?.recording_status === 'passed' && validation
+      && validation.duration_seconds > 0 && validation.width > 0 && validation.height > 0
+      && validation.sampled_frames > 1 && validation.changed_transitions > 0
+      && movie && fs.statSync(movie).size > 0;
+    const partial = ui !== 'passed' || result?.video_complete !== true;
+    const label = !movie ? 'Missing' : !validated ? 'Unverified or failed recording'
+      : partial ? 'Partial recording — UI walkthrough incomplete' : 'Validated recording';
+    const link = movie && recordings ? `[${label}](${run}/artifacts/${recordings.id})` : label;
+    lines.push(`| ${family} | ${ui} | ${link} | ${source} |`);
+    if (movie && validated) videos.push({file: movie, family, label, source});
   }
   lines.push('', 'UI assertions cover navigation, editing and saved text after chapter changes, history and settings. '
-    + 'The Mac walkthrough also checks sidebar collapse. Videos are recordings of XCTest input, not generated demos.');
+    + 'The Mac walkthrough also checks sidebar collapse. Recording sources are labeled separately: XCTest attachments capture test execution; simulator fallback recordings may include startup or idle frames and do not independently prove interactions.');
   if (build) lines.push('', `[Download app](${run}/artifacts/${build.id})`);
   if (recordings) lines.push(`[Download recordings](${run}/artifacts/${recordings.id})`);
   if (source) lines.push('', `[Download test diagnostics](${run}/artifacts/${source.id})`);
@@ -92,12 +108,17 @@ module.exports = async ({github, context, core, cli = execFileSync}) => {
         : ['iPhone.png', 'iPad.png', 'iPhone-history.png', 'iPad-history.png'];
       const selected = preferred.map(name => screenshots.find(file => path.basename(file) === name)).filter(Boolean);
       selected.push(...screenshots.filter(file => /failure\.png$/.test(file)));
-      selected.push(...all.filter(file => /-walkthrough\.(mov|mp4)$/.test(file)));
+      selected.push(...videos.map(video => video.file));
       // Use the Free-plan limit for portability. Full-size originals stay in artifacts.
-      const attachments = [...new Set(selected)].filter(file => fs.statSync(file).size <= 9_000_000);
+      const attachments = [...new Set(selected)].filter(file => fs.statSync(file).size > 0 && fs.statSync(file).size <= 9_000_000);
       if (attachments.length) {
         body += '\n\n### Build artifact previews\n\n';
-        body += attachments.map(file => `![${path.basename(file)}](${file})`).join('\n\n');
+        body += attachments.map(file => {
+          const video = videos.find(item => item.file === file);
+          // gh rewrites a standalone video image reference to a bare player URL.
+          return video ? `**${video.family}: ${video.label}**\n\nSource: ${video.source}.\n\n![](${file})`
+            : `![${path.basename(file)}](${file})`;
+        }).join('\n\n');
       }
       body += '\n\nOriginal captures remain in build artifacts; inline copies are GitHub comment attachments. '
         + 'Media too large to attach is available through the artifact links.';

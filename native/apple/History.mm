@@ -146,14 +146,19 @@ NSString* entryDetail(NSDictionary* entry) {
     self.view.tintColor = NeonAccent();
     self.title = @"Version History";
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
-    self.navigationItem.leftBarButtonItem =
-        [[UIBarButtonItem alloc] initWithTitle:@"Search History"
+    UIBarButtonItem* searchButton =
+        [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"magnifyingglass"]
                                          style:UIBarButtonItemStylePlain
                                         target:self
                                         action:@selector(toggleSearch)];
-    UIView* workspace =
-        NeonPillSelector(@[ @"Editor", @"History" ], 1, self, @selector(workspaceChanged:));
-    self.navigationItem.titleView = workspace;
+    searchButton.accessibilityLabel = @"Search History";
+    UIBarButtonItem* backButton =
+        [[UIBarButtonItem alloc] initWithTitle:@"Editor"
+                                         style:UIBarButtonItemStylePlain
+                                        target:self
+                                        action:@selector(workspaceChanged:)];
+    backButton.accessibilityLabel = @"Back to editor";
+    self.navigationItem.rightBarButtonItems = @[ backButton, searchButton ];
     UIView* scope =
         NeonPillSelector(@[ @"All Versions", @"Checkpoints" ], 0, self, @selector(scopeChanged:));
     UISearchBar* search = [UISearchBar new];
@@ -252,7 +257,8 @@ NSString* entryDetail(NSDictionary* entry) {
     }
 }
 - (void)workspaceChanged:(id)sender {
-    if ([sender tag] == 0 && self.showEditor)
+    (void)sender;
+    if (self.showEditor)
         self.showEditor();
 }
 - (void)scopeChanged:(id)sender {
