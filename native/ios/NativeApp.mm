@@ -3,6 +3,7 @@
 #import "History.h"
 #import "InlineTitle.h"
 #import "LibraryStore.h"
+#import "Preferences.h"
 #import "Settings.h"
 #import "UITestFixtures.h"
 #import <UIKit/UIKit.h>
@@ -1023,6 +1024,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         return;
     }
     self.projects = projects;
+    self.libraryList.tableView.accessibilityIdentifier =
+        [NSString stringWithFormat:@"library-project-count-%lu", (unsigned long)projects.count];
     self.libraryList.title = self.trashMode ? @"Trash" : @"Library";
     self.libraryList.navigationItem.leftBarButtonItem =
         self.trashMode ? [[UIBarButtonItem alloc] initWithTitle:@"Library"

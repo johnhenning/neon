@@ -16,3 +16,11 @@ Validation performed locally:
 - Fixture assertions: project counts 0/1/3/24, 24 chapters, equal source text for first two sections: passed.
 - Manifest test with exported PNG and JSON fixtures: checksum generation and native viewport aggregation passed.
 - `xcode-select -p`: `/Library/Developer/CommandLineTools`; `xcodegen`: absent. Full XCTest runs, simulator recording, screenshot inspection and native UI success remain unverified here. Platform workers/root own core/session builds and native smoke evidence.
+
+## Review follow-up
+
+The review portability findings are corrected. Removed the newly added software-keyboard visibility requirement: hardware-keyboard simulator sessions can focus and type without an onscreen keyboard. The original native `typeText` and text persistence assertions, immediate post-activation capture, and native hit-test diagnostics remain. Empty fixtures now wait for a real Library scroll/table accessibility identifier containing the successfully loaded project count `0`, and assert the Library heading/navigation bar exists before accepting the capture. Both counts are assigned only after successful repository enumeration.
+
+Preferences now validate the supplied JSON dictionary and UUID run ID, and set authoritative persistent values only inside that unique test suite. A domain sentinel avoids resetting Settings if a different adapter first accesses the inline provider later. The driver defaults to a named desktop20/mobile18 profile, rather than forcing 20 points across every platform. `FIGMA_PARITY.md` documents valid driver launches and exact artwork/provenance limitations. The approved review assets exist but remain unbundled until Task 4. Added the missing direct Preferences.h import in UIKit.
+
+Follow-up validation: quality script passed; Swift syntax parse and Python byte compilation passed. A compiled Foundation command-line test seeded conflicting appearance/size values in a disposable test domain, verified authoritative light/18 values replace them, verified subsequent Settings-style writes persist, and verified a JSON array profile fails with the explicit dictionary error. This is preferences-adapter evidence, not native appearance/screenshot verification. Full Xcode/XCTest remains unavailable, and caret/scroll/restore/iPad-choice acceptance gaps remain.

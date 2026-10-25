@@ -1,13 +1,20 @@
 {
   "schema": 1,
   "provenance": {
-    "text": "Existing seedPreview canonical prototype sample; approved cover assets not supplied. Null artwork means neutral fallback, never fabricated design art.",
+    "text": "Existing seedPreview prototype text and titles; approved review artwork exists under outputs/neon-deep-review/assets but is not bundled/rendered until Task 4. Null artwork means neutral fallback.",
     "figma_file": "DOW2IVUIDIt2Z4cM4XtM8I"
   },
   "preference_profiles": {
-    "canonical": {
+    "desktop": {
       "manuscriptFont": "Literata",
       "manuscriptSize": 20,
+      "manuscriptSpacing": 8,
+      "appearance": 1,
+      "textMeasure": 640
+    },
+    "mobile": {
+      "manuscriptFont": "Literata",
+      "manuscriptSize": 18,
       "manuscriptSpacing": 8,
       "appearance": 1,
       "textMeasure": 640

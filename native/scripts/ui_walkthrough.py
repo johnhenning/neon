@@ -24,7 +24,7 @@ def main():
     parser.add_argument('output', type=pathlib.Path)
     parser.add_argument('--device')
     parser.add_argument('--fixture', choices=['0', '1', '3', 'many', '24chapters', 'longtext'], default='3')
-    parser.add_argument('--profile', default='canonical')
+    parser.add_argument('--profile', choices=['desktop', 'mobile'], help='Default: desktop on Mac, mobile on iPhone/iPad')
     parser.add_argument('--figma-node', help='Override reviewed canonical editor Figma node ID')
     args = parser.parse_args()
     output = args.output.resolve()
@@ -36,6 +36,7 @@ def main():
     shutil.copy(source, work / source.name)
     fixtures = json.loads((source.parent / 'Fixtures.json').read_text())
     args.figma_node = args.figma_node or {'macOS': '34:72', 'iPhone': '34:81', 'iPad': '144:16148'}[args.platform]
+    args.profile = args.profile or ('desktop' if platform == 'macOS' else 'mobile')
     preferences = fixtures['preference_profiles'][args.profile]
     fixture = fixtures['variants'][args.fixture]
     context = capture_context(source.parents[2], args.fixture, args.profile, args.figma_node, args.platform, args.device)

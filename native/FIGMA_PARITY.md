@@ -44,3 +44,22 @@ Still required before claiming S05 parity:
 - Implement the broader project search from NEON-073; this slice adds no placeholder
   search button. Library/chooser, other screen families and deferred rich content
   remain separate implementation slices in the October 1 Notion plan.
+
+Task 1 deterministic XCTest captures use the driver, which supplies the required
+fixture JSON, unique preferences suite and platform profile to the tested app:
+
+```sh
+python3 native/scripts/ui_walkthrough.py macOS /absolute/path/Neon.app /absolute/path/evidence --fixture 3
+python3 native/scripts/ui_walkthrough.py iPhone /absolute/path/Neon.app /absolute/path/evidence --device SIMULATOR_UDID --fixture 24chapters
+```
+
+Profiles default to `desktop` (20 pt) on Mac and `mobile` (18 pt) on iPhone/iPad;
+`--profile desktop|mobile` explicitly overrides the default. Each test run installs
+its profile as authoritative values in a unique test-only suite. A raw
+`Neon --ui-testing` launch without the driver's environment is intentionally invalid.
+The fixture is the prior prototype text/titles, not certified exact Figma content.
+Approved artwork exists in `outputs/neon-deep-review/assets` (`quiet-sea`,
+`stone-paths`, `glass-field`, `coast` hires PNGs); it is not bundled or rendered until
+Task 4. Exported XCTest screenshot attachments have manifests; earlier direct
+simulator smoke screenshots are outside this manifest. Source SHA describes the
+checkout, not independently verified build provenance for an arbitrary app path.

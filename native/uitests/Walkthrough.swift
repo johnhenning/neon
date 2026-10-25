@@ -75,6 +75,9 @@ final class Walkthrough: XCTestCase {
     func testRecordedEditorJourney() {
         let variant = ProcessInfo.processInfo.environment["NEON_UI_FIXTURE"] ?? "3"
         if variant == "0" {
+            XCTAssertTrue(element("library-project-count-0").waitForExistence(timeout: 15),
+                          "Library must finish loading the empty fixture")
+            XCTAssertTrue(app.staticTexts["Library"].exists || app.navigationBars["Library"].exists)
             XCTAssertFalse(app.staticTexts["The Quiet Sea"].exists)
             XCTAssertFalse(app.buttons["The Quiet Sea"].exists)
             capture("00-empty-library")
@@ -149,12 +152,6 @@ final class Walkthrough: XCTestCase {
         capture("02-editor")
         activate(editor)
         capture("02-editor-after-focus")
-        #if !os(macOS)
-        if UIDevice.current.userInterfaceIdiom == .phone {
-            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
-                          "Tapping the manuscript must focus native text input")
-        }
-        #endif
         editor.typeText("\nNeon recorded UI persistence check.")
         chapters()
         activate(element("section-1"))
