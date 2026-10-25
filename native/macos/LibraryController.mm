@@ -343,7 +343,7 @@ NeonLibraryButton* button(NSView* parent, NSString* title, NSRect frame, void (^
                                                      timeStyle:NSDateFormatterNoStyle]
                     : @"Unknown date";
             label(self.content,
-                  r[@"error"]
+                  [r[@"error"] length] > 0
                       ? @"Unable to read project"
                       : [NSString stringWithFormat:@"%@ · %@", r[@"preset"] ?: @"Project", edited],
                   NeonUI(13), NeonMuted(),

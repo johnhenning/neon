@@ -316,7 +316,7 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
                                                      timeStyle:NSDateFormatterNoStyle]
                     : @"Unknown date";
             label(self.scroll,
-                  r[@"error"]
+                  [r[@"error"] length] > 0
                       ? @"Unable to read project"
                       : [NSString stringWithFormat:@"%@ · %@", r[@"preset"] ?: @"Project", edited],
                   NeonUI(13), NeonMuted(), CGRectMake(tx, ty + 34, tw, 24));

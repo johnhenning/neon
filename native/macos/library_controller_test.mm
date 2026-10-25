@@ -78,10 +78,13 @@ int main(int argc, const char* argv[]) {
             @"modified" : [NSDate date],
             @"lastOpened" : [NSDate date],
             @"preset" : @"book",
-            @"favorite" : @YES
+            @"favorite" : @YES,
+            @"error" : @""
         };
         c.selectedProjectID = @"stable-a";
         [c updateWithRecords:@[ record ] error:nil];
+        require(!contains(c.view, @"Unable to read project"),
+                "empty provider error string must be healthy metadata");
         __block NSString* action;
         __block NSString* identity;
         c.onAction = ^(NSString* name, NSDictionary* row) {
