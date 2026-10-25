@@ -1,6 +1,8 @@
 // UIKit smoke assertions run only against the isolated preview library.
 #import "EditorialTheme.h"
+#import "Preferences.h"
 #include "WorkspaceController.h"
+#include <cmath>
 
 BOOL NeonWorkspaceSmoke(NeonChapterHeading* heading, UITextView* manuscript) {
     NSString* title = heading.text;
@@ -28,4 +30,68 @@ BOOL NeonWorkspaceSmoke(NeonChapterHeading* heading, UITextView* manuscript) {
     manuscript.text = text;
     manuscript.selectedRange = selection;
     return valid;
+}
+
+namespace {
+void compositionTransition(UITextView* (^current)(void), void (^request)(BOOL),
+                           BOOL (^pending)(void), BOOL wide, BOOL priorValid,
+                           void (^completion)(BOOL)) {
+    UITextView* manuscript = current();
+    UIFont* before = manuscript.font;
+    [manuscript setMarkedText:@"日本語" selectedRange:NSMakeRange(3, 0)];
+    NSRange composingSelection = manuscript.selectedRange;
+    request(wide);
+    // Exercise the same notification path used for a Dynamic Type category change.
+    [NSNotificationCenter.defaultCenter
+        postNotificationName:UIContentSizeCategoryDidChangeNotification
+                      object:nil];
+    BOOL valid = priorValid && pending() && current() == manuscript &&
+                 manuscript.markedTextRange != nil &&
+                 manuscript.font.pointSize == before.pointSize &&
+                 NSEqualRanges(composingSelection, manuscript.selectedRange);
+    [manuscript unmarkText];
+    NSRange committedSelection = manuscript.selectedRange;
+    // unmarkText's retry is queued first; this assertion observes the settled event boundary.
+    dispatch_async(dispatch_get_main_queue(), ^{
+      UIFont* font = manuscript.font;
+      NSParagraphStyle* style = manuscript.typingAttributes[NSParagraphStyleAttributeName];
+      UIFont* expected = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+          scaledFontForFont:NeonSerif(wide ? 20 : 18)];
+      CGFloat leading = font.pointSize * (wide ? 34.0 / 20 : 30.0 / 18);
+      BOOL settled = valid && !pending() && current() == manuscript &&
+                     !manuscript.markedTextRange &&
+                     std::abs(font.pointSize - expected.pointSize) < 0.01 &&
+                     std::abs(style.minimumLineHeight - leading) < 0.01 &&
+                     NSEqualRanges(committedSelection, manuscript.selectedRange);
+      completion(settled);
+    });
+}
+} // namespace
+
+void NeonWorkspaceCompositionSmoke(UITextView* (^current)(void), void (^request)(BOOL),
+                                   BOOL (^pending)(void), void (^completion)(BOOL)) {
+    UITextView* manuscript = current();
+    NSString* text = manuscript.text;
+    NSRange selection = manuscript.selectedRange;
+    NSMutableDictionary* originals = [NSMutableDictionary dictionary];
+    for (NSString* key in @[ @"manuscriptSize", @"manuscriptSpacing", @"manuscriptFont" ]) {
+        originals[key] = [NeonPreferences() objectForKey:key] ?: NSNull.null;
+        [NeonPreferences() removeObjectForKey:key];
+    }
+    request(NO);
+    compositionTransition(current, request, pending, YES, YES, ^(BOOL wideValid) {
+      compositionTransition(current, request, pending, NO, wideValid, ^(BOOL valid) {
+        for (NSString* key in originals) {
+            id value = originals[key];
+            if (value == NSNull.null)
+                [NeonPreferences() removeObjectForKey:key];
+            else
+                [NeonPreferences() setObject:value forKey:key];
+        }
+        manuscript.text = text;
+        manuscript.selectedRange = selection;
+        completion(valid && current() == manuscript &&
+                   NSEqualRanges(selection, manuscript.selectedRange));
+      });
+    });
 }

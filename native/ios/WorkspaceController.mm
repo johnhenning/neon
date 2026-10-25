@@ -112,6 +112,11 @@
     }
     return YES;
 }
+- (void)unmarkText {
+    [super unmarkText];
+    if (self.heightChanged)
+        self.heightChanged();
+}
 - (void)textViewDidChange:(UITextView*)view {
     if (!view.markedTextRange && self.heightChanged)
         self.heightChanged();

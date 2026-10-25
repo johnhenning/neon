@@ -19,3 +19,7 @@
 @end
 
 BOOL NeonWorkspaceSmoke(NeonChapterHeading* heading, UITextView* manuscript);
+
+void NeonWorkspaceCompositionSmoke(UITextView* (^manuscript)(void),
+                                   void (^requestTypography)(BOOL wide),
+                                   BOOL (^hasPendingTypography)(void), void (^completion)(BOOL));

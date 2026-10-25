@@ -89,8 +89,14 @@ NSString* focusAncestry(UIView* target) {
 // Keep the next simulator failure actionable without changing UIKit focus behavior.
 @interface NeonManuscriptView : UITextView
 @property(nonatomic) NSUInteger focusDiagnosticCount;
+@property(nonatomic, copy) void (^compositionEnded)(void);
 @end
 @implementation NeonManuscriptView
+- (void)unmarkText {
+    [super unmarkText];
+    if (self.compositionEnded)
+        self.compositionEnded();
+}
 - (CGPoint)accessibilityActivationPoint {
     // UITextView's default point can fall on the rounded top/leading edge when
     // lineFragmentPadding and the top text inset are zero. A tap there hits the
@@ -125,6 +131,8 @@ NSString* focusAncestry(UIView* target) {
 @property(nonatomic, strong) UIStackView* chapterHeader;
 @property(nonatomic, strong) UILabel* chapterKicker;
 @property(nonatomic) BOOL wideTypography;
+@property(nonatomic) BOOL typographyPending;
+@property(nonatomic) BOOL typographyRetryScheduled;
 @property(nonatomic, strong) NSLayoutConstraint* headingHeight;
 @property(nonatomic) BOOL focusMode;
 @property(nonatomic) BOOL returnToManuscript;
@@ -136,6 +144,7 @@ NSString* focusAncestry(UIView* target) {
 @property(nonatomic, strong) NSTimer* saveTimer;
 - (BOOL)flush;
 - (void)applyTypography;
+- (void)scheduleTypographyRetry;
 @end
 @interface NeonList : UITableViewController
 @property(nonatomic, strong) UIStackView* navigationHeader;
@@ -355,6 +364,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     header.spacing = 20;
     self.chapterHeader = header;
     self.heading.heightChanged = ^{
+      [weakSelf scheduleTypographyRetry];
       [weakSelf.view setNeedsLayout];
     };
     self.headingHeight = [self.heading.heightAnchor constraintEqualToConstant:34];
@@ -363,7 +373,11 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     [kicker.widthAnchor constraintEqualToAnchor:header.widthAnchor].active = YES;
     if (self.guidance)
         [self.guidance.widthAnchor constraintEqualToAnchor:header.widthAnchor].active = YES;
-    self.editor = [NeonManuscriptView new];
+    NeonManuscriptView* manuscript = [NeonManuscriptView new];
+    manuscript.compositionEnded = ^{
+      [weakSelf scheduleTypographyRetry];
+    };
+    self.editor = manuscript;
     self.editor.delegate = self;
     self.editor.backgroundColor = NeonPaper();
     self.editor.textColor = NeonInk();
@@ -456,9 +470,29 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     [self flush];
     self.navigationController.interactivePopGestureRecognizer.enabled = YES;
 }
-- (void)applyTypography {
-    if (!self.editor || self.editor.markedTextRange)
+- (void)scheduleTypographyRetry {
+    if (!self.typographyPending || self.typographyRetryScheduled)
         return;
+    self.typographyRetryScheduled = YES;
+    __weak NeonEditor* weakSelf = self;
+    // UIKit may clear markedTextRange after its delegate notification. Retry once
+    // at the next event boundary; later input callbacks retry if still composing.
+    dispatch_async(dispatch_get_main_queue(), ^{
+      NeonEditor* editor = weakSelf;
+      editor.typographyRetryScheduled = NO;
+      if (editor.typographyPending && editor.session && !editor.editor.markedTextRange &&
+          !editor.heading.markedTextRange)
+          [editor applyTypography];
+    });
+}
+- (void)applyTypography {
+    if (!self.editor)
+        return;
+    if (self.editor.markedTextRange || self.heading.markedTextRange) {
+        self.typographyPending = YES;
+        return;
+    }
+    self.typographyPending = NO;
     NSRange selection = self.editor.selectedRange;
     NSMutableParagraphStyle* style = [NSMutableParagraphStyle new];
     BOOL explicitSize = [NeonPreferences() objectForKey:@"manuscriptSize"] != nil;
@@ -528,7 +562,16 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         NSLog(@"Neon focus began: editable=%d responder=%d window=%d frame=%@", view.editable,
               view.isFirstResponder, view.window != nil, NSStringFromCGRect(view.frame));
 }
+- (void)textViewDidChangeSelection:(UITextView*)view {
+    (void)view;
+    [self scheduleTypographyRetry];
+}
+- (void)textViewDidEndEditing:(UITextView*)view {
+    (void)view;
+    [self scheduleTypographyRetry];
+}
 - (void)textViewDidChange:(UITextView*)view {
+    [self scheduleTypographyRetry];
     if (view.markedTextRange)
         return;
     NSError* error = nil;
@@ -2119,8 +2162,25 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [controller filterSettings:@""];
         marker(support, @"smoke-settings.txt", valid);
     } else if ([args containsObject:@"--smoke-typography"]) {
-        [self.editor typography];
-        marker(support, @"smoke-typography.txt", YES);
+        NeonEditor* editor = self.editor;
+        BOOL originalWide = editor.wideTypography;
+        NeonWorkspaceCompositionSmoke(
+            ^UITextView* {
+              return editor.editor;
+            },
+            ^(BOOL wide) {
+              editor.wideTypography = wide;
+              [editor applyTypography];
+            },
+            ^BOOL {
+              return editor.typographyPending;
+            },
+            ^(BOOL valid) {
+              editor.wideTypography = originalWide;
+              [editor applyTypography];
+              [editor typography];
+              marker(support, @"smoke-typography.txt", valid);
+            });
     } else if ([args containsObject:@"--smoke-menu"]) {
         [self sectionMenu:0
                      host:self.editor
