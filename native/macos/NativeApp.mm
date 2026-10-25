@@ -1,4 +1,5 @@
 #import "ContextMenu.h"
+#import "Controls.h"
 #import "EditorialTheme.h"
 #import "History.h"
 #import "InlineTitle.h"
@@ -251,6 +252,18 @@ NSUInteger words(NSString* text) {
 - (void)applicationDidFinishLaunching:(NSNotification*)note {
     (void)note;
     NeonRegisterFonts();
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"--control-states"]) {
+        self.window = [[NSWindow alloc]
+            initWithContentRect:NSMakeRect(0, 0, 560, 940)
+                      styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                                NSWindowStyleMaskResizable
+                        backing:NSBackingStoreBuffered
+                          defer:NO];
+        self.window.contentView = NeonControlStateFixture();
+        [self.window makeKeyAndOrderFront:nil];
+        [NSApp activateIgnoringOtherApps:YES];
+        return;
+    }
     self.smoke = [NSProcessInfo.processInfo.arguments containsObject:@"--smoke-test"];
     BOOL uiTesting = [NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"];
     NSURL* root =

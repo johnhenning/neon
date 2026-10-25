@@ -1,4 +1,5 @@
 #include "History.h"
+#import "Controls.h"
 #include "EditorialTheme.h"
 #include <string>
 
@@ -263,27 +264,14 @@ NSString* entryDetail(NSDictionary* entry) {
 }
 - (void)scopeChanged:(id)sender {
     _checkpointsOnly = [sender tag] == 1;
+    for (NeonButton* button in [sender superview].subviews) {
+        if (![button isKindOfClass:NeonButton.class])
+            continue;
+        button.chosen = button == sender;
 #if TARGET_OS_OSX
-    for (NSButton* button in [sender superview].subviews) {
-        if (![button isKindOfClass:NSButton.class])
-            continue;
-        button.state = button == sender ? NSControlStateValueOn : NSControlStateValueOff;
-        button.accessibilityValue = button == sender ? @"Selected" : @"Not selected";
-        button.needsDisplay = YES;
-    }
-#else
-    for (UIButton* button in [sender superview].subviews) {
-        if (![button isKindOfClass:UIButton.class])
-            continue;
-        UIButtonConfiguration* config = button.configuration;
-        config.baseBackgroundColor =
-            button == sender ? [NeonAccent() colorWithAlphaComponent:0.22] : UIColor.clearColor;
-        config.baseForegroundColor = button == sender ? NeonAccent() : NeonMuted();
-        button.configuration = config;
-        button.accessibilityTraits =
-            UIAccessibilityTraitButton | (button == sender ? UIAccessibilityTraitSelected : 0);
-    }
+        button.state = button.chosen ? NSControlStateValueOn : NSControlStateValueOff;
 #endif
+    }
     [self reloadHistory];
 }
 - (void)reloadHistory {

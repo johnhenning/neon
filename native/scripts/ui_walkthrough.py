@@ -35,6 +35,7 @@ def main():
     platform = 'macOS' if args.platform == 'macOS' else 'iOS'
     source = pathlib.Path(__file__).resolve().parents[1] / 'uitests/Walkthrough.swift'
     shutil.copy(source, work / source.name)
+    shutil.copy(source.parent / "ControlStates.swift", work / "ControlStates.swift")
     fixtures = json.loads((source.parent / 'Fixtures.json').read_text())
     args.figma_node = args.figma_node or {'macOS': '34:72', 'iPhone': '34:81', 'iPad': '144:16148'}[args.platform]
     args.profile = args.profile or ('desktop' if platform == 'macOS' else 'mobile')
@@ -63,7 +64,7 @@ def main():
             'Walkthrough': {'type': 'bundle.ui-testing', 'platform': platform,
             'dependencies': [{'target': 'NeonHost'}],
             'deploymentTarget': '14.0' if platform == 'macOS' else '17.0',
-            'sources': ['Walkthrough.swift'], 'settings': {'base': {
+            'sources': ['Walkthrough.swift', 'ControlStates.swift'], 'settings': {'base': {
                 'PRODUCT_BUNDLE_IDENTIFIER': 'com.johnhenning.neon.walkthrough',
                 'TEST_TARGET_NAME': 'NeonHost'}}}},
         'schemes': {'Walkthrough': {'build': {'targets': {'Walkthrough': ['test']}},
@@ -108,6 +109,15 @@ def main():
             'source_app': str(args.app.resolve()), 'test_app': str(host),
             'bundle_id': app_info['CFBundleIdentifier'],
             'executable': app_info['CFBundleExecutable']}, indent=2))
+        try:
+            run('xcodebuild', 'test-without-building', '-xctestrun', str(test_run),
+                '-destination', destination, '-parallel-testing-enabled', 'NO',
+                '-only-testing:Walkthrough/ControlStates',
+                '-resultBundlePath', str(output / 'controls.xcresult'))
+            result['controls_status'] = 'passed'
+        except subprocess.SubprocessError as error:
+            result['controls_status'] = 'failed'
+            result['controls_error'] = str(error)
         movie = output / f'{args.platform}-walkthrough.mov'
         if platform == 'macOS':
             # XCTest already records the real UI session. Keep its recording on
@@ -115,6 +125,7 @@ def main():
             # SIGINT shutdown can discard the movie on hosted Mac runners.
             run('xcodebuild', 'test-without-building', '-xctestrun', str(test_run),
                 '-destination', destination, '-parallel-testing-enabled', 'NO',
+                '-only-testing:Walkthrough/Walkthrough/testRecordedEditorJourney',
                 '-resultBundlePath', str(output / 'walkthrough.xcresult'))
             result['status'] = 'passed'
         else:
@@ -128,6 +139,7 @@ def main():
                 try:
                     run('xcodebuild', 'test-without-building', '-xctestrun', str(test_run),
                         '-destination', destination, '-parallel-testing-enabled', 'NO',
+                        '-only-testing:Walkthrough/Walkthrough/testRecordedEditorJourney',
                         '-resultBundlePath', str(output / 'walkthrough.xcresult'))
                     result['status'] = 'passed'
                 finally:
@@ -142,7 +154,16 @@ def main():
         result['error'] = str(error)
         result['status'] = 'failed'
     finally:
+        if result.get('controls_status') == 'failed':
+            result['status'] = 'failed'
         result['ui_status'] = result['status']
+        controls_bundle = output / 'controls.xcresult'
+        if (controls_bundle / 'Info.plist').exists():
+            try:
+                run('xcrun', 'xcresulttool', 'export', 'attachments', '--path', str(controls_bundle),
+                    '--output-path', str(output / 'controls-attachments'))
+            except subprocess.SubprocessError as error:
+                result['controls_attachment_error'] = str(error)
         movie = output / f'{args.platform}-walkthrough.mov'
         bundle = output / 'walkthrough.xcresult'
         if (bundle / 'Info.plist').exists():

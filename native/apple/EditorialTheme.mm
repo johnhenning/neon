@@ -1,4 +1,5 @@
 #include "EditorialTheme.h"
+#import "Controls.h"
 #import "Preferences.h"
 #import <CoreText/CoreText.h>
 
@@ -64,6 +65,12 @@ NeonColor* NeonSelection() {
 NeonColor* NeonLine() {
     return tone(32.0 / 255, 30.0 / 255, 25.0 / 255, 240.0 / 255, 236.0 / 255, 227.0 / 255, .16,
                 .18);
+}
+NeonColor* NeonDanger() {
+    return tone(.630, .200, .160, .950, .530, .460);
+}
+NeonColor* NeonActionText() {
+    return tone(1, 1, 1, .120, .120, .110);
 }
 NeonFont* NeonSerif(CGFloat size) {
 #if TARGET_OS_IPHONE
@@ -133,93 +140,30 @@ BOOL NeonWritingPreference(NSString* key) {
     return value ? value.boolValue : YES;
 }
 
-#if !TARGET_OS_IPHONE
-@interface NeonPillTrack : NSStackView
-@end
-@implementation NeonPillTrack
-- (void)drawRect:(NSRect)rect {
-    (void)rect;
-    [NeonPanel() setFill];
-    [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:18 yRadius:18] fill];
-}
-- (void)viewDidChangeEffectiveAppearance {
-    [super viewDidChangeEffectiveAppearance];
-    self.needsDisplay = YES;
-}
-@end
-@interface NeonPillButton : NSButton
-@end
-@implementation NeonPillButton
-- (void)drawRect:(NSRect)rect {
-    (void)rect;
-    BOOL selected = self.state == NSControlStateValueOn;
-    [(selected ? [NeonAccent() colorWithAlphaComponent:0.22] : NSColor.clearColor) setFill];
-    [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 1, 1) xRadius:16
-                                     yRadius:16] fill];
-    NSDictionary* attributes = @{
-        NSFontAttributeName : NeonUI(14),
-        NSForegroundColorAttributeName : selected ? NeonAccent() : NeonMuted()
-    };
-    NSSize size = [self.title sizeWithAttributes:attributes];
-    [self.title drawAtPoint:NSMakePoint((self.bounds.size.width - size.width) / 2,
-                                        (self.bounds.size.height - size.height) / 2)
-             withAttributes:attributes];
-}
-- (void)viewDidChangeEffectiveAppearance {
-    [super viewDidChangeEffectiveAppearance];
-    self.needsDisplay = YES;
-}
-@end
-#endif
 #if TARGET_OS_IPHONE
 UIView* NeonPillSelector(NSArray<NSString*>* titles, NSInteger selected, id target, SEL action) {
     UIStackView* stack = [UIStackView new];
-    stack.backgroundColor = NeonPanel();
-    stack.layer.cornerRadius = 18;
-    stack.layoutMargins = UIEdgeInsetsMake(2, 2, 2, 2);
-    stack.layoutMarginsRelativeArrangement = YES;
-    stack.spacing = 0;
-    for (NSUInteger i = 0; i < titles.count; ++i) {
-        UIButton* button = [UIButton buttonWithType:UIButtonTypeSystem];
-        UIButtonConfiguration* config = UIButtonConfiguration.filledButtonConfiguration;
-        config.title = titles[i];
-        config.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
-        config.baseBackgroundColor =
-            i == selected ? [NeonAccent() colorWithAlphaComponent:0.22] : UIColor.clearColor;
-        config.baseForegroundColor = i == selected ? NeonAccent() : NeonMuted();
-        config.contentInsets = NSDirectionalEdgeInsetsMake(7, 16, 7, 16);
-        button.configuration = config;
-        button.tag = i;
-        button.accessibilityTraits =
-            UIAccessibilityTraitButton | (i == selected ? UIAccessibilityTraitSelected : 0);
-        [button addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
-        [stack addArrangedSubview:button];
-    }
-    return stack;
-}
 #else
 NSView* NeonPillSelector(NSArray<NSString*>* titles, NSInteger selected, id target, SEL action) {
-    NSStackView* stack = [NeonPillTrack new];
-    stack.edgeInsets = NSEdgeInsetsMake(2, 2, 2, 2);
-    stack.spacing = 0;
+    NSStackView* stack = [NSStackView new];
+#endif
+    stack.spacing = NeonBreadcrumbGap;
     for (NSUInteger i = 0; i < titles.count; ++i) {
-        NeonPillButton* button = [NeonPillButton new];
+        NeonButton* button = [NeonButton new];
+        button.kind = NeonButtonSelection;
+        button.chosen = (NSInteger)i == selected;
+        button.tag = i;
+#if TARGET_OS_IPHONE
+        [button setTitle:titles[i] forState:UIControlStateNormal];
+        [button setNeedsUpdateConfiguration];
+        [button addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+#else
         button.title = titles[i];
-        button.bordered = NO;
         button.target = target;
         button.action = action;
-        button.tag = i;
-        button.state = i == selected ? NSControlStateValueOn : NSControlStateValueOff;
-        button.accessibilityValue = i == selected ? @"Selected" : @"Not selected";
-        [button.widthAnchor constraintEqualToConstant:MAX(90, [titles[i] sizeWithAttributes:@{
-                                                                  NSFontAttributeName : NeonUI(14)
-                                                              }]
-                                                                      .width +
-                                                                  32)]
-            .active = YES;
-        [button.heightAnchor constraintEqualToConstant:34].active = YES;
+        button.state = (NSInteger)i == selected ? NSControlStateValueOn : NSControlStateValueOff;
+#endif
         [stack addArrangedSubview:button];
     }
     return stack;
 }
-#endif

@@ -1,4 +1,5 @@
 #import "ContextMenu.h"
+#import "Controls.h"
 #import "EditorialTheme.h"
 #import "History.h"
 #import "InlineTitle.h"
@@ -1897,6 +1898,25 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.window = uiTesting
                       ? [[NeonDiagnosticWindow alloc] initWithWindowScene:(UIWindowScene*)scene]
                       : [[UIWindow alloc] initWithWindowScene:(UIWindowScene*)scene];
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"--control-states"]) {
+        UIViewController* fixture = [UIViewController new];
+        fixture.view.backgroundColor = NeonPaper();
+        UIView* catalog = NeonControlStateFixture();
+        catalog.translatesAutoresizingMaskIntoConstraints = NO;
+        [fixture.view addSubview:catalog];
+        [NSLayoutConstraint activateConstraints:@[
+            [catalog.leadingAnchor
+                constraintEqualToAnchor:fixture.view.safeAreaLayoutGuide.leadingAnchor],
+            [catalog.trailingAnchor
+                constraintEqualToAnchor:fixture.view.safeAreaLayoutGuide.trailingAnchor],
+            [catalog.topAnchor constraintEqualToAnchor:fixture.view.safeAreaLayoutGuide.topAnchor],
+            [catalog.bottomAnchor
+                constraintEqualToAnchor:fixture.view.safeAreaLayoutGuide.bottomAnchor]
+        ]];
+        self.window.rootViewController = fixture;
+        [self.window makeKeyAndVisible];
+        return;
+    }
     self.coordinator = [NeonCoordinator new];
     self.window.rootViewController = self.coordinator;
     [self.window makeKeyAndVisible];

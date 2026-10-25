@@ -32,13 +32,17 @@ class RecordingOrchestrationTests(unittest.TestCase):
                     self.assertEqual(target['DefaultTestExecutionTimeAllowance'], 180)
                     self.assertEqual(target['MaximumTestExecutionTimeAllowance'], 240)
                     self.assertTrue(target['TestTimeoutsEnabled'])
-                    bundle = output / 'walkthrough.xcresult'
+                    bundle = pathlib.Path(args[args.index('-resultBundlePath') + 1])
+                    expected = ('-only-testing:Walkthrough/ControlStates' if bundle.name == 'controls.xcresult'
+                                else '-only-testing:Walkthrough/Walkthrough/testRecordedEditorJourney')
+                    self.assertIn(expected, args)
                     bundle.mkdir()
                     (bundle / 'Info.plist').touch()
                 elif args[:4] == ('xcrun', 'xcresulttool', 'export', 'attachments'):
-                    attachments = output / 'attachments'
+                    attachments = pathlib.Path(args[args.index('--output-path') + 1])
                     attachments.mkdir()
-                    (attachments / 'genuine-xctest.mp4').write_bytes(b'fixture' * 200)
+                    name = 'controls-extra.mp4' if attachments.name == 'controls-attachments' else 'genuine-xctest.mp4'
+                    (attachments / name).write_bytes(b'fixture' * 200)
                 elif args[0] == 'ffmpeg':
                     self.assertEqual(pathlib.Path(args[args.index('-i') + 1]).name,
                                      'genuine-xctest.mp4')
@@ -56,6 +60,8 @@ class RecordingOrchestrationTests(unittest.TestCase):
                  patch.object(ui_walkthrough, 'validate_video', return_value={'status': 'passed'}):
                 self.assertEqual(ui_walkthrough.main(), 0)
             result = json.loads((output / 'result.json').read_text())
+            self.assertEqual(result['controls_status'], 'passed')
+            self.assertTrue((output / 'controls-attachments/controls-extra.mp4').exists())
             self.assertEqual(result['ui_status'], 'passed')
             self.assertEqual(result['recording_status'], 'passed')
             self.assertTrue(result['video_complete'])

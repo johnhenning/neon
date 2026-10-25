@@ -17,6 +17,8 @@ NeonColor* NeonMuted();
 NeonColor* NeonAccent();
 NeonColor* NeonSelection();
 NeonColor* NeonLine();
+NeonColor* NeonDanger();
+NeonColor* NeonActionText();
 NeonFont* NeonSerif(CGFloat size);
 NeonFont* NeonUI(CGFloat size);
 CGFloat NeonTextSize();
