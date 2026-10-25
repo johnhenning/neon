@@ -7,6 +7,8 @@ import subprocess
 import sys
 import time
 
+from focus_log import capture_focus_log
+
 app = pathlib.Path(sys.argv[1]).resolve()
 output = pathlib.Path(sys.argv[2]).resolve()
 output.mkdir(parents=True, exist_ok=True)
@@ -93,9 +95,10 @@ for family in ['iPhone', 'iPad']:
         time.sleep(2)
         run('io', udid, 'screenshot', str(output / f'{family}-research.png'))
         run('terminate', udid, bundle)
-        subprocess.run([sys.executable, str(pathlib.Path(__file__).with_name('ui_walkthrough.py')),
-                        family, str(app), str(output / family), '--device', udid],
-                       check=True, timeout=900)
+        with capture_focus_log(udid, output / family / 'focus-diagnostics.log'):
+            subprocess.run([sys.executable, str(pathlib.Path(__file__).with_name('ui_walkthrough.py')),
+                            family, str(app), str(output / family), '--device', udid],
+                           check=True, timeout=900)
     except (SystemExit, subprocess.SubprocessError) as error:
         failures.append(f'{family}: {error}')
         (output / f'{family}-failure.txt').write_text(str(error))
