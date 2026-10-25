@@ -4,6 +4,7 @@ PR 7 comments were inspected through the GitHub connector. Existing comments alr
 
 Publisher changes:
 
+- Recording source is shown in both table and preview caption. Simulator fallback explicitly warns that startup/idle frames may be included; it is not represented as an XCTest recording.
 - UI verdict uses `ui_status`, independently of recording outcome.
 - Exactly one preferred MP4 per family is eligible for inline publication; raw MOV duplicates remain artifact-only.
 - Inline eligibility requires passed recording validation, positive dimensions/duration, multiple sampled frames and detected visual changes, plus a nonempty local MP4.

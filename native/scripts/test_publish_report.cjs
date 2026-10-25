@@ -61,14 +61,14 @@ const publish = require('./publish_report.cjs');
     fs.mkdirSync('evidence/iPad');
     const resultFile = 'evidence/iPad/result.json';
     const result = {platform: 'iPad', status: 'failed', ui_status: 'passed',
-      recording_status: 'passed', video_complete: true,
+      recording_status: 'passed', video_complete: true, recording_source: 'XCTest system attachment',
       media_validation: {duration_seconds: 10, width: 960, height: 720, sampled_frames: 6, changed_transitions: 4}};
     fs.writeFileSync(resultFile, JSON.stringify(result));
     fs.writeFileSync('evidence/iPad-walkthrough.mov', 'duplicate raw capture');
     await publish({github, context, core, cli});
     const preview = fs.readFileSync('platform-report.md', 'utf8');
     assert.match(preview, /\| iPad \| passed \| \[Validated recording\]/);
-    assert.match(preview, /\*\*iPad: Validated recording\*\*\n\n!\[\]\(evidence\/iPad-walkthrough.mp4\)/);
+    assert.match(preview, /\*\*iPad: Validated recording\*\*\n\nSource: XCTest system attachment.\n\n!\[\]\(evidence\/iPad-walkthrough.mp4\)/);
     assert.doesNotMatch(preview, /!\[iPad-walkthrough|walkthrough.mov/);
     const comment = commands.find(args => args[0] === 'pr');
     assert.ok(comment.includes('--attach'));
@@ -76,6 +76,13 @@ const publish = require('./publish_report.cjs');
     assert.ok(comment.includes('--body-file'));
     assert.ok(comment.includes('evidence/iPad-walkthrough.mp4'));
     assert.ok(!comment.includes('evidence/iPad-walkthrough.mov'));
+    result.recording_source = 'simctl fallback (no XCTest recording)';
+    fs.writeFileSync(resultFile, JSON.stringify(result));
+    await publish({github, context, core, cli});
+    const fallback = fs.readFileSync('platform-report.md', 'utf8');
+    assert.match(fallback, /\| iPad \| passed \| .*\| Simulator fallback \(no XCTest recording; may include startup or idle frames\) \|/);
+    assert.match(fallback, /Source: Simulator fallback \(no XCTest recording; may include startup or idle frames\)/);
+    assert.doesNotMatch(fallback, /Videos are recordings of XCTest input/);
     result.ui_status = 'failed';
     result.video_complete = false;
     fs.writeFileSync(resultFile, JSON.stringify(result));

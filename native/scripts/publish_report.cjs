@@ -33,14 +33,18 @@ module.exports = async ({github, context, core, cli = execFileSync}) => {
   const lines = [marker, `## Neon ${platform} build report`,
     `Commit: \`${sha.slice(0, 12)}\` · [Build ${context.runId}](${run})`,
     `**Build / test job: ${process.env.BUILD_RESULT}**`,
-    '', '### Recorded UI tests', '', '| Platform | UI assertions | Recording |',
-    '|---|---|---|'];
+    '', '### Recorded UI tests', '', '| Platform | UI assertions | Recording | Source |',
+    '|---|---|---|---|'];
   const results = all.filter(name => name.endsWith('/result.json'))
     .map(name => { try { return JSON.parse(fs.readFileSync(name, 'utf8')); } catch { return {}; } });
   const videos = [];
   for (const family of platform === 'macOS' ? ['macOS'] : ['iPhone', 'iPad']) {
     const result = results.find(item => item.platform === family);
     const ui = result?.ui_status || 'Not completed';
+    const source = result?.recording_source === 'XCTest system attachment' ? 'XCTest system attachment'
+      : result?.recording_source === 'simctl fallback (no XCTest recording)'
+        ? 'Simulator fallback (no XCTest recording; may include startup or idle frames)'
+        : 'Unknown recording source';
     const movie = all.find(name => path.basename(name) === `${family}-walkthrough.mp4`);
     const validation = result?.media_validation;
     const validated = result?.recording_status === 'passed' && validation
@@ -51,11 +55,11 @@ module.exports = async ({github, context, core, cli = execFileSync}) => {
     const label = !movie ? 'Missing' : !validated ? 'Unverified or failed recording'
       : partial ? 'Partial recording — UI walkthrough incomplete' : 'Validated recording';
     const link = movie && recordings ? `[${label}](${run}/artifacts/${recordings.id})` : label;
-    lines.push(`| ${family} | ${ui} | ${link} |`);
-    if (movie && validated) videos.push({file: movie, family, label});
+    lines.push(`| ${family} | ${ui} | ${link} | ${source} |`);
+    if (movie && validated) videos.push({file: movie, family, label, source});
   }
   lines.push('', 'UI assertions cover navigation, editing and saved text after chapter changes, history and settings. '
-    + 'The Mac walkthrough also checks sidebar collapse. Videos are recordings of XCTest input, not generated demos.');
+    + 'The Mac walkthrough also checks sidebar collapse. Recording sources are labeled separately: XCTest attachments capture test execution; simulator fallback recordings may include startup or idle frames and do not independently prove interactions.');
   if (build) lines.push('', `[Download app](${run}/artifacts/${build.id})`);
   if (recordings) lines.push(`[Download recordings](${run}/artifacts/${recordings.id})`);
   if (source) lines.push('', `[Download test diagnostics](${run}/artifacts/${source.id})`);
@@ -111,7 +115,7 @@ module.exports = async ({github, context, core, cli = execFileSync}) => {
         body += attachments.map(file => {
           const video = videos.find(item => item.file === file);
           // gh rewrites a standalone video image reference to a bare player URL.
-          return video ? `**${video.family}: ${video.label}**\n\n![](${file})`
+          return video ? `**${video.family}: ${video.label}**\n\nSource: ${video.source}.\n\n![](${file})`
             : `![${path.basename(file)}](${file})`;
         }).join('\n\n');
       }
