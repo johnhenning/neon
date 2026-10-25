@@ -100,13 +100,9 @@ final class Walkthrough: XCTestCase {
         let projectTitle = variant == "longtext"
             ? "The Quiet Sea — a long project title for narrow window and accessibility coverage"
             : "The Quiet Sea"
-        #if os(macOS)
-        // AppKit exposes the title button's title, while its separate cover has
-        // the label "Open …". XCTest's named lookup includes native titles.
+        // Both native Library title controls retain button activation semantics;
+        // the separate cover button has the distinct label "Open …".
         let project = app.buttons[projectTitle]
-        #else
-        let project = app.staticTexts[projectTitle]
-        #endif
         XCTAssertTrue(project.waitForExistence(timeout: 15))
         capture("01-library")
         activate(project)

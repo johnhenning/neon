@@ -2,6 +2,7 @@
 """Build an external-app XCTest driver and record actual UI input on Apple runners."""
 import argparse
 import json
+import math
 import pathlib
 import plistlib
 import shutil
@@ -16,6 +17,26 @@ from video_validation import validate_video
 
 def run(*args, **kwargs):
     return subprocess.run(args, check=True, timeout=600, **kwargs)
+
+
+def validate_preference_profile(profile):
+    """Validate launcher-owned fixture profiles; optional overrides may be absent."""
+    if not isinstance(profile, dict):
+        raise ValueError('Fixture preference profile must be a dictionary')
+    if not isinstance(profile.get('manuscriptFont'), str) or not profile['manuscriptFont'].strip():
+        raise ValueError('Fixture manuscriptFont must be a nonempty string')
+    appearance = profile.get('appearance')
+    if type(appearance) is not int or appearance not in (0, 1, 2):
+        raise ValueError('Fixture appearance must be 0, 1 or 2')
+    for key in ('manuscriptSize', 'manuscriptSpacing', 'textMeasure'):
+        if key != 'manuscriptSize' and key not in profile:
+            continue
+        value = profile.get(key)
+        if type(value) not in (int, float) or not math.isfinite(value):
+            raise ValueError(f'Fixture {key} must be a finite number')
+        if value < 0 or (key != 'manuscriptSpacing' and value == 0):
+            raise ValueError(f'Fixture {key} is outside its valid range')
+    return profile
 
 
 def main():
@@ -39,7 +60,7 @@ def main():
     fixtures = json.loads((source.parent / 'Fixtures.json').read_text())
     args.figma_node = args.figma_node or {'macOS': '34:72', 'iPhone': '34:81', 'iPad': '144:16148'}[args.platform]
     args.profile = args.profile or ('desktop' if platform == 'macOS' else 'mobile')
-    preferences = fixtures['preference_profiles'][args.profile]
+    preferences = validate_preference_profile(fixtures['preference_profiles'][args.profile])
     fixture = fixtures['variants'][args.fixture]
     context = capture_context(source.parents[2], args.fixture, args.profile, args.figma_node, args.platform, args.device)
     environment = {'NEON_UI_FIXTURE_JSON': json.dumps(fixture),

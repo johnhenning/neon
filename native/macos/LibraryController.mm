@@ -6,6 +6,16 @@
 @property(nonatomic) BOOL panel;
 @end
 @implementation NeonLibraryCanvas
+- (instancetype)initWithFrame:(NSRect)frame {
+    if ((self = [super initWithFrame:frame])) {
+        self.wantsLayer = YES;
+        self.layer.masksToBounds = YES;
+    }
+    return self;
+}
+- (BOOL)wantsDefaultClipping {
+    return YES;
+}
 - (BOOL)isFlipped {
     return YES;
 }
@@ -20,8 +30,11 @@
         self.resized();
 }
 - (void)drawRect:(NSRect)rect {
+    [NSGraphicsContext saveGraphicsState];
+    NSRectClip(self.bounds);
     [(self.panel ? NeonPanel() : NeonPaper()) setFill];
-    NSRectFill(rect);
+    NSRectFill(NSIntersectionRect(rect, self.bounds));
+    [NSGraphicsContext restoreGraphicsState];
 }
 @end
 @interface NeonLibraryButton : NeonButton
@@ -314,9 +327,10 @@ NeonLibraryButton* button(NSView* parent, NSString* title, NSRect frame, void (^
             CGFloat tx = list ? rx + 86 : rx, ty = list ? ry : ry + ch + 8,
                     tw = list ? m - 110 : tile;
             NeonLibraryButton* title =
-                button(self.content, r[@"title"] ?: @"Untitled", NSMakeRect(tx, ty, tw, 24), ^{
-                  [weak send:@"open" record:r];
-                });
+                button(self.content, r[@"title"] ?: @"Untitled",
+                       NSMakeRect(tx, ty, list ? tw : MAX(0, tw - 40), list ? 34 : 24), ^{
+                         [weak send:@"open" record:r];
+                       });
             title.plain = YES;
             title.font = list ? NeonSerif(24) : NeonUI(16);
             title.alignment = NSTextAlignmentLeft;
@@ -332,7 +346,8 @@ NeonLibraryButton* button(NSView* parent, NSString* title, NSRect frame, void (^
                   r[@"error"]
                       ? @"Unable to read project"
                       : [NSString stringWithFormat:@"%@ · %@", r[@"preset"] ?: @"Project", edited],
-                  NeonUI(13), NeonMuted(), NSMakeRect(tx, ty + 32, tw, 24));
+                  NeonUI(13), NeonMuted(),
+                  NSMakeRect(tx, ty + (list ? 42 : 32), tw, list ? 20 : 24));
             NeonLibraryButton* more =
                 button(self.content, @"•••",
                        NSMakeRect(list ? tx + 110 : tx + tw - 32, list ? ty + 64 : ty, 32, 24), ^{
@@ -345,7 +360,7 @@ NeonLibraryButton* button(NSView* parent, NSString* title, NSRect frame, void (^
                                             stringByAppendingString:r[@"title"] ?: @"Untitled"]];
             if (list)
                 label(self.content, @"On this device", NeonUI(13), NeonMuted(),
-                      NSMakeRect(tx, ty + 64, 110, 24));
+                      NSMakeRect(tx, ty + 70, 110, 18));
             i++;
         }
         y += self.query.view == NeonLibraryList

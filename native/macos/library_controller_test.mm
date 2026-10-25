@@ -33,12 +33,45 @@ int main(int argc, const char* argv[]) {
     (void)argv;
     @autoreleasepool {
         [NSApplication sharedApplication];
+        // An oversized dirty rectangle must not paint a sibling region, even on
+        // AppKit versions whose default view clipping behavior changed.
+        NSView* canvas = [[NSClassFromString(@"NeonLibraryCanvas") alloc]
+            initWithFrame:NSMakeRect(0, 0, 16, 16)];
+        NSBitmapImageRep* pixels =
+            [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nil
+                                                    pixelsWide:32
+                                                    pixelsHigh:32
+                                                 bitsPerSample:8
+                                               samplesPerPixel:4
+                                                      hasAlpha:YES
+                                                      isPlanar:NO
+                                                colorSpaceName:NSDeviceRGBColorSpace
+                                                   bytesPerRow:0
+                                                  bitsPerPixel:0];
+        [NSGraphicsContext saveGraphicsState];
+        [NSGraphicsContext
+            setCurrentContext:[NSGraphicsContext graphicsContextWithBitmapImageRep:pixels]];
+        [NSColor.redColor setFill];
+        NSRectFill(NSMakeRect(0, 0, 32, 32));
+        CGContextTranslateCTM(NSGraphicsContext.currentContext.CGContext, 8, 8);
+        [canvas drawRect:NSMakeRect(-8, -8, 32, 32)];
+        [NSGraphicsContext restoreGraphicsState];
+        NSColor* outside =
+            [[pixels colorAtX:1 y:1] colorUsingColorSpace:NSColorSpace.deviceRGBColorSpace];
+        NSColor* inside =
+            [[pixels colorAtX:16 y:16] colorUsingColorSpace:NSColorSpace.deviceRGBColorSpace];
+        require(outside.redComponent > .99 && outside.greenComponent < .01,
+                "canvas fill escaped bounds into sibling region");
+        require(inside.greenComponent > .01, "canvas failed to draw inside its bounds");
         NeonLibraryController* c = [NeonLibraryController new];
         [c updateWithRecords:@[] error:nil];
         require(contains(c.view, @"Begin anywhere."), "true empty welcome missing");
         require(contains(c.view, @"0 projects"), "empty count incorrect");
         require(!findButton(c.view, @"Import a document").enabled, "unavailable import enabled");
         require(c.sidebarView.frame.size.width == 248, "library sidebar measure incorrect");
+        require(c.view.wantsDefaultClipping && c.view.layer.masksToBounds &&
+                    c.sidebarView.layer.masksToBounds,
+                "library canvases must clip to their own bounds");
         NSDictionary* record = @{
             @"projectID" : @"stable-a",
             @"title" : @"A long title that must remain accessible without modifying the document",
@@ -60,6 +93,8 @@ int main(int argc, const char* argv[]) {
                 "open must carry stable record");
         [c setLibraryView:NeonLibraryList];
         require([c.selectedProjectID isEqual:@"stable-a"], "list switch lost selection");
+        require(findButton(c.view, record[@"title"]).frame.size.height == 34,
+                "list title must retain serif line height");
         NSUInteger covers = 0;
         for (NSView* v in descendants(c.view))
             if ([NSStringFromClass(v.class) isEqual:@"NeonLibraryCover"]) {
@@ -91,6 +126,14 @@ int main(int argc, const char* argv[]) {
             if ([NSStringFromClass(v.class) isEqual:@"NeonLibraryCover"])
                 require(fabs(v.frame.size.height / v.frame.size.width - 1.46) < .001,
                         "grid cover ratio incorrect");
+        NSButton* gridTitle = findButton(c.view, record[@"title"]);
+        NSButton* actions = nil;
+        for (NSView* v in descendants(c.view))
+            if ([v isKindOfClass:NSButton.class] &&
+                [((NSButton*)v).accessibilityLabel hasPrefix:@"Actions for "])
+                actions = (NSButton*)v;
+        require(actions && !NSIntersectsRect(gridTitle.frame, actions.frame),
+                "grid title and action hit areas must not overlap");
         puts("Library controller state, action, geometry and fallback checks passed");
     }
 }

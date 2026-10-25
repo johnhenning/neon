@@ -289,10 +289,10 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
             [self.scroll addSubview:open];
             CGFloat tx = list ? rx + 86 : rx, ty = list ? ry : ry + ch + 8,
                     tw = list ? m - 110 : tile;
-            NeonButton* title =
-                button(self.scroll, r[@"title"] ?: @"Untitled", CGRectMake(tx, ty, tw, 34), ^{
-                  [weak send:@"open" record:r];
-                });
+            NeonButton* title = button(self.scroll, r[@"title"] ?: @"Untitled",
+                                       CGRectMake(tx, ty, list ? tw : MAX(0, tw - 52), 34), ^{
+                                         [weak send:@"open" record:r];
+                                       });
             UIButtonConfiguration* config = UIButtonConfiguration.plainButtonConfiguration;
             config.attributedTitle = [[NSAttributedString alloc]
                 initWithString:r[@"title"] ?: @"Untitled"
@@ -302,10 +302,10 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
                     }];
             config.contentInsets = NSDirectionalEdgeInsetsZero;
             title.configuration = config;
-            title.isAccessibilityElement = NO;
-            title.titleLabel.isAccessibilityElement = YES;
-            title.titleLabel.accessibilityTraits = UIAccessibilityTraitStaticText;
-            title.titleLabel.accessibilityLabel = r[@"title"] ?: @"Untitled";
+            title.isAccessibilityElement = YES;
+            title.accessibilityLabel = r[@"title"] ?: @"Untitled";
+            title.accessibilityTraits = UIAccessibilityTraitButton;
+            title.titleLabel.isAccessibilityElement = NO;
             title.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
             title.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
             NSDate* date = r[@"modified"];
@@ -322,7 +322,7 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
                   NeonUI(13), NeonMuted(), CGRectMake(tx, ty + 34, tw, 24));
             NeonButton* more =
                 button(self.scroll, @"•••",
-                       CGRectMake(list ? tx + 110 : tx + tw - 32, list ? ty + 64 : ty, 32, 24),
+                       CGRectMake(list ? tx + 110 : tx + tw - 44, list ? ty + 64 : ty, 44, 34),
                        ^{
                        });
             more.menu = [self menu:r];
