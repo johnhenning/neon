@@ -22,10 +22,10 @@ jobs:
       actions: read
       copilot-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         id: evidence
         continue-on-error: true
         with:
@@ -46,7 +46,7 @@ jobs:
             'platform': os.environ['PLATFORM'], 'build_result': os.environ['BUILD_RESULT'],
             'artifact_download': os.environ['EVIDENCE_RESULT']}))
           PY
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
       - name: Install GitHub Copilot CLI
@@ -76,7 +76,7 @@ jobs:
             echo "Copilot review unavailable (status: $AI_OUTCOME). Check Copilot access, quota and workflow logs. Test results remain authoritative." > agent-review.md
           fi
           cp agent-review.md evidence/agent-review.md
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: Neon-${{ inputs.platform }}-Report
@@ -96,15 +96,15 @@ jobs:
       group: neon-report-${{ github.event.pull_request.number }}-${{ inputs.platform }}
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         continue-on-error: true
         with:
           name: Neon-${{ inputs.platform }}-Report
           path: evidence
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         continue-on-error: true
         with:
           pattern: ${{ inputs.artifact }}-*
@@ -123,7 +123,7 @@ jobs:
           tar -xzf "$archive"
           echo "$RUNNER_TEMP/gh_${version}_linux_amd64/bin" >> "$GITHUB_PATH"
       - name: Attach build evidence and publish platform report
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           PLATFORM: ${{ inputs.platform }}
           BUILD_RESULT: ${{ inputs.build-result }}

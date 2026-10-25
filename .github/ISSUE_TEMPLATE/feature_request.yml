@@ -1,0 +1,14 @@
+name: Feature request
+description: Describe a writing workflow that Neon could support better.
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: What are you trying to do?
+      description: Describe the workflow, current limitation, and desired outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or examples

@@ -1,0 +1,27 @@
+name: Bug report
+description: Report a reproducible problem with Neon.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include what you expected and steps to reproduce. Do not include private manuscripts.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Neon version or commit
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Device and OS version
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots
+      description: Remove personal content and credentials before attaching evidence.
