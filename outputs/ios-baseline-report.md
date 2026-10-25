@@ -28,3 +28,11 @@ Unavailable: xcodebuild -version fails because active developer directory is Com
 - Non-Book centeredHeading presets retain their heading semantics.
 - Keep manuscript tap/type persistence test and capture focus diagnostics before typing; assert keyboard presence to localize failure.
 - Launch under isolated preferences as well as isolated fixture library; previous startup cleared only SmokeLibrary and leaked standard-user preferences.
+
+## Run 55: event-delivery cause identified
+
+Run 40238182159 / commit ff48235 exported `iPhone/focus-window-diagnostics.log` in artifact 12617050615. The fifth touch, corresponding to the unchanged `activate(editor)` call before the first typeText, was delivered at `{5,233}` to the editor's root `UIView`, not `NeonManuscriptView`. Its after-dispatch responder is empty. The AX manuscript frame is `{{0,233},{402,573.3}}`. The target lies at its top/leading edge; fractional layout and point rounding can place that edge point outside the actual text-view hit bounds. This is an event-delivery failure, not a request to make an already-hit editor become first responder.
+
+The UIKit repair overrides the manuscript's accessibilityActivationPoint to the center of its screen-converted bounds. `UIAccessibilityConvertFrameToScreenCoordinates` supplies the scene/rotation-aware conversion and derives the point from current bounds, including the scroll view's bounds origin. The manuscript is constrained inside its visible safe content region; its center is an interior point rather than an inset/edge point. No focus call, recognizer, XCTest coordinate, or assertion is changed. The existing tap/type test is the regression test and previously failed in runs 53–55. Fresh CI must confirm the touch now reaches NeonManuscriptView and typing succeeds.
+
+Validation for this repair: native/scripts/quality.py passes with pinned tools; git diff --check passes. Simulator runtime verification remains unavailable locally; do not claim the focus issue resolved until the unchanged journey passes in CI.

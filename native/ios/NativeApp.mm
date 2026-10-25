@@ -89,6 +89,14 @@ NSString* focusAncestry(UIView* target) {
 @property(nonatomic) NSUInteger focusDiagnosticCount;
 @end
 @implementation NeonManuscriptView
+- (CGPoint)accessibilityActivationPoint {
+    // UITextView's default point can fall on the rounded top/leading edge when
+    // lineFragmentPadding and the top text inset are zero. A tap there hits the
+    // controller background instead of the manuscript (see CI touch trace #55).
+    // Expose an interior point; UIKit still owns tap recognition and focus.
+    CGRect frame = UIAccessibilityConvertFrameToScreenCoordinates(self.bounds, self);
+    return CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame));
+}
 - (UIView*)hitTest:(CGPoint)point withEvent:(UIEvent*)event {
     UIView* hit = [super hitTest:point withEvent:event];
     if (event && CGRectContainsPoint(self.bounds, point) && self.focusDiagnosticCount < 8 &&
