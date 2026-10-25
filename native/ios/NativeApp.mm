@@ -3,9 +3,117 @@
 #import "History.h"
 #import "InlineTitle.h"
 #import "LibraryStore.h"
+#import "Preferences.h"
 #import "Settings.h"
+#import "UITestFixtures.h"
 #import <UIKit/UIKit.h>
 
+namespace {
+NSURL* focusDiagnosticURL() {
+    NSURL* support = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
+                                                            inDomains:NSUserDomainMask]
+                         .firstObject;
+    return [support URLByAppendingPathComponent:@"neon-focus-diagnostics.log"];
+}
+void recordFocusDiagnostic(NSString* message) {
+    if (![NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"])
+        return;
+    NSFileHandle* file = [NSFileHandle fileHandleForWritingAtPath:focusDiagnosticURL().path];
+    if (!file)
+        return;
+    if ([file seekToEndOfFile] < 65536)
+        [file writeData:[[message stringByAppendingString:@"\n"]
+                            dataUsingEncoding:NSUTF8StringEncoding]];
+    [file closeFile];
+}
+UIView* focusedView(UIView* root) {
+    if (root.isFirstResponder)
+        return root;
+    for (UIView* child in root.subviews) {
+        UIView* match = focusedView(child);
+        if (match)
+            return match;
+    }
+    return nil;
+}
+NSString* focusAncestry(UIView* target) {
+    NSMutableArray<NSString*>* chain = [NSMutableArray array];
+    for (UIView* view = target; view && chain.count < 20; view = view.superview) {
+        NSMutableArray<NSString*>* gestures = [NSMutableArray array];
+        for (UIGestureRecognizer* gesture in view.gestureRecognizers)
+            [gestures addObject:[NSString stringWithFormat:@"%@:state=%ld:enabled=%d:cancels=%d",
+                                                           NSStringFromClass(gesture.class),
+                                                           static_cast<NSInteger>(gesture.state),
+                                                           gesture.enabled,
+                                                           gesture.cancelsTouchesInView]];
+        NSString* textFlags = [view isKindOfClass:UITextView.class]
+                                  ? [NSString stringWithFormat:@":editable=%d:selectable=%d",
+                                                               ((UITextView*)view).editable,
+                                                               ((UITextView*)view).selectable]
+                                  : @"";
+        [chain addObject:[NSString
+                             stringWithFormat:
+                                 @"%@:interaction=%d:hidden=%d:alpha=%.2f:frame=%@%@:gestures=[%@]",
+                                 NSStringFromClass(view.class), view.userInteractionEnabled,
+                                 view.hidden, view.alpha, NSStringFromCGRect(view.frame), textFlags,
+                                 [gestures componentsJoinedByString:@","]]];
+    }
+    return [chain componentsJoinedByString:@" -> "];
+}
+} // namespace
+@interface NeonDiagnosticWindow : UIWindow
+@property(nonatomic) NSUInteger recordedTouches;
+@end
+@implementation NeonDiagnosticWindow
+- (void)sendEvent:(UIEvent*)event {
+    UITouch* touch = event.allTouches.anyObject;
+    BOOL record = touch.phase == UITouchPhaseEnded && self.recordedTouches < 40;
+    if (record) {
+        ++self.recordedTouches;
+        recordFocusDiagnostic(
+            [NSString stringWithFormat:@"touch ended point=%@ target=%@ responder=%@",
+                                       NSStringFromCGPoint([touch locationInView:self]),
+                                       focusAncestry(touch.view),
+                                       NSStringFromClass(focusedView(self).class)]);
+    }
+    [super sendEvent:event];
+    if (record)
+        dispatch_async(dispatch_get_main_queue(), ^{
+          recordFocusDiagnostic([NSString
+              stringWithFormat:@"after dispatch responder=%@", focusAncestry(focusedView(self))]);
+        });
+}
+@end
+// Keep the next simulator failure actionable without changing UIKit focus behavior.
+@interface NeonManuscriptView : UITextView
+@property(nonatomic) NSUInteger focusDiagnosticCount;
+@end
+@implementation NeonManuscriptView
+- (CGPoint)accessibilityActivationPoint {
+    // UITextView's default point can fall on the rounded top/leading edge when
+    // lineFragmentPadding and the top text inset are zero. A tap there hits the
+    // controller background instead of the manuscript (see CI touch trace #55).
+    // Expose an interior point; UIKit still owns tap recognition and focus.
+    CGRect frame = UIAccessibilityConvertFrameToScreenCoordinates(self.bounds, self);
+    return CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame));
+}
+- (UIView*)hitTest:(CGPoint)point withEvent:(UIEvent*)event {
+    UIView* hit = [super hitTest:point withEvent:event];
+    if (event && CGRectContainsPoint(self.bounds, point) && self.focusDiagnosticCount < 8 &&
+        [NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"]) {
+        ++self.focusDiagnosticCount;
+        NSMutableArray<NSString*>* ancestry = [NSMutableArray array];
+        for (UIView* view = hit; view; view = view.superview)
+            [ancestry addObject:NSStringFromClass(view.class)];
+        NSLog(@"Neon focus hit: point=%@ frame=%@ editable=%d selectable=%d responder=%d "
+               "window=%d ancestry=%@",
+              NSStringFromCGPoint(point), NSStringFromCGRect(self.frame), self.editable,
+              self.selectable, self.isFirstResponder, self.window != nil,
+              [ancestry componentsJoinedByString:@" -> "]);
+    }
+    return hit;
+}
+@end
 @class NeonCoordinator;
 @interface NeonEditor : UIViewController <UITextViewDelegate>
 @property(nonatomic, strong) UITextView* editor;
@@ -13,6 +121,8 @@
 @property(nonatomic, strong) UILabel* guidance;
 @property(nonatomic, strong) NeonInlineTitle* heading;
 @property(nonatomic, strong) NeonInlineTitle* bookTitle;
+@property(nonatomic, strong) NSLayoutConstraint* headerMargin;
+@property(nonatomic, strong) NSLayoutConstraint* headerTrailing;
 @property(nonatomic, strong) NeonDocumentSession* session;
 @property(nonatomic, weak) NeonCoordinator* coordinator;
 @property(nonatomic, strong) NSTimer* saveTimer;
@@ -34,10 +144,15 @@
 @property(nonatomic, strong) NSURL* selectedURL;
 @property(nonatomic, strong) NeonEditor* editor;
 @property(nonatomic, strong) NeonHistoryController* historyController;
+@property(nonatomic, strong) NeonEditor* historyEditor;
+@property(nonatomic, strong) NeonDocumentSession* historySession;
+@property(nonatomic, copy) NSString* historySection;
 @property(nonatomic, strong) NeonList* libraryList;
 @property(nonatomic, strong) NeonList* chapterList;
 @property(nonatomic, strong) UINavigationController* navigation;
 @property(nonatomic) BOOL sidebarHidden;
+@property(nonatomic) BOOL sidebarLayoutInitialized;
+@property(nonatomic) BOOL narrowSidebarLayout;
 @property(nonatomic, strong) UIView* navigationSnapshot;
 @property(nonatomic) BOOL renderingNavigation;
 @property(nonatomic, copy) NSString* pendingPreset;
@@ -136,29 +251,28 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     __weak NeonEditor* weakSelf = self;
     self.bookTitle = [[NeonInlineTitle alloc] initWithFrame:CGRectMake(0, 0, 180, 36)];
     self.bookTitle.text = self.session.title;
-    self.bookTitle.font = NeonUI(18);
+    self.bookTitle.font = NeonUI(13);
     self.bookTitle.textAlignment = NSTextAlignmentCenter;
     self.bookTitle.accessibilityLabel = @"Project title";
     self.bookTitle.commitTitle = ^BOOL(NSString* title) {
       return [weakSelf.coordinator renameInline:title section:nil];
     };
-    self.navigationItem.titleView =
-        NeonPillSelector(@[ @"Editor", @"History" ], 0, self, @selector(workspaceChanged:));
+    self.navigationItem.titleView = self.bookTitle;
     self.view.backgroundColor = NeonPaper();
     self.view.tintColor = NeonAccent();
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
-    UIBarButtonItem* typography =
-        [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"textformat"]
+    UIBarButtonItem* history =
+        [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"clock.arrow.circlepath"]
                                          style:UIBarButtonItemStylePlain
-                                        target:self
-                                        action:@selector(typography)];
-    typography.accessibilityLabel = @"Typography";
+                                        target:self.coordinator
+                                        action:@selector(showHistory)];
+    history.accessibilityLabel = @"Version history";
     self.navigationItem.rightBarButtonItems = @[
         [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis"]
                                          style:UIBarButtonItemStylePlain
                                         target:self
                                         action:@selector(actions)],
-        typography
+        history
     ];
     NSUInteger number =
         [self.session.sections
@@ -171,13 +285,14 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     UILabel* kicker = label(self.session.sections.count
                                 ? [[self.session sectionLabelAtIndex:number - 1] uppercaseString]
                                 : [self.session.preset[@"documentLabel"] uppercaseString],
-                            NeonUI(12), NeonMuted());
-    kicker.textAlignment = [self.session.preset[@"centeredHeading"] boolValue]
+                            NeonUI(13), NeonAccent());
+    kicker.textAlignment = ![self.session.preset[@"id"] isEqual:@"book"] &&
+                                   [self.session.preset[@"centeredHeading"] boolValue]
                                ? NSTextAlignmentCenter
                                : NSTextAlignmentLeft;
     self.heading = [NeonInlineTitle new];
     self.heading.text = self.session.sectionTitle;
-    self.heading.font = scaledSerif(32);
+    self.heading.font = scaledSerif(24);
     self.heading.adjustsFontForContentSizeCategory = YES;
     self.heading.accessibilityLabel =
         [self.session.preset[@"sectionLabel"] stringByAppendingString:@" title"];
@@ -187,10 +302,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
           return [weakSelf.coordinator renameInline:title section:identifier];
         };
     self.heading.textAlignment = kicker.textAlignment;
-    UIView* rule = [UIView new];
-    rule.backgroundColor = [NeonAccent() colorWithAlphaComponent:0.5];
-    NSMutableArray* headerViews =
-        [NSMutableArray arrayWithArray:@[ self.bookTitle, kicker, self.heading, rule ]];
+    NSMutableArray* headerViews = [NSMutableArray arrayWithArray:@[ kicker, self.heading ]];
     if (!self.session.text.length && self.session.sectionGuidance.length) {
         self.guidance = label(self.session.sectionGuidance, NeonUI(12), NeonMuted());
         [headerViews addObject:self.guidance];
@@ -203,7 +315,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     [kicker.widthAnchor constraintEqualToAnchor:header.widthAnchor].active = YES;
     if (self.guidance)
         [self.guidance.widthAnchor constraintEqualToAnchor:header.widthAnchor].active = YES;
-    self.editor = [UITextView new];
+    self.editor = [NeonManuscriptView new];
     self.editor.delegate = self;
     self.editor.backgroundColor = NeonPaper();
     self.editor.textColor = NeonInk();
@@ -220,13 +332,14 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [self.view addSubview:view];
     }
     UILayoutGuide* safe = self.view.safeAreaLayoutGuide;
+    self.headerMargin = [header.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor
+                                                             constant:24];
+    self.headerTrailing = [header.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor
+                                                                constant:-24];
     [NSLayoutConstraint activateConstraints:@[
-        [header.topAnchor constraintEqualToAnchor:safe.topAnchor constant:16],
-        [header.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:24],
-        [header.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-24],
-        [rule.widthAnchor constraintEqualToConstant:130],
-        [rule.heightAnchor constraintEqualToConstant:1],
-        [self.editor.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:28],
+        [header.topAnchor constraintEqualToAnchor:safe.topAnchor constant:24], self.headerMargin,
+        self.headerTrailing,
+        [self.editor.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:20],
         [self.editor.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
         [self.editor.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
         [self.editor.bottomAnchor constraintEqualToAnchor:self.status.topAnchor constant:-8],
@@ -237,14 +350,12 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     ]];
     [self applyTypography];
 }
-- (void)workspaceChanged:(id)sender {
-    if ([sender tag] == 1)
-        [self.coordinator showHistory];
-}
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     CGFloat margin = MAX(24, (self.editor.bounds.size.width - NeonTextMeasure()) / 2);
-    self.editor.textContainerInset = UIEdgeInsetsMake(12, margin, 30, margin);
+    self.editor.textContainerInset = UIEdgeInsetsMake(0, margin, 24, margin);
+    self.headerMargin.constant = margin;
+    self.headerTrailing.constant = -margin;
 }
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
@@ -261,7 +372,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     NSRange selection = self.editor.selectedRange;
     NSMutableParagraphStyle* style = [NSMutableParagraphStyle new];
     style.lineSpacing = NeonLineSpacing();
-    style.paragraphSpacing = [NSUserDefaults.standardUserDefaults objectForKey:@"paragraphSpacing"]
+    style.paragraphSpacing = [NeonPreferences() objectForKey:@"paragraphSpacing"]
                                  ? NeonParagraphSpacing()
                                  : [self.session.preset[@"paragraphSpacing"] doubleValue];
     style.lineHeightMultiple = [self.session.preset[@"lineHeightMultiple"] doubleValue];
@@ -282,7 +393,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     [self.view setNeedsLayout];
     NSDictionary* attrs = @{
         NSFontAttributeName : [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
-            scaledFontForFont:([NSUserDefaults.standardUserDefaults objectForKey:@"manuscriptFont"]
+            scaledFontForFont:([NeonPreferences() objectForKey:@"manuscriptFont"]
                                    ? NeonManuscriptFont(NeonTextSize())
                                    : NeonFontNamed(self.session.preset[@"font"], NeonTextSize()))],
         NSForegroundColorAttributeName : NeonInk(),
@@ -292,9 +403,14 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.editor.typingAttributes = attrs;
     self.editor.selectedRange = selection;
     self.editor.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
-        scaledFontForFont:([NSUserDefaults.standardUserDefaults objectForKey:@"manuscriptFont"]
+        scaledFontForFont:([NeonPreferences() objectForKey:@"manuscriptFont"]
                                ? NeonManuscriptFont(NeonTextSize())
                                : NeonFontNamed(self.session.preset[@"font"], NeonTextSize()))];
+}
+- (void)textViewDidBeginEditing:(UITextView*)view {
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"])
+        NSLog(@"Neon focus began: editable=%d responder=%d window=%d frame=%@", view.editable,
+              view.isFirstResponder, view.window != nil, NSStringFromCGRect(view.frame));
 }
 - (void)textViewDidChange:(UITextView*)view {
     if (view.markedTextRange)
@@ -392,6 +508,10 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                        @"arrow.uturn.backward", self.session.trashedSections.count > 0, NO,
                        ^{
                          [self.coordinator showSectionTrash:self anchor:self.view];
+                       }),
+            NeonAction(@"Typography", @"textformat", YES, NO,
+                       ^{
+                         [self typography];
                        }),
             NeonAction(@"History…", @"clock.arrow.circlepath", YES, NO,
                        ^{
@@ -519,8 +639,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     ]];
 }
 - (void)fontChanged:(UIButton*)sender {
-    [NSUserDefaults.standardUserDefaults setObject:sender.accessibilityIdentifier
-                                            forKey:@"manuscriptFont"];
+    [NeonPreferences() setObject:sender.accessibilityIdentifier forKey:@"manuscriptFont"];
     for (UIButton* row in ((UIStackView*)sender.superview).arrangedSubviews)
         [row setTitle:[NSString
                           stringWithFormat:@"%@   %@", row.accessibilityIdentifier,
@@ -543,16 +662,15 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     return UIModalPresentationNone;
 }
 - (void)sizeChanged:(UISlider*)sender {
-    [NSUserDefaults.standardUserDefaults setDouble:sender.value forKey:@"manuscriptSize"];
+    [NeonPreferences() setDouble:sender.value forKey:@"manuscriptSize"];
     [self.editor applyTypography];
 }
 - (void)spacingChanged:(UISlider*)sender {
-    [NSUserDefaults.standardUserDefaults setDouble:sender.value forKey:@"manuscriptSpacing"];
+    [NeonPreferences() setDouble:sender.value forKey:@"manuscriptSpacing"];
     [self.editor applyTypography];
 }
 - (void)appearanceChanged:(UISegmentedControl*)sender {
-    [NSUserDefaults.standardUserDefaults setInteger:sender.selectedSegmentIndex
-                                             forKey:@"appearance"];
+    [NeonPreferences() setInteger:sender.selectedSegmentIndex forKey:@"appearance"];
     [self.editor.coordinator applyAppearance];
 }
 - (void)done {
@@ -594,7 +712,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                     style:UIBarButtonItemStylePlain
                    target:self
                    action:@selector(history)];
-        history.accessibilityLabel = @"History";
+        history.accessibilityLabel = @"Version history";
         self.navigationItem.rightBarButtonItems =
             [self.navigationItem.rightBarButtonItems arrayByAddingObject:history];
     }
@@ -849,8 +967,12 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [[NSFileManager defaultManager] removeItemAtURL:directory error:nil];
     self.library = [[NeonLibraryStore alloc] initWithDirectory:directory];
     NSError* error = nil;
-    if ((self.smoke || uiTesting) && ![self.library seedPreview:&error])
+    if (uiTesting) {
+        if (!NeonSeedUITestLibrary(self.library, &error))
+            [self showProblem:error];
+    } else if (self.smoke && ![self.library seedPreview:&error]) {
         [self showProblem:error];
+    }
     self.libraryList = [[NeonList alloc] initWithStyle:UITableViewStyleInsetGrouped];
     self.libraryList.coordinator = self;
     self.navigation = [[UINavigationController alloc] initWithRootViewController:self.libraryList];
@@ -986,6 +1108,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         return;
     }
     self.projects = projects;
+    self.libraryList.tableView.accessibilityIdentifier =
+        [NSString stringWithFormat:@"library-project-count-%@", @(projects.count)];
     self.libraryList.title = self.trashMode ? @"Trash" : @"Library";
     self.libraryList.navigationItem.leftBarButtonItem =
         self.trashMode ? [[UIBarButtonItem alloc] initWithTitle:@"Library"
@@ -1066,6 +1190,11 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         return;
     }
     self.session = session;
+    if (!self.sidebarLayoutInitialized) {
+        self.narrowSidebarLayout = self.view.bounds.size.width < 1000;
+        self.sidebarHidden = self.narrowSidebarLayout;
+        self.sidebarLayoutInitialized = YES;
+    }
     self.selectedURL = url;
     self.chapterList = [[NeonList alloc] initWithStyle:UITableViewStylePlain];
     self.chapterList.chapters = YES;
@@ -1098,7 +1227,12 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     }
     // Detach the old editor before changing its shared session selection.
     self.editor = nil;
-    NeonEditor* editor = [NeonEditor new];
+    BOOL resume = self.historySession == self.session &&
+                  [self.historySection isEqual:self.session.selectedSectionID] &&
+                  [self.historyEditor.editor.text isEqual:self.session.text];
+    NeonEditor* editor = resume ? self.historyEditor : [NeonEditor new];
+    self.historyEditor = nil;
+    self.historySession = nil;
     editor.session = self.session;
     editor.coordinator = self;
     if (self.collapsed)
@@ -1110,6 +1244,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [self showColumn:UISplitViewControllerColumnSecondary];
     }
     self.editor = editor;
+    if (!self.collapsed && self.sidebarHidden)
+        [self hideColumn:UISplitViewControllerColumnPrimary];
     [editor loadViewIfNeeded];
     [self applyAppearance];
     [self.chapterList.tableView reloadData];
@@ -1168,6 +1304,12 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 - (void)viewWillTransitionToSize:(CGSize)size
        withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)transition {
     [super viewWillTransitionToSize:size withTransitionCoordinator:transition];
+    BOOL narrow = size.width < 1000;
+    if (!self.sidebarLayoutInitialized || narrow != self.narrowSidebarLayout) {
+        self.narrowSidebarLayout = narrow;
+        self.sidebarHidden = narrow;
+        self.sidebarLayoutInitialized = YES;
+    }
     [transition
         animateAlongsideTransition:nil
                         completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
@@ -1196,6 +1338,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                             forColumn:UISplitViewControllerColumnSecondary];
                               if (self.sidebarHidden)
                                   [self hideColumn:UISplitViewControllerColumnPrimary];
+                              else
+                                  [self showColumn:UISplitViewControllerColumnPrimary];
                           }
                           [self applyAppearance];
                         }];
@@ -1317,6 +1461,9 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 - (void)showHistory {
     if (!self.session || self.historyController || (self.editor && ![self.editor flush]))
         return;
+    self.historyEditor = self.editor;
+    self.historySession = self.session;
+    self.historySection = self.session.selectedSectionID;
     [self transitionNavigation:^{
       self.editor.session = nil;
       self.editor = nil;
@@ -1327,6 +1474,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [weakSelf showCurrentEditor];
       };
       controller.didRestore = ^{
+        weakSelf.historyEditor = nil;
+        weakSelf.historySession = nil;
         [weakSelf.chapterList.tableView reloadData];
       };
       self.historyController = controller;
@@ -1366,7 +1515,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     blank.view.backgroundColor = NeonPaper();
     [self setViewController:[[UINavigationController alloc] initWithRootViewController:blank]
                   forColumn:UISplitViewControllerColumnSecondary];
-    self.sidebarHidden = NO;
+    // The library must be visible, but this does not change the writer's sidebar choice.
     [self showColumn:UISplitViewControllerColumnPrimary];
     [self reloadLibrary];
     [self applyAppearance];
@@ -1639,6 +1788,13 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                 [self.session restoreRevision:checkpoint error:&error] &&
                 [self.session.text isEqual:original];
         [self refreshAfterStructure];
+        UITextView* originalEditor = self.editor.editor;
+        originalEditor.selectedRange = NSMakeRange(MIN(5, originalEditor.text.length), 0);
+        NSRange selection = originalEditor.selectedRange;
+        [self showHistory];
+        [self showCurrentEditor];
+        valid = valid && self.editor.editor == originalEditor &&
+                NSEqualRanges(selection, self.editor.editor.selectedRange);
         [self showHistory];
         NeonHistoryController* controller = self.historyController;
         [controller loadViewIfNeeded];
@@ -1678,7 +1834,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         UIStepper* stepper = (id)settingControl(cell, @"paragraphSpacing");
         NSString* draft = self.editor.editor.text;
         NSRange selection = self.editor.editor.selectedRange;
-        id original = [NSUserDefaults.standardUserDefaults objectForKey:@"paragraphSpacing"];
+        id original = [NeonPreferences() objectForKey:@"paragraphSpacing"];
         stepper.value = 12;
         [stepper sendActionsForControlEvents:UIControlEventValueChanged];
         NSParagraphStyle* paragraph =
@@ -1687,9 +1843,9 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                 paragraph.paragraphSpacing == 12 && [self.editor.editor.text isEqual:draft] &&
                 NSEqualRanges(selection, self.editor.editor.selectedRange);
         if (original)
-            [NSUserDefaults.standardUserDefaults setObject:original forKey:@"paragraphSpacing"];
+            [NeonPreferences() setObject:original forKey:@"paragraphSpacing"];
         else
-            [NSUserDefaults.standardUserDefaults removeObjectForKey:@"paragraphSpacing"];
+            [NeonPreferences() removeObjectForKey:@"paragraphSpacing"];
         controller.preferencesChanged();
         [controller filterSettings:@"no matching setting"];
         valid = valid && controller.visibleSettingCount == 0;
@@ -1726,7 +1882,21 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     (void)options;
     if (![scene isKindOfClass:UIWindowScene.class])
         return;
-    self.window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene*)scene];
+    BOOL uiTesting = [NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"];
+    if (uiTesting) {
+        [NSFileManager.defaultManager
+                   createDirectoryAtURL:focusDiagnosticURL().URLByDeletingLastPathComponent
+            withIntermediateDirectories:YES
+                             attributes:nil
+                                  error:nil];
+        [@"Neon test window ready\n" writeToURL:focusDiagnosticURL()
+                                     atomically:YES
+                                       encoding:NSUTF8StringEncoding
+                                          error:nil];
+    }
+    self.window = uiTesting
+                      ? [[NeonDiagnosticWindow alloc] initWithWindowScene:(UIWindowScene*)scene]
+                      : [[UIWindow alloc] initWithWindowScene:(UIWindowScene*)scene];
     self.coordinator = [NeonCoordinator new];
     self.window.rootViewController = self.coordinator;
     [self.window makeKeyAndVisible];

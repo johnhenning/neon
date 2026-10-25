@@ -1,11 +1,12 @@
 #include "LibraryStore.h"
+#import "Preferences.h"
 
 @implementation NeonLibraryStore
 - (instancetype)initWithDirectory:(NSURL*)directory {
     self = [super init];
     if (self) {
         _directory = directory;
-        NSUserDefaults* defaults = NSUserDefaults.standardUserDefaults;
+        NSUserDefaults* defaults = NeonPreferences();
         _actor = [defaults stringForKey:@"localActor"];
         if (!_actor) {
             _actor = NSUUID.UUID.UUIDString;

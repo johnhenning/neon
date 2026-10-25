@@ -8,6 +8,10 @@ import shutil
 import signal
 import subprocess
 import time
+import uuid
+
+from visual_manifest import capture_context, write_manifest
+from video_validation import validate_video
 
 
 def run(*args, **kwargs):
@@ -20,6 +24,9 @@ def main():
     parser.add_argument('app', type=pathlib.Path)
     parser.add_argument('output', type=pathlib.Path)
     parser.add_argument('--device')
+    parser.add_argument('--fixture', choices=['0', '1', '3', 'many', '24chapters', 'longtext'], default='3')
+    parser.add_argument('--profile', choices=['desktop', 'mobile'], help='Default: desktop on Mac, mobile on iPhone/iPad')
+    parser.add_argument('--figma-node', help='Override reviewed canonical editor Figma node ID')
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -28,6 +35,17 @@ def main():
     platform = 'macOS' if args.platform == 'macOS' else 'iOS'
     source = pathlib.Path(__file__).resolve().parents[1] / 'uitests/Walkthrough.swift'
     shutil.copy(source, work / source.name)
+    fixtures = json.loads((source.parent / 'Fixtures.json').read_text())
+    args.figma_node = args.figma_node or {'macOS': '34:72', 'iPhone': '34:81', 'iPad': '144:16148'}[args.platform]
+    args.profile = args.profile or ('desktop' if platform == 'macOS' else 'mobile')
+    preferences = fixtures['preference_profiles'][args.profile]
+    fixture = fixtures['variants'][args.fixture]
+    context = capture_context(source.parents[2], args.fixture, args.profile, args.figma_node, args.platform, args.device)
+    environment = {'NEON_UI_FIXTURE_JSON': json.dumps(fixture),
+                   'NEON_UI_FIXTURE': args.fixture,
+                   'NEON_UI_PREFERENCES_JSON': json.dumps(preferences),
+                   'NEON_UI_RUN_ID': str(uuid.uuid4()),
+                   'NEON_UI_CAPTURE_CONTEXT': json.dumps(context)}
     # Xcode requires a host target to generate its UI runner. This build-only shell
     # is replaced with the real CMake product before running any tests.
     (work / 'Host.swift').write_text('@main struct Host { static func main() {} }\n')
@@ -53,6 +71,7 @@ def main():
     }
     (work / 'project.json').write_text(json.dumps(spec))
     result = {'platform': args.platform, 'status': 'failed', 'video': 'missing',
+              'recording_status': 'failed',
               'interaction': 'XCTest accessibility clicks/taps and text input'}
     recorder = None
     try:
@@ -79,11 +98,11 @@ def main():
         if not targets:
             targets = [v for k, v in config.items() if not k.startswith('__') and isinstance(v, dict)]
         for target in targets:
+            target.setdefault('EnvironmentVariables', {}).update(environment)
             target['TestTimeoutsEnabled'] = True
-            target['DefaultTestExecutionTimeAllowance'] = 120
-            target['MaximumTestExecutionTimeAllowance'] = 180
-            if platform == 'macOS':
-                target['SystemAttachmentLifetime'] = 'keepAlways'
+            target['DefaultTestExecutionTimeAllowance'] = 180
+            target['MaximumTestExecutionTimeAllowance'] = 240
+            target['SystemAttachmentLifetime'] = 'keepAlways'
         test_run.write_bytes(plistlib.dumps(config))
         (output / 'test-launch.json').write_text(json.dumps({
             'source_app': str(args.app.resolve()), 'test_app': str(host),
@@ -105,7 +124,7 @@ def main():
                 recorder = subprocess.Popen(record_args, stdout=record_log, stderr=subprocess.STDOUT)
                 time.sleep(2)
                 if recorder.poll() is not None:
-                    raise RuntimeError('Video recorder failed to start; see recording.log')
+                    result['fallback_recording_error'] = 'Video recorder failed to start; see recording.log'
                 try:
                     run('xcodebuild', 'test-without-building', '-xctestrun', str(test_run),
                         '-destination', destination, '-parallel-testing-enabled', 'NO',
@@ -119,8 +138,6 @@ def main():
                     except subprocess.TimeoutExpired:
                         recorder.kill()
                         recorder.wait()
-        if platform != 'macOS' and (not movie.exists() or movie.stat().st_size < 1024):
-            raise RuntimeError('No usable video was produced')
     except (subprocess.SubprocessError, RuntimeError, StopIteration) as error:
         result['error'] = str(error)
         result['status'] = 'failed'
@@ -135,13 +152,17 @@ def main():
             except subprocess.SubprocessError as error:
                 result['attachment_error'] = str(error)
         try:
-            if platform == 'macOS':
-                recordings = list((output / 'attachments').glob('*.mp4'))
-                if len(recordings) != 1:
-                    raise RuntimeError(f'Expected one XCTest recording, found {len(recordings)}')
+            recordings = list((output / 'attachments').glob('*.mp4'))
+            if len(recordings) == 1:
+                # XCTest bounds footage to the actual test session. Simulator
+                # recording also contains test-runner setup and teardown holds.
                 original = recordings[0]
+                recording_source = 'XCTest system attachment'
+            elif platform == 'macOS' or len(recordings) > 1:
+                raise RuntimeError(f'Expected one XCTest recording, found {len(recordings)}')
             else:
                 original = movie
+                recording_source = 'simctl recordVideo (XCTest recording unavailable)'
             movie = output / f'{args.platform}-walkthrough.mp4'
             with (output / 'video-export.log').open('w') as record_log:
                 run('ffmpeg', '-y', '-i', str(original), '-an',
@@ -149,9 +170,12 @@ def main():
                     '-c:v', 'libx264', '-b:v', '500k', '-maxrate', '650k', '-bufsize', '1300k',
                     '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(movie),
                     stdout=record_log, stderr=subprocess.STDOUT)
-            result['recording_source'] = ('XCTest system attachment' if platform == 'macOS'
-                                          else 'simctl recordVideo')
-        except (OSError, subprocess.SubprocessError, RuntimeError) as error:
+            result['media_validation'] = validate_video(movie)
+            result['recording_status'] = result['media_validation']['status']
+            if result['recording_status'] != 'passed':
+                raise RuntimeError('Video decoded but did not demonstrate multiple visual changes')
+            result['recording_source'] = recording_source
+        except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, KeyError, IndexError) as error:
             result['recording_error'] = str(error)
             result['status'] = 'failed'
         if movie.exists() and movie.stat().st_size >= 1024:
@@ -160,6 +184,7 @@ def main():
         else:
             result['status'] = 'failed'
             result['recording_error'] = result.get('recording_error', 'No usable video was produced')
+        write_manifest(output, context)
         (output / 'result.json').write_text(json.dumps(result, indent=2))
         shutil.rmtree(work, ignore_errors=True)
     return 0 if result['status'] == 'passed' else 1
