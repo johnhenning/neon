@@ -11,6 +11,7 @@ import time
 import uuid
 
 from visual_manifest import capture_context, write_manifest
+from video_validation import validate_video
 
 
 def run(*args, **kwargs):
@@ -70,6 +71,7 @@ def main():
     }
     (work / 'project.json').write_text(json.dumps(spec))
     result = {'platform': args.platform, 'status': 'failed', 'video': 'missing',
+              'recording_status': 'failed',
               'interaction': 'XCTest accessibility clicks/taps and text input'}
     recorder = None
     try:
@@ -100,8 +102,7 @@ def main():
             target['TestTimeoutsEnabled'] = True
             target['DefaultTestExecutionTimeAllowance'] = 120
             target['MaximumTestExecutionTimeAllowance'] = 180
-            if platform == 'macOS':
-                target['SystemAttachmentLifetime'] = 'keepAlways'
+            target['SystemAttachmentLifetime'] = 'keepAlways'
         test_run.write_bytes(plistlib.dumps(config))
         (output / 'test-launch.json').write_text(json.dumps({
             'source_app': str(args.app.resolve()), 'test_app': str(host),
@@ -153,13 +154,17 @@ def main():
             except subprocess.SubprocessError as error:
                 result['attachment_error'] = str(error)
         try:
-            if platform == 'macOS':
-                recordings = list((output / 'attachments').glob('*.mp4'))
-                if len(recordings) != 1:
-                    raise RuntimeError(f'Expected one XCTest recording, found {len(recordings)}')
+            recordings = list((output / 'attachments').glob('*.mp4'))
+            if len(recordings) == 1:
+                # XCTest bounds footage to the actual test session. Simulator
+                # recording also contains test-runner setup and teardown holds.
                 original = recordings[0]
+                recording_source = 'XCTest system attachment'
+            elif platform == 'macOS' or len(recordings) > 1:
+                raise RuntimeError(f'Expected one XCTest recording, found {len(recordings)}')
             else:
                 original = movie
+                recording_source = 'simctl recordVideo (XCTest recording unavailable)'
             movie = output / f'{args.platform}-walkthrough.mp4'
             with (output / 'video-export.log').open('w') as record_log:
                 run('ffmpeg', '-y', '-i', str(original), '-an',
@@ -167,9 +172,12 @@ def main():
                     '-c:v', 'libx264', '-b:v', '500k', '-maxrate', '650k', '-bufsize', '1300k',
                     '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(movie),
                     stdout=record_log, stderr=subprocess.STDOUT)
-            result['recording_source'] = ('XCTest system attachment' if platform == 'macOS'
-                                          else 'simctl recordVideo')
-        except (OSError, subprocess.SubprocessError, RuntimeError) as error:
+            result['media_validation'] = validate_video(movie)
+            result['recording_status'] = result['media_validation']['status']
+            if result['recording_status'] != 'passed':
+                raise RuntimeError('Video decoded but did not demonstrate multiple visual changes')
+            result['recording_source'] = recording_source
+        except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, KeyError, IndexError) as error:
             result['recording_error'] = str(error)
             result['status'] = 'failed'
         if movie.exists() and movie.stat().st_size >= 1024:
