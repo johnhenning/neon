@@ -207,6 +207,11 @@ final class Walkthrough: XCTestCase {
         XCTAssertTrue(element("section-1").isHittable)
         assertSidebarTogglePlacement()
         XCTAssertTrue(app.buttons["Version history"].isHittable)
+        // Create an undo operation in this editor instance, after section changes.
+        // Section navigation intentionally gives each section its own undo scope.
+        activate(element("manuscript"))
+        element("manuscript").typeText("\nHistory undo scope marker.")
+        XCTAssertTrue((element("manuscript").value as? String ?? "").contains("History undo scope marker."))
         #else
         chapters()
         #endif
@@ -229,13 +234,16 @@ final class Walkthrough: XCTestCase {
         XCTAssertTrue(element("manuscript").waitForExistence(timeout: 10))
         XCTAssertTrue((element("manuscript").value as? String ?? "").contains("Neon recorded UI persistence check."))
         #if os(macOS)
+        XCTAssertTrue((element("manuscript").value as? String ?? "").contains("History undo scope marker."))
         activate(element("manuscript"))
         app.typeKey("z", modifierFlags: .command)
         XCTAssertFalse((element("manuscript").value as? String ?? "")
-            .contains("Neon recorded UI persistence check."), "History return must preserve editor undo")
+            .contains("History undo scope marker."), "History return must preserve current editor undo")
+        XCTAssertTrue((element("manuscript").value as? String ?? "")
+            .contains("Neon recorded UI persistence check."), "Undo must retain edits from the prior section visit")
         app.typeKey("z", modifierFlags: [.command, .shift])
         XCTAssertTrue((element("manuscript").value as? String ?? "")
-            .contains("Neon recorded UI persistence check."), "History return must preserve editor redo")
+            .contains("History undo scope marker."), "History return must preserve current editor redo")
         app.typeKey(",", modifierFlags: .command)
         // AppKit exposes the Settings NSPanel as an accessibility dialog.
         let settings = app.dialogs["Settings"]
