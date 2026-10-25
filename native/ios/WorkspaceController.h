@@ -1,13 +1,7 @@
 #pragma once
 #import <UIKit/UIKit.h>
 
-typedef NS_ENUM(NSInteger, NeonWorkspaceDestination) {
-    NeonWorkspaceDestinationManuscript,
-    NeonWorkspaceDestinationHistory,
-    NeonWorkspaceDestinationNotes,
-    NeonWorkspaceDestinationOutline,
-    NeonWorkspaceDestinationGoals
-};
+#import "WorkspaceRoute.h"
 
 // Multiline chapter-only input. Toolbar and list titles remain single-line.
 @interface NeonChapterHeading : UITextView <UITextViewDelegate>

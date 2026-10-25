@@ -123,6 +123,7 @@ NSString* focusAncestry(UIView* target) {
 @property(nonatomic, strong) UILabel* guidance;
 @property(nonatomic, strong) NeonChapterHeading* heading;
 @property(nonatomic, strong) UIStackView* chapterHeader;
+@property(nonatomic, strong) UILabel* chapterKicker;
 @property(nonatomic) BOOL wideTypography;
 @property(nonatomic, strong) NSLayoutConstraint* headingHeight;
 @property(nonatomic) BOOL focusMode;
@@ -273,6 +274,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
       return [weakSelf.coordinator renameInline:title section:nil];
     };
     NeonButton* library = [NeonButton buttonWithType:UIButtonTypeSystem];
+    library.kind = NeonButtonSecondary;
     [library setTitle:@"Library" forState:UIControlStateNormal];
     library.titleLabel.font = NeonUI(13);
     [library addTarget:self.coordinator
@@ -323,6 +325,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                 ? [[self.session sectionLabelAtIndex:number - 1] uppercaseString]
                                 : [self.session.preset[@"documentLabel"] uppercaseString],
                             NeonUI(13), NeonAccent());
+    self.chapterKicker = kicker;
     kicker.textAlignment = ![self.session.preset[@"id"] isEqual:@"book"] &&
                                    [self.session.preset[@"centeredHeading"] boolValue]
                                ? NSTextAlignmentCenter
@@ -422,12 +425,13 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     if (self.wideTypography != wide) {
         self.wideTypography = wide;
         [self applyTypography];
+        [self updateWritingToolbar];
     }
     CGFloat measure =
         [NeonPreferences() objectForKey:@"textMeasure"] ? NeonTextMeasure() : (wide ? 640 : 680);
     CGFloat margin = MAX(24, (self.editor.bounds.size.width - measure) / 2);
     CGFloat width = MAX(1, self.editor.bounds.size.width - 2 * margin);
-    self.chapterHeader.spacing = wide ? 24 : 20;
+    self.chapterHeader.spacing = self.focusMode ? 16 : (wide ? 24 : 20);
     CGFloat top = wide ? 48 : 24;
     self.headingHeight.constant =
         ceil([self.heading sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)].height);
@@ -486,11 +490,13 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         self.heading.typingAttributes = headingAttributes;
         self.heading.font = headingFont;
     }
+    BOOL book = [self.session.preset[@"id"] isEqual:@"book"];
     style.paragraphSpacing = [NeonPreferences() objectForKey:@"paragraphSpacing"]
                                  ? NeonParagraphSpacing()
-                                 : [self.session.preset[@"paragraphSpacing"] doubleValue];
+                                 : (book ? (self.wideTypography ? 24 : 20)
+                                         : [self.session.preset[@"paragraphSpacing"] doubleValue]);
     style.lineHeightMultiple = (legacySpacing || presetMultiple > 1) ? presetMultiple : 0;
-    style.firstLineHeadIndent = [self.session.preset[@"firstLineIndent"] doubleValue];
+    style.firstLineHeadIndent = book ? 0 : [self.session.preset[@"firstLineIndent"] doubleValue];
     for (NSDictionary* section in self.session.sections)
         if ([section[@"id"] isEqual:self.session.selectedSectionID] &&
             [section[@"role"] isEqual:@"references"]) {
@@ -582,8 +588,34 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     nav.view.tintColor = NeonAccent();
     [self presentViewController:nav animated:YES completion:nil];
 }
+- (void)updateWritingToolbar {
+    if (self.focusMode)
+        return;
+    if (self.wideTypography && self.writingActions.count == 2) {
+        UIBarButtonItem* typography =
+            [[UIBarButtonItem alloc] initWithTitle:@"Aa"
+                                             style:UIBarButtonItemStylePlain
+                                            target:self
+                                            action:@selector(typography)];
+        typography.accessibilityLabel = @"Typography";
+        UIBarButtonItem* search = [[UIBarButtonItem alloc] initWithTitle:@"Search"
+                                                                   style:UIBarButtonItemStylePlain
+                                                                  target:nil
+                                                                  action:nil];
+        search.enabled = NO;
+        search.accessibilityHint = @"Unavailable in this version";
+        self.navigationItem.rightBarButtonItems = @[
+            self.writingActions.firstObject, typography, search, self.writingActions.lastObject
+        ];
+    } else {
+        self.navigationItem.rightBarButtonItems = self.writingActions;
+    }
+}
 - (void)toggleFocusMode {
     self.focusMode = !self.focusMode;
+    [self.chapterHeader removeArrangedSubview:self.chapterKicker];
+    [self.chapterKicker removeFromSuperview];
+    [self.chapterHeader insertArrangedSubview:self.chapterKicker atIndex:self.focusMode ? 1 : 0];
     if (self.focusMode) {
         self.returnToManuscript = self.editor.isFirstResponder;
         self.sidebarBeforeFocus = !self.coordinator.collapsed && !self.coordinator.sidebarHidden;
@@ -599,7 +631,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                                target:self
                                                action:@selector(toggleFocusMode)] ];
     } else {
-        self.navigationItem.rightBarButtonItems = self.writingActions;
+        [self updateWritingToolbar];
         if (self.sidebarBeforeFocus && self.coordinator.sidebarHidden)
             [self.coordinator toggleChapters];
     }
@@ -894,16 +926,18 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                                              action:@selector(showCurrentEditor)] ];
         UILabel* project = label(self.coordinator.session.title, scaledSerif(24), NeonInk());
         UILabel* count = label(
-            [NSString stringWithFormat:@"%@ · %lu %@",
+            [NSString stringWithFormat:@"%@ · %lu %@ · %lu words",
                                        [self.coordinator.session.preset[@"title"] uppercaseString],
                                        self.coordinator.session.sections.count,
                                        [self.coordinator.session.preset[@"sectionsLabel"]
-                                           lowercaseString]],
+                                           lowercaseString],
+                                       self.coordinator.session.projectWordCount],
             NeonUI(13), NeonMuted());
         NSMutableArray<UIView*>* items = [NSMutableArray arrayWithArray:@[ project, count ]];
         for (NSString* destination in
              @[ @"Manuscript", @"Notes & research", @"Outline", @"Writing goals" ]) {
             NeonButton* button = [NeonButton buttonWithType:UIButtonTypeSystem];
+            button.kind = NeonButtonSecondary;
             [button setTitle:destination forState:UIControlStateNormal];
             button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
             button.enabled = [destination isEqual:@"Manuscript"];
