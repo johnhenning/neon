@@ -139,6 +139,8 @@ NSString* focusAncestry(UIView* target) {
 @end
 @interface NeonList : UITableViewController
 @property(nonatomic, strong) UIStackView* navigationHeader;
+@property(nonatomic, strong) UILabel* navigationProjectTitle;
+@property(nonatomic, strong) UILabel* navigationProjectCount;
 @property(nonatomic, weak) NeonCoordinator* coordinator;
 @property(nonatomic) BOOL chapters;
 @end
@@ -614,7 +616,6 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 - (void)toggleFocusMode {
     self.focusMode = !self.focusMode;
     [self.chapterHeader removeArrangedSubview:self.chapterKicker];
-    [self.chapterKicker removeFromSuperview];
     [self.chapterHeader insertArrangedSubview:self.chapterKicker atIndex:self.focusMode ? 1 : 0];
     if (self.focusMode) {
         self.returnToManuscript = self.editor.isFirstResponder;
@@ -933,6 +934,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                            lowercaseString],
                                        self.coordinator.session.projectWordCount],
             NeonUI(13), NeonMuted());
+        self.navigationProjectTitle = project;
+        self.navigationProjectCount = count;
         NSMutableArray<UIView*>* items = [NSMutableArray arrayWithArray:@[ project, count ]];
         for (NSString* destination in
              @[ @"Manuscript", @"Notes & research", @"Outline", @"Writing goals" ]) {
@@ -982,6 +985,16 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self.navigationController setToolbarHidden:!self.chapters animated:animated];
+    if (self.chapters) {
+        self.navigationProjectTitle.text = self.coordinator.session.title;
+        self.navigationProjectCount.text = [NSString
+            stringWithFormat:@"%@ · %lu %@ · %lu words",
+                             [self.coordinator.session.preset[@"title"] uppercaseString],
+                             self.coordinator.session.sections.count,
+                             [self.coordinator.session.preset[@"sectionsLabel"] lowercaseString],
+                             self.coordinator.session.projectWordCount];
+        [self.view setNeedsLayout];
+    }
     if (!self.chapters)
         [self.coordinator reloadLibrary];
     [self.tableView reloadData];
