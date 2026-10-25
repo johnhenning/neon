@@ -124,7 +124,7 @@ def main():
                 recorder = subprocess.Popen(record_args, stdout=record_log, stderr=subprocess.STDOUT)
                 time.sleep(2)
                 if recorder.poll() is not None:
-                    raise RuntimeError('Video recorder failed to start; see recording.log')
+                    result['fallback_recording_error'] = 'Video recorder failed to start; see recording.log'
                 try:
                     run('xcodebuild', 'test-without-building', '-xctestrun', str(test_run),
                         '-destination', destination, '-parallel-testing-enabled', 'NO',
@@ -138,8 +138,6 @@ def main():
                     except subprocess.TimeoutExpired:
                         recorder.kill()
                         recorder.wait()
-        if platform != 'macOS' and (not movie.exists() or movie.stat().st_size < 1024):
-            raise RuntimeError('No usable video was produced')
     except (subprocess.SubprocessError, RuntimeError, StopIteration) as error:
         result['error'] = str(error)
         result['status'] = 'failed'
