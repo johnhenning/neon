@@ -81,6 +81,11 @@ final class Walkthrough: XCTestCase {
         #endif
     }
 
+    func assertUniqueChapterRows() {
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "section-0").count, 1)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "section-1").count, 1)
+    }
+
     func testRecordedEditorJourney() {
         let variant = ProcessInfo.processInfo.environment["NEON_UI_FIXTURE"] ?? "3"
         if variant == "0" {
@@ -153,16 +158,17 @@ final class Walkthrough: XCTestCase {
             activate(app.buttons["navigation-toggle"])
             XCTAssertTrue(element("section-0").isHittable)
             XCTAssertLessThanOrEqual(element("section-0").frame.maxX, editor.frame.minX)
+            assertUniqueChapterRows()
         } else {
             activate(app.buttons["navigation-toggle"])
             XCTAssertTrue(element("section-0").isHittable)
             XCTAssertFalse(editor.isHittable)
+            assertUniqueChapterRows()
             activate(element("section-0"))
         }
         #endif
-        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "section-0").count, 1)
-        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "section-1").count, 1)
         #if os(macOS)
+        assertUniqueChapterRows()
         XCTAssertTrue(app.buttons["section-actions-0"].exists)
         for _ in 0..<3 {
             activate(app.buttons["Toggle sidebar"])
