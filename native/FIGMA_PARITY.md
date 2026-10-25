@@ -63,3 +63,8 @@ Approved artwork exists in `outputs/neon-deep-review/assets` (`quiet-sea`,
 Task 4. Exported XCTest screenshot attachments have manifests; earlier direct
 simulator smoke screenshots are outside this manifest. Source SHA describes the
 checkout, not independently verified build provenance for an arbitrary app path.
+
+All explicit smoke modes also use isolated per-process preferences without driver
+environment. UIKit smoke follows system appearance so `ios_smoke.py` owns the
+simulator light/dark precondition; Mac smoke starts light and switches explicitly.
+XCTest continues to use its named explicit appearance/typography profile.

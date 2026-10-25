@@ -14,7 +14,8 @@ NSUserDefaults* NeonPreferences() {
     dispatch_once(&once, ^{
       NSString* run = NSUUID.UUID.UUIDString;
       NSDictionary* profile = @{
-          @"appearance" : @1,
+          // Mobile smoke scripts own simulator appearance; Mac smoke switches explicitly.
+          @"appearance" : @(TARGET_OS_IPHONE ? 0 : 1),
           @"manuscriptFont" : @"Literata",
           @"manuscriptSize" : @(TARGET_OS_IPHONE ? 18 : 20),
           @"manuscriptSpacing" : @8,

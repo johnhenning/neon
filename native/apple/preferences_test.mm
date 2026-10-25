@@ -1,5 +1,6 @@
 #import "LibraryStore.h"
 #import "Preferences.h"
+#import <TargetConditionals.h>
 
 int main(int argc, const char** argv) {
     (void)argc;
@@ -10,8 +11,11 @@ int main(int argc, const char** argv) {
         NSUserDefaults* isolated = NeonPreferences();
         if (NSProcessInfo.processInfo.arguments.count == 1)
             return isolated == standard ? 0 : 4;
-        if (isolated == standard || [isolated integerForKey:@"appearance"] != 1 ||
-            [isolated integerForKey:@"manuscriptSize"] != 20)
+        BOOL uiTesting = [NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"];
+        NSInteger expectedAppearance = TARGET_OS_IPHONE && !uiTesting ? 0 : 1;
+        NSInteger expectedSize = TARGET_OS_IPHONE && !uiTesting ? 18 : 20;
+        if (isolated == standard || [isolated integerForKey:@"appearance"] != expectedAppearance ||
+            [isolated integerForKey:@"manuscriptSize"] != expectedSize)
             return 1;
         [isolated setInteger:2 forKey:@"appearance"];
         [isolated setInteger:27 forKey:@"manuscriptSize"];
