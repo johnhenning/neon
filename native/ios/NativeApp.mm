@@ -4,8 +4,31 @@
 #import "InlineTitle.h"
 #import "LibraryStore.h"
 #import "Settings.h"
+#import "UITestFixtures.h"
 #import <UIKit/UIKit.h>
 
+// Keep the next simulator failure actionable without changing UIKit focus behavior.
+@interface NeonManuscriptView : UITextView
+@property(nonatomic) NSUInteger focusDiagnosticCount;
+@end
+@implementation NeonManuscriptView
+- (UIView*)hitTest:(CGPoint)point withEvent:(UIEvent*)event {
+    UIView* hit = [super hitTest:point withEvent:event];
+    if (event && CGRectContainsPoint(self.bounds, point) && self.focusDiagnosticCount < 8 &&
+        [NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"]) {
+        ++self.focusDiagnosticCount;
+        NSMutableArray<NSString*>* ancestry = [NSMutableArray array];
+        for (UIView* view = hit; view; view = view.superview)
+            [ancestry addObject:NSStringFromClass(view.class)];
+        NSLog(@"Neon focus hit: point=%@ frame=%@ editable=%d selectable=%d responder=%d "
+               "window=%d ancestry=%@",
+              NSStringFromCGPoint(point), NSStringFromCGRect(self.frame), self.editable,
+              self.selectable, self.isFirstResponder, self.window != nil,
+              [ancestry componentsJoinedByString:@" -> "]);
+    }
+    return hit;
+}
+@end
 @class NeonCoordinator;
 @interface NeonEditor : UIViewController <UITextViewDelegate>
 @property(nonatomic, strong) UITextView* editor;
@@ -43,6 +66,8 @@
 @property(nonatomic, strong) NeonList* chapterList;
 @property(nonatomic, strong) UINavigationController* navigation;
 @property(nonatomic) BOOL sidebarHidden;
+@property(nonatomic) BOOL sidebarLayoutInitialized;
+@property(nonatomic) BOOL narrowSidebarLayout;
 @property(nonatomic, strong) UIView* navigationSnapshot;
 @property(nonatomic) BOOL renderingNavigation;
 @property(nonatomic, copy) NSString* pendingPreset;
@@ -176,7 +201,10 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                 ? [[self.session sectionLabelAtIndex:number - 1] uppercaseString]
                                 : [self.session.preset[@"documentLabel"] uppercaseString],
                             NeonUI(13), NeonAccent());
-    kicker.textAlignment = NSTextAlignmentLeft;
+    kicker.textAlignment = ![self.session.preset[@"id"] isEqual:@"book"] &&
+                                   [self.session.preset[@"centeredHeading"] boolValue]
+                               ? NSTextAlignmentCenter
+                               : NSTextAlignmentLeft;
     self.heading = [NeonInlineTitle new];
     self.heading.text = self.session.sectionTitle;
     self.heading.font = scaledSerif(24);
@@ -202,7 +230,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     [kicker.widthAnchor constraintEqualToAnchor:header.widthAnchor].active = YES;
     if (self.guidance)
         [self.guidance.widthAnchor constraintEqualToAnchor:header.widthAnchor].active = YES;
-    self.editor = [UITextView new];
+    self.editor = [NeonManuscriptView new];
     self.editor.delegate = self;
     self.editor.backgroundColor = NeonPaper();
     self.editor.textColor = NeonInk();
@@ -259,7 +287,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     NSRange selection = self.editor.selectedRange;
     NSMutableParagraphStyle* style = [NSMutableParagraphStyle new];
     style.lineSpacing = NeonLineSpacing();
-    style.paragraphSpacing = [NSUserDefaults.standardUserDefaults objectForKey:@"paragraphSpacing"]
+    style.paragraphSpacing = [NeonPreferences() objectForKey:@"paragraphSpacing"]
                                  ? NeonParagraphSpacing()
                                  : [self.session.preset[@"paragraphSpacing"] doubleValue];
     style.lineHeightMultiple = [self.session.preset[@"lineHeightMultiple"] doubleValue];
@@ -280,7 +308,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     [self.view setNeedsLayout];
     NSDictionary* attrs = @{
         NSFontAttributeName : [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
-            scaledFontForFont:([NSUserDefaults.standardUserDefaults objectForKey:@"manuscriptFont"]
+            scaledFontForFont:([NeonPreferences() objectForKey:@"manuscriptFont"]
                                    ? NeonManuscriptFont(NeonTextSize())
                                    : NeonFontNamed(self.session.preset[@"font"], NeonTextSize()))],
         NSForegroundColorAttributeName : NeonInk(),
@@ -290,9 +318,14 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.editor.typingAttributes = attrs;
     self.editor.selectedRange = selection;
     self.editor.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
-        scaledFontForFont:([NSUserDefaults.standardUserDefaults objectForKey:@"manuscriptFont"]
+        scaledFontForFont:([NeonPreferences() objectForKey:@"manuscriptFont"]
                                ? NeonManuscriptFont(NeonTextSize())
                                : NeonFontNamed(self.session.preset[@"font"], NeonTextSize()))];
+}
+- (void)textViewDidBeginEditing:(UITextView*)view {
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"])
+        NSLog(@"Neon focus began: editable=%d responder=%d window=%d frame=%@", view.editable,
+              view.isFirstResponder, view.window != nil, NSStringFromCGRect(view.frame));
 }
 - (void)textViewDidChange:(UITextView*)view {
     if (view.markedTextRange)
@@ -521,8 +554,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     ]];
 }
 - (void)fontChanged:(UIButton*)sender {
-    [NSUserDefaults.standardUserDefaults setObject:sender.accessibilityIdentifier
-                                            forKey:@"manuscriptFont"];
+    [NeonPreferences() setObject:sender.accessibilityIdentifier forKey:@"manuscriptFont"];
     for (UIButton* row in ((UIStackView*)sender.superview).arrangedSubviews)
         [row setTitle:[NSString
                           stringWithFormat:@"%@   %@", row.accessibilityIdentifier,
@@ -545,16 +577,15 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     return UIModalPresentationNone;
 }
 - (void)sizeChanged:(UISlider*)sender {
-    [NSUserDefaults.standardUserDefaults setDouble:sender.value forKey:@"manuscriptSize"];
+    [NeonPreferences() setDouble:sender.value forKey:@"manuscriptSize"];
     [self.editor applyTypography];
 }
 - (void)spacingChanged:(UISlider*)sender {
-    [NSUserDefaults.standardUserDefaults setDouble:sender.value forKey:@"manuscriptSpacing"];
+    [NeonPreferences() setDouble:sender.value forKey:@"manuscriptSpacing"];
     [self.editor applyTypography];
 }
 - (void)appearanceChanged:(UISegmentedControl*)sender {
-    [NSUserDefaults.standardUserDefaults setInteger:sender.selectedSegmentIndex
-                                             forKey:@"appearance"];
+    [NeonPreferences() setInteger:sender.selectedSegmentIndex forKey:@"appearance"];
     [self.editor.coordinator applyAppearance];
 }
 - (void)done {
@@ -851,8 +882,12 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [[NSFileManager defaultManager] removeItemAtURL:directory error:nil];
     self.library = [[NeonLibraryStore alloc] initWithDirectory:directory];
     NSError* error = nil;
-    if ((self.smoke || uiTesting) && ![self.library seedPreview:&error])
+    if (uiTesting) {
+        if (!NeonSeedUITestLibrary(self.library, &error))
+            [self showProblem:error];
+    } else if (self.smoke && ![self.library seedPreview:&error]) {
         [self showProblem:error];
+    }
     self.libraryList = [[NeonList alloc] initWithStyle:UITableViewStyleInsetGrouped];
     self.libraryList.coordinator = self;
     self.navigation = [[UINavigationController alloc] initWithRootViewController:self.libraryList];
@@ -1068,7 +1103,11 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         return;
     }
     self.session = session;
-    self.sidebarHidden = self.view.bounds.size.width < 1000;
+    if (!self.sidebarLayoutInitialized) {
+        self.narrowSidebarLayout = self.view.bounds.size.width < 1000;
+        self.sidebarHidden = self.narrowSidebarLayout;
+        self.sidebarLayoutInitialized = YES;
+    }
     self.selectedURL = url;
     self.chapterList = [[NeonList alloc] initWithStyle:UITableViewStylePlain];
     self.chapterList.chapters = YES;
@@ -1178,7 +1217,12 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 - (void)viewWillTransitionToSize:(CGSize)size
        withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)transition {
     [super viewWillTransitionToSize:size withTransitionCoordinator:transition];
-    self.sidebarHidden = size.width < 1000;
+    BOOL narrow = size.width < 1000;
+    if (!self.sidebarLayoutInitialized || narrow != self.narrowSidebarLayout) {
+        self.narrowSidebarLayout = narrow;
+        self.sidebarHidden = narrow;
+        self.sidebarLayoutInitialized = YES;
+    }
     [transition
         animateAlongsideTransition:nil
                         completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
@@ -1384,7 +1428,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     blank.view.backgroundColor = NeonPaper();
     [self setViewController:[[UINavigationController alloc] initWithRootViewController:blank]
                   forColumn:UISplitViewControllerColumnSecondary];
-    self.sidebarHidden = NO;
+    // The library must be visible, but this does not change the writer's sidebar choice.
     [self showColumn:UISplitViewControllerColumnPrimary];
     [self reloadLibrary];
     [self applyAppearance];
@@ -1703,7 +1747,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         UIStepper* stepper = (id)settingControl(cell, @"paragraphSpacing");
         NSString* draft = self.editor.editor.text;
         NSRange selection = self.editor.editor.selectedRange;
-        id original = [NSUserDefaults.standardUserDefaults objectForKey:@"paragraphSpacing"];
+        id original = [NeonPreferences() objectForKey:@"paragraphSpacing"];
         stepper.value = 12;
         [stepper sendActionsForControlEvents:UIControlEventValueChanged];
         NSParagraphStyle* paragraph =
@@ -1712,9 +1756,9 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                 paragraph.paragraphSpacing == 12 && [self.editor.editor.text isEqual:draft] &&
                 NSEqualRanges(selection, self.editor.editor.selectedRange);
         if (original)
-            [NSUserDefaults.standardUserDefaults setObject:original forKey:@"paragraphSpacing"];
+            [NeonPreferences() setObject:original forKey:@"paragraphSpacing"];
         else
-            [NSUserDefaults.standardUserDefaults removeObjectForKey:@"paragraphSpacing"];
+            [NeonPreferences() removeObjectForKey:@"paragraphSpacing"];
         controller.preferencesChanged();
         [controller filterSettings:@"no matching setting"];
         valid = valid && controller.visibleSettingCount == 0;
