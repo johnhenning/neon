@@ -42,7 +42,8 @@ module.exports = async ({github, context, core, cli = execFileSync}) => {
     const result = results.find(item => item.platform === family);
     const ui = result?.ui_status || 'Not completed';
     const source = result?.recording_source === 'XCTest system attachment' ? 'XCTest system attachment'
-      : result?.recording_source === 'simctl fallback (no XCTest recording)'
+      : ['simctl recordVideo (XCTest recording unavailable)', 'simctl fallback (no XCTest recording)']
+        .includes(result?.recording_source)
         ? 'Simulator fallback (no XCTest recording; may include startup or idle frames)'
         : 'Unknown recording source';
     const movie = all.find(name => path.basename(name) === `${family}-walkthrough.mp4`);

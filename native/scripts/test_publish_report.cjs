@@ -3,6 +3,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const publish = require('./publish_report.cjs');
+// Read the producer's actual wire value so this regression cannot silently invent a different schema.
+const producer = fs.readFileSync(path.join(__dirname, 'ui_walkthrough.py'), 'utf8');
+const fallbackSource = producer.match(/recording_source = '(simctl [^']+)'/)?.[1];
+assert.ok(fallbackSource, 'The capture producer must declare its simulator fallback source');
 
 (async () => {
   const cwd = process.cwd();
@@ -76,7 +80,7 @@ const publish = require('./publish_report.cjs');
     assert.ok(comment.includes('--body-file'));
     assert.ok(comment.includes('evidence/iPad-walkthrough.mp4'));
     assert.ok(!comment.includes('evidence/iPad-walkthrough.mov'));
-    result.recording_source = 'simctl fallback (no XCTest recording)';
+    result.recording_source = fallbackSource;
     fs.writeFileSync(resultFile, JSON.stringify(result));
     await publish({github, context, core, cli});
     const fallback = fs.readFileSync('platform-report.md', 'utf8');
