@@ -725,9 +725,8 @@ NSUInteger words(NSString* text) {
         return;
     }
     NSScrollView* scroll = [NSScrollView new];
-    [scroll
-        setAccessibilityIdentifier:[NSString stringWithFormat:@"library-project-count-%lu",
-                                                              (unsigned long)self.projects.count]];
+    [scroll setAccessibilityIdentifier:[NSString stringWithFormat:@"library-project-count-%@",
+                                                                  @(self.projects.count)]];
     scroll.drawsBackground = NO;
     scroll.hasVerticalScroller = YES;
     scroll.autohidesScrollers = YES;

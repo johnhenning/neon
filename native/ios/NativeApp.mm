@@ -1025,7 +1025,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     }
     self.projects = projects;
     self.libraryList.tableView.accessibilityIdentifier =
-        [NSString stringWithFormat:@"library-project-count-%lu", (unsigned long)projects.count];
+        [NSString stringWithFormat:@"library-project-count-%@", @(projects.count)];
     self.libraryList.title = self.trashMode ? @"Trash" : @"Library";
     self.libraryList.navigationItem.leftBarButtonItem =
         self.trashMode ? [[UIBarButtonItem alloc] initWithTitle:@"Library"
