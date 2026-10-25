@@ -33,6 +33,17 @@ class SelectionTests(unittest.TestCase):
             with self.subTest(paths=paths):
                 self.assertEqual(tuple(classify(paths).values()), expected)
 
+    def test_report_jobs_do_not_outlive_cancelled_workflows(self):
+        root = pathlib.Path(__file__).resolve().parents[2]
+        native = (root / '.github/workflows/native-macos.yml').read_text()
+        for platform in ('macos', 'ios'):
+            section = native.split(f'  report-{platform}:', 1)[1].split('    permissions:', 1)[0]
+            self.assertIn('always() && !cancelled()', section)
+            self.assertIn(f"needs.{platform}-native.result != 'skipped'", section)
+        report = (root / '.github/workflows/apple-report.yml').read_text()
+        publish = report.split('  publish:', 1)[1].split('    runs-on:', 1)[0]
+        self.assertIn('always() && !cancelled()', publish)
+
     def test_dispatch(self):
         with tempfile.NamedTemporaryFile() as output:
             with patch.dict(os.environ, GITHUB_EVENT_NAME='workflow_dispatch', GITHUB_OUTPUT=output.name):

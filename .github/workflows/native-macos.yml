@@ -137,7 +137,7 @@ jobs:
 
   report-macos:
     needs: macos-native
-    if: ${{ always() && needs.macos-native.result != 'skipped' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ always() && !cancelled() && needs.macos-native.result != 'skipped' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       actions: read
       contents: read
@@ -153,7 +153,7 @@ jobs:
 
   report-ios:
     needs: ios-native
-    if: ${{ always() && needs.ios-native.result != 'skipped' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ always() && !cancelled() && needs.ios-native.result != 'skipped' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       actions: read
       contents: read
