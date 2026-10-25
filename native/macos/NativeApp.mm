@@ -3,7 +3,9 @@
 #import "History.h"
 #import "InlineTitle.h"
 #import "LibraryStore.h"
+#import "Preferences.h"
 #import "Settings.h"
+#import "UITestFixtures.h"
 #import <QuartzCore/QuartzCore.h>
 #include <cstdio>
 #include <cstdlib>
@@ -260,7 +262,8 @@ NSUInteger words(NSString* text) {
                       .firstObject URLByAppendingPathComponent:@"Neon Apple Preview"];
     self.library = [[NeonLibraryStore alloc] initWithDirectory:root];
     NSError* error = nil;
-    if ((self.smoke || uiTesting) && ![self.library seedPreview:&error]) {
+    if ((uiTesting && !NeonSeedUITestLibrary(self.library, &error)) ||
+        (self.smoke && ![self.library seedPreview:&error])) {
         fprintf(stderr, "%s\n", error.localizedDescription.UTF8String);
         exit(2);
     }
@@ -424,7 +427,7 @@ NSUInteger words(NSString* text) {
           return [weakSelf renameInline:title section:nil];
         };
         titleItem.label = @"Project title";
-        titleItem.navigational = YES;
+        titleItem.navigational = NO;
         titleItem.view = self.windowTitle;
         self.toolbarTitleWidth = [self.windowTitle.widthAnchor constraintEqualToConstant:150];
         self.toolbarTitleWidth.active = YES;
@@ -440,7 +443,9 @@ NSUInteger words(NSString* text) {
     NSArray* item = config[identifier];
     NSToolbarItem* result = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
     result.label = item[0];
-    result.navigational = [identifier isEqual:@"sidebar"] || [identifier isEqual:@"library"];
+    // Navigation items can be reordered outside the declared toolbar sequence.
+    // Keep the toggle after flexible space, beside the tracking divider.
+    result.navigational = NO;
     result.toolTip = item[0];
     result.target = self;
     result.action = NSSelectorFromString(item[2]);
@@ -454,12 +459,37 @@ NSUInteger words(NSString* text) {
     // Keep one toolbar toggle: against the sidebar edge when open, before the
     // document title when closed. The native separator tracks divider resizing.
     if (collapsed) {
-        [self.window.toolbar removeItemAtIndex:2];
-        [self.window.toolbar removeItemAtIndex:0];
+        NSArray<NSToolbarItem*>* items = self.window.toolbar.items;
+        NSUInteger divider = [items
+            indexOfObjectPassingTest:^BOOL(NSToolbarItem* item, NSUInteger index, BOOL* stop) {
+              (void)index;
+              (void)stop;
+              return [item.itemIdentifier isEqual:@"sidebarDivider"];
+            }];
+        if (divider != NSNotFound) {
+            [self.window.toolbar removeItemAtIndex:divider];
+            // Only the flexible space preceding the toggle belongs to the sidebar.
+            for (NSUInteger index = 0; index < self.window.toolbar.items.count; ++index) {
+                NSString* identifier = self.window.toolbar.items[index].itemIdentifier;
+                if ([identifier isEqual:@"sidebar"])
+                    break;
+                if ([identifier isEqual:NSToolbarFlexibleSpaceItemIdentifier]) {
+                    [self.window.toolbar removeItemAtIndex:index];
+                    break;
+                }
+            }
+        }
     } else {
         [self.window.toolbar insertItemWithItemIdentifier:NSToolbarFlexibleSpaceItemIdentifier
                                                   atIndex:0];
-        [self.window.toolbar insertItemWithItemIdentifier:@"sidebarDivider" atIndex:2];
+        NSUInteger toggle = [self.window.toolbar.items
+            indexOfObjectPassingTest:^BOOL(NSToolbarItem* item, NSUInteger index, BOOL* stop) {
+              (void)index;
+              (void)stop;
+              return [item.itemIdentifier isEqual:@"sidebar"];
+            }];
+        if (toggle != NSNotFound)
+            [self.window.toolbar insertItemWithItemIdentifier:@"sidebarDivider" atIndex:toggle + 1];
     }
     if (NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) {
         sidebar.collapsed = collapsed;
@@ -551,8 +581,18 @@ NSUInteger words(NSString* text) {
             chapter.currentChapter = selected;
             chapter.spacing = 7;
             chapter.edgeInsets = NSEdgeInsetsMake(10, 16, 10, 16);
-            chapter.accessibilityLabel = section[@"title"];
-            chapter.accessibilityValue =
+            // Expose the title and Actions independently rather than aggregating the row.
+            chapter.accessibilityElement = NO;
+            row.accessibilityElement = YES;
+            NSButton* more = button(@"Actions", @"ellipsis", self, @selector(chapterActions:));
+            more.imagePosition = NSImageOnly;
+            more.tag = row.tag;
+            more.accessibilityLabel = @"Actions";
+            more.accessibilityIdentifier =
+                [NSString stringWithFormat:@"section-actions-%ld", row.tag];
+            more.toolTip = [NSString stringWithFormat:@"Actions for %@", section[@"title"]];
+            [chapter addArrangedSubview:more];
+            row.accessibilityValue =
                 selected
                     ? [@"Current " stringByAppendingString:self.session.preset[@"sectionLabel"]]
                     : self.session.preset[@"sectionLabel"];
@@ -816,7 +856,10 @@ NSUInteger words(NSString* text) {
         1;
     NSTextField* kicker = label([[self.session sectionLabelAtIndex:number - 1] uppercaseString],
                                 NeonUI(13), NeonAccent());
-    kicker.alignment = NSTextAlignmentLeft;
+    BOOL bookPreset = [self.session.preset[@"id"] isEqual:@"book"];
+    kicker.alignment = !bookPreset && [self.session.preset[@"centeredHeading"] boolValue]
+                           ? NSTextAlignmentCenter
+                           : NSTextAlignmentLeft;
     NeonInlineTitle* heading = [NeonInlineTitle new];
     heading.stringValue = self.session.sectionTitle;
     heading.font = NeonSerif(32);
@@ -920,15 +963,14 @@ NSUInteger words(NSString* text) {
     if (!self.editor)
         return;
     NSRange selection = self.editor.selectedRange;
-    self.editor.font = ([NSUserDefaults.standardUserDefaults objectForKey:@"manuscriptFont"]
+    self.editor.font = ([NeonPreferences() objectForKey:@"manuscriptFont"]
                             ? NeonManuscriptFont(NeonTextSize())
                             : NeonFontNamed(self.session.preset[@"font"], NeonTextSize()));
     NSMutableParagraphStyle* paragraph = [NSMutableParagraphStyle new];
     paragraph.lineSpacing = NeonLineSpacing();
-    paragraph.paragraphSpacing =
-        [NSUserDefaults.standardUserDefaults objectForKey:@"paragraphSpacing"]
-            ? NeonParagraphSpacing()
-            : [self.session.preset[@"paragraphSpacing"] doubleValue];
+    paragraph.paragraphSpacing = [NeonPreferences() objectForKey:@"paragraphSpacing"]
+                                     ? NeonParagraphSpacing()
+                                     : [self.session.preset[@"paragraphSpacing"] doubleValue];
     paragraph.lineHeightMultiple = [self.session.preset[@"lineHeightMultiple"] doubleValue];
     paragraph.firstLineHeadIndent = [self.session.preset[@"firstLineIndent"] doubleValue];
     if ([self.session.sections count]) {
@@ -945,7 +987,7 @@ NSUInteger words(NSString* text) {
     self.editor.automaticDashSubstitutionEnabled = NeonWritingPreference(@"smartDashes");
     self.editor.defaultParagraphStyle = paragraph;
     [self.editor.textStorage addAttributes:@{
-        NSFontAttributeName : ([NSUserDefaults.standardUserDefaults objectForKey:@"manuscriptFont"]
+        NSFontAttributeName : ([NeonPreferences() objectForKey:@"manuscriptFont"]
                                    ? NeonManuscriptFont(NeonTextSize())
                                    : NeonFontNamed(self.session.preset[@"font"], NeonTextSize())),
         NSParagraphStyleAttributeName : paragraph,
@@ -953,7 +995,7 @@ NSUInteger words(NSString* text) {
     }
                                      range:NSMakeRange(0, self.editor.string.length)];
     self.editor.typingAttributes = @{
-        NSFontAttributeName : ([NSUserDefaults.standardUserDefaults objectForKey:@"manuscriptFont"]
+        NSFontAttributeName : ([NeonPreferences() objectForKey:@"manuscriptFont"]
                                    ? NeonManuscriptFont(NeonTextSize())
                                    : NeonFontNamed(self.session.preset[@"font"], NeonTextSize())),
         NSParagraphStyleAttributeName : paragraph,
@@ -1053,8 +1095,13 @@ NSUInteger words(NSString* text) {
         [self showError:error];
         return;
     }
+    NeonDocumentSession* session = [self.library openURL:url error:&error];
+    if (!session) {
+        [self showError:error];
+        return;
+    }
     self.trashMode = NO;
-    self.session = [self.library openURL:url error:&error];
+    self.session = session;
     self.selectedURL = url;
     [self showEditor];
 }
@@ -1204,7 +1251,7 @@ NSUInteger words(NSString* text) {
                           preferredEdge:NSRectEdgeMinY];
 }
 - (void)changeFont:(NSButton*)sender {
-    [NSUserDefaults.standardUserDefaults setObject:sender.identifier forKey:@"manuscriptFont"];
+    [NeonPreferences() setObject:sender.identifier forKey:@"manuscriptFont"];
     [self styleEditor];
     NSStackView* stack = (id)sender.superview;
     for (NSView* view in stack.arrangedSubviews)
@@ -1242,15 +1289,15 @@ NSUInteger words(NSString* text) {
     [self.settings makeKeyAndOrderFront:nil];
 }
 - (void)changeSize:(NSSlider*)sender {
-    [NSUserDefaults.standardUserDefaults setDouble:sender.doubleValue forKey:@"manuscriptSize"];
+    [NeonPreferences() setDouble:sender.doubleValue forKey:@"manuscriptSize"];
     [self styleEditor];
 }
 - (void)changeSpacing:(NSSlider*)sender {
-    [NSUserDefaults.standardUserDefaults setDouble:sender.doubleValue forKey:@"manuscriptSpacing"];
+    [NeonPreferences() setDouble:sender.doubleValue forKey:@"manuscriptSpacing"];
     [self styleEditor];
 }
 - (void)changeAppearance:(NSSegmentedControl*)sender {
-    [NSUserDefaults.standardUserDefaults setInteger:sender.selectedSegment forKey:@"appearance"];
+    [NeonPreferences() setInteger:sender.selectedSegment forKey:@"appearance"];
     [self applyAppearance];
     self.typography.appearance = self.window.appearance;
 }
@@ -1363,7 +1410,7 @@ NSUInteger words(NSString* text) {
     [self showLibrary:self];
 }
 - (void)chapterActions:(NSControl*)sender {
-    if (sender.tag < static_cast<NSInteger>(self.session.sections.count))
+    if (sender.tag >= 0 && sender.tag < static_cast<NSInteger>(self.session.sections.count))
         [self sectionMenu:self.session.sections[sender.tag][@"id"]
                    anchor:sender
                      rect:sender.bounds];
@@ -1446,7 +1493,8 @@ NSUInteger words(NSString* text) {
 - (void)capture:(NSString*)file {
     NSTask* task = [NSTask new];
     task.executableURL = [NSURL fileURLWithPath:@"/usr/sbin/screencapture"];
-    task.arguments = @[ @"-x", file ];
+    // Capture this app window even when another app retains foreground focus.
+    task.arguments = @[ @"-x", @"-l", @(self.window.windowNumber).stringValue, file ];
     NSError* error = nil;
     if (![task launchAndReturnError:&error])
         [self showError:error];
@@ -1491,7 +1539,7 @@ NSUInteger words(NSString* text) {
     if (![self.session selectSection:first error:&error])
         exit(5);
     [self showEditor];
-    [NSUserDefaults.standardUserDefaults setInteger:2 forKey:@"appearance"];
+    [NeonPreferences() setInteger:2 forKey:@"appearance"];
     [self applyAppearance];
     [self performSelector:@selector(captureDark) withObject:nil afterDelay:1];
 }
@@ -1586,16 +1634,16 @@ NSUInteger words(NSString* text) {
         exit(10);
     NSString* draft = self.editor.string;
     NSRange selection = self.editor.selectedRange;
-    id original = [NSUserDefaults.standardUserDefaults objectForKey:@"paragraphSpacing"];
+    id original = [NeonPreferences() objectForKey:@"paragraphSpacing"];
     control.doubleValue = 12;
     [NSApp sendAction:control.action to:control.target from:control];
     if (NeonParagraphSpacing() != 12 || self.editor.defaultParagraphStyle.paragraphSpacing != 12 ||
         ![draft isEqual:self.editor.string] || !NSEqualRanges(selection, self.editor.selectedRange))
         exit(10);
     if (original)
-        [NSUserDefaults.standardUserDefaults setObject:original forKey:@"paragraphSpacing"];
+        [NeonPreferences() setObject:original forKey:@"paragraphSpacing"];
     else
-        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"paragraphSpacing"];
+        [NeonPreferences() removeObjectForKey:@"paragraphSpacing"];
     controller.preferencesChanged();
     [controller filterSettings:@"no matching setting"];
     if (controller.visibleSettingCount)
