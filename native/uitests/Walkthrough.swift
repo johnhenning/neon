@@ -42,7 +42,10 @@ final class Walkthrough: XCTestCase {
         add(attachment)
         var metadata = (try? JSONSerialization.jsonObject(with:
             Data((ProcessInfo.processInfo.environment["NEON_UI_CAPTURE_CONTEXT"] ?? "{}").utf8))) as? [String: Any] ?? [:]
-        let frame = app.frame
+        // The root Application frame can be infinite on macOS. Capture native
+        // window bounds and reject unavailable geometry before JSON encoding.
+        let window = app.windows.firstMatch
+        let frame = window.frame
         metadata["capture"] = name
         if name == "01-library" {
             #if os(macOS)
@@ -53,8 +56,14 @@ final class Walkthrough: XCTestCase {
         } else if !name.hasPrefix("02-") {
             metadata["figma_node"] = NSNull()
         }
-        metadata["viewport"] = ["x": frame.minX, "y": frame.minY,
-                                "width": frame.width, "height": frame.height, "unit": "points"]
+        if window.exists && [frame.minX, frame.minY, frame.width, frame.height].allSatisfy({ $0.isFinite })
+            && frame.width > 0 && frame.height > 0 {
+            metadata["viewport"] = ["x": frame.minX, "y": frame.minY,
+                                    "width": frame.width, "height": frame.height, "unit": "points"]
+        } else {
+            metadata["viewport"] = NSNull()
+            metadata["viewport_unavailable_reason"] = "Native window bounds unavailable or nonfinite"
+        }
         metadata["runtime_os"] = ProcessInfo.processInfo.operatingSystemVersionString
         if let data = try? JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys]) {
             let details = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
