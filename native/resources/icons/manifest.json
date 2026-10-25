@@ -1,0 +1,30 @@
+{
+  "sourceFile": "DOW2IVUIDIt2Z4cM4XtM8I",
+  "retrieved": "2026-10-25",
+  "nodes": [
+    "34:81",
+    "144:16148",
+    "34:75"
+  ],
+  "rendering": "Unmodified SVG rasterized at 3x; native template tint uses shared muted ink in light/dark themes. Exact 20pt wrapper; original SVG root proportions preserved.",
+  "assets": [
+    {
+      "file": "navigation.svg",
+      "width": 20.0,
+      "height": 20.0,
+      "pngScale": 3
+    },
+    {
+      "file": "sidebar.svg",
+      "width": 20.0,
+      "height": 20.0,
+      "pngScale": 3
+    },
+    {
+      "file": "history.svg",
+      "width": 20.0,
+      "height": 20.0,
+      "pngScale": 3
+    }
+  ]
+}
