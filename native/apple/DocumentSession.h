@@ -16,6 +16,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)restoreRevision:(NSString*)identifier error:(NSError**)error;
 @property(nonatomic, readonly) NSString* text;
 @property(nonatomic, readonly) BOOL dirty;
+@property(nonatomic, readonly) NSString* projectID;
 @property(nonatomic, readonly) NSString* title;
 @property(nonatomic, readonly) NSString* sectionTitle;
 @property(nonatomic, readonly) NSString* selectedSectionID;

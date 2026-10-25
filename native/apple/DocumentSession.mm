@@ -307,6 +307,9 @@ bool validHistory(id history, const neon::core::Project& project) {
                ? ns(_project.documents[0].sections[_selected].blocks[0].text)
                : @"";
 }
+- (NSString*)projectID {
+    return ns(_project.id);
+}
 - (NSString*)title {
     return ns(_project.title);
 }

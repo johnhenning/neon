@@ -36,8 +36,18 @@
         NeonDocumentSession* session = [self openURL:file error:&problem];
         NSDate* modified = nil;
         [file getResourceValue:&modified forKey:NSURLContentModificationDateKey error:nil];
+        NSString* projectID =
+            session.projectID ?: [@"unreadable:" stringByAppendingString:file.lastPathComponent];
+        NSUserDefaults* preferences = NeonPreferences();
         [projects addObject:@{
             @"url" : file,
+            @"projectID" : projectID,
+            @"favorite" : @(
+                [preferences boolForKey:[@"library.favorite." stringByAppendingString:projectID]]),
+            @"lastOpened" : [preferences
+                objectForKey:[@"library.opened." stringByAppendingString:projectID]]
+                ?: NSDate.distantPast,
+            @"trashed" : @([self.directory.lastPathComponent isEqualToString:@"Trash"]),
             @"title" : session.title ?: file.lastPathComponent,
             @"sections" : @(session.sections.count),
             @"sectionLabel" : session.preset[@"sectionsLabel"] ?: @"Sections",
@@ -48,7 +58,8 @@
     }
     [projects sortUsingDescriptors:@[
         [NSSortDescriptor sortDescriptorWithKey:@"modified" ascending:NO],
-        [NSSortDescriptor sortDescriptorWithKey:@"title" ascending:YES]
+        [NSSortDescriptor sortDescriptorWithKey:@"title" ascending:YES],
+        [NSSortDescriptor sortDescriptorWithKey:@"projectID" ascending:YES]
     ]];
     return projects;
 }
@@ -65,6 +76,18 @@
         return nil;
     }
     return [[NeonDocumentSession alloc] initWithURL:url actor:self.actor error:error];
+}
+- (NeonDocumentSession*)openProjectURL:(NSURL*)url error:(NSError**)error {
+    NeonDocumentSession* session = [self openURL:url error:error];
+    if (session)
+        [NeonPreferences()
+            setObject:NSDate.date
+               forKey:[@"library.opened." stringByAppendingString:session.projectID]];
+    return session;
+}
+- (void)setFavorite:(BOOL)favorite projectID:(NSString*)projectID {
+    [NeonPreferences() setBool:favorite
+                        forKey:[@"library.favorite." stringByAppendingString:projectID]];
 }
 - (NSURL*)createProject:(NSString*)title error:(NSError**)error {
     return [self createProject:title preset:@"book" error:error];
