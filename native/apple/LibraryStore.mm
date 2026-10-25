@@ -47,7 +47,7 @@
             @"lastOpened" : [preferences
                 objectForKey:[@"library.opened." stringByAppendingString:projectID]]
                 ?: NSDate.distantPast,
-            @"trashed" : @([self.directory.lastPathComponent isEqualToString:@"Trash"]),
+            @"trashed" : @NO,
             @"title" : session.title ?: file.lastPathComponent,
             @"sections" : @(session.sections.count),
             @"sectionLabel" : session.preset[@"sectionsLabel"] ?: @"Sections",
@@ -109,7 +109,16 @@
 - (NSArray<NSDictionary*>*)trashedProjects:(NSError**)error {
     NeonLibraryStore* trash = [[NeonLibraryStore alloc]
         initWithDirectory:[self.directory URLByAppendingPathComponent:@"Trash" isDirectory:YES]];
-    return [trash projects:error];
+    NSArray<NSDictionary*>* projects = [trash projects:error];
+    if (!projects)
+        return nil;
+    NSMutableArray<NSDictionary*>* result = [NSMutableArray arrayWithCapacity:projects.count];
+    for (NSDictionary* project in projects) {
+        NSMutableDictionary* record = [project mutableCopy];
+        record[@"trashed"] = @YES;
+        [result addObject:[record copy]];
+    }
+    return result;
 }
 - (BOOL)validURL:(NSURL*)url parent:(NSURL*)parent error:(NSError**)error {
     if (url.isFileURL &&

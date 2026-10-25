@@ -25,6 +25,9 @@ int main() {
             [NSURL fileURLWithPath:[NSTemporaryDirectory()
                                        stringByAppendingPathComponent:NSUUID.UUID.UUIDString]
                        isDirectory:YES];
+        // An arbitrary active library root may itself be named Trash.
+        NSURL* temporaryRoot = directory;
+        directory = [directory URLByAppendingPathComponent:@"Trash" isDirectory:YES];
         NeonLibraryStore* store = [[NeonLibraryStore alloc] initWithDirectory:directory];
         NSError* error = nil;
         NeonLibraryQuery* query = [[NeonLibraryQuery alloc] init];
@@ -38,6 +41,8 @@ int main() {
         NSData* bytes = [NSData dataWithContentsOfURL:first];
         NSArray* rows = [store projects:&error];
         NSString* identifier = rows[0][@"projectID"];
+        check(![rows[0][@"trashed"] boolValue],
+              @"active root named Trash does not imply trashed membership");
         check(identifier.length && project(rows, query, identifier, now).records.count == 1,
               @"one record identity");
         query.filter = NeonLibraryRecent;
@@ -165,7 +170,7 @@ int main() {
         check(project(many, query, nil, [now dateByAddingTimeInterval:-31 * 24 * 60 * 60])
                       .records.count == 0,
               @"recent excludes future open");
-        [[NSFileManager defaultManager] removeItemAtURL:directory error:nil];
+        [[NSFileManager defaultManager] removeItemAtURL:temporaryRoot error:nil];
         NSLog(@"Library presentation and persistence tests passed");
     }
 }
