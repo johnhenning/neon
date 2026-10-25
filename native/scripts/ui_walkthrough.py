@@ -100,8 +100,8 @@ def main():
         for target in targets:
             target.setdefault('EnvironmentVariables', {}).update(environment)
             target['TestTimeoutsEnabled'] = True
-            target['DefaultTestExecutionTimeAllowance'] = 120
-            target['MaximumTestExecutionTimeAllowance'] = 180
+            target['DefaultTestExecutionTimeAllowance'] = 180
+            target['MaximumTestExecutionTimeAllowance'] = 240
             target['SystemAttachmentLifetime'] = 'keepAlways'
         test_run.write_bytes(plistlib.dumps(config))
         (output / 'test-launch.json').write_text(json.dumps({

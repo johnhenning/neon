@@ -27,6 +27,11 @@ class RecordingOrchestrationTests(unittest.TestCase):
                     (products / 'driver.xctestrun').write_bytes(plistlib.dumps({
                         'TestConfigurations': [{'TestTargets': [{}]}]}))
                 elif args[:2] == ('xcodebuild', 'test-without-building'):
+                    config = plistlib.loads((output / 'driver/DerivedData/Build/Products/driver.xctestrun').read_bytes())
+                    target = config['TestConfigurations'][0]['TestTargets'][0]
+                    self.assertEqual(target['DefaultTestExecutionTimeAllowance'], 180)
+                    self.assertEqual(target['MaximumTestExecutionTimeAllowance'], 240)
+                    self.assertTrue(target['TestTimeoutsEnabled'])
                     bundle = output / 'walkthrough.xcresult'
                     bundle.mkdir()
                     (bundle / 'Info.plist').touch()
