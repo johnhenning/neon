@@ -1,5 +1,6 @@
 #pragma once
 #import "LibraryStore.h"
+#import "Preferences.h"
 
 // Only the external XCTest driver supplies these inputs. Production never seeds data.
 static inline NSDictionary* NeonUITestFixtureConfiguration() {
@@ -9,6 +10,12 @@ static inline NSDictionary* NeonUITestFixtureConfiguration() {
     return [NSJSONSerialization JSONObjectWithData:[json dataUsingEncoding:NSUTF8StringEncoding]
                                            options:0
                                              error:nil];
+}
+// Mapping lives only in the isolated --ui-testing preference suite.
+static inline NSDictionary<NSString*, NSString*>* NeonUITestFixtureIDs() {
+    if (![NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"])
+        return @{};
+    return [NeonPreferences() dictionaryForKey:@"uiFixtureArtworkIDs"] ?: @{};
 }
 static inline BOOL NeonSeedUITestLibrary(NeonLibraryStore* library, NSError** error) {
     NSDictionary* configuration = NeonUITestFixtureConfiguration();
@@ -20,13 +27,18 @@ static inline BOOL NeonSeedUITestLibrary(NeonLibraryStore* library, NSError** er
                        userInfo:@{NSLocalizedDescriptionKey : @"Missing fixture projects"}];
         return NO;
     }
-    for (NSDictionary* project in configuration[@"projects"]) {
+    NSMutableDictionary* artworkIDs = [NSMutableDictionary new];
+    // Create in reverse so real modification times preserve the canonical shelf order.
+    for (NSDictionary* project in [configuration[@"projects"] reverseObjectEnumerator]) {
         NSURL* url = [library createProject:project[@"title"]
                                      preset:project[@"preset"]
                                       error:error];
         NeonDocumentSession* session = url ? [library openURL:url error:error] : nil;
         if (!session)
             return NO;
+        NSString* fixtureID = project[@"fixtureID"];
+        if ([fixtureID isKindOfClass:NSString.class])
+            artworkIDs[session.projectID] = fixtureID;
         NSUInteger index = 0;
         for (NSDictionary* section in project[@"sections"]) {
             if (index++ == 0) {
@@ -44,5 +56,7 @@ static inline BOOL NeonSeedUITestLibrary(NeonLibraryStore* library, NSError** er
             ![session save:error])
             return NO;
     }
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"])
+        [NeonPreferences() setObject:artworkIDs forKey:@"uiFixtureArtworkIDs"];
     return YES;
 }

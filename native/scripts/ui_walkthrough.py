@@ -25,7 +25,7 @@ def main():
     parser.add_argument('output', type=pathlib.Path)
     parser.add_argument('--device')
     parser.add_argument('--fixture', choices=['0', '1', '3', 'many', '24chapters', 'longtext'], default='3')
-    parser.add_argument('--profile', choices=['desktop', 'mobile'], help='Default: desktop on Mac, mobile on iPhone/iPad')
+    parser.add_argument('--profile', choices=['desktop', 'mobile', 'legacy-desktop'], help='Default: desktop on Mac, mobile on iPhone/iPad')
     parser.add_argument('--figma-node', help='Override reviewed canonical editor Figma node ID')
     args = parser.parse_args()
     output = args.output.resolve()

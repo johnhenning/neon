@@ -1,20 +1,23 @@
 {
   "schema": 1,
   "provenance": {
-    "text": "Existing seedPreview prototype text and titles; approved review artwork exists under outputs/neon-deep-review/assets but is not bundled/rendered until Task 4. Null artwork means neutral fallback.",
+    "text": "Canonical approved Library sample titles and explicit fixture identities. Bundled artwork manifest supplies covers; null artwork on other projects means neutral fallback. Text retains existing prototype walkthrough content.",
     "figma_file": "DOW2IVUIDIt2Z4cM4XtM8I"
   },
   "preference_profiles": {
     "desktop": {
       "manuscriptFont": "Literata",
       "manuscriptSize": 20,
-      "manuscriptSpacing": 8,
-      "appearance": 1,
-      "textMeasure": 640
+      "appearance": 1
     },
     "mobile": {
       "manuscriptFont": "Literata",
       "manuscriptSize": 18,
+      "appearance": 1
+    },
+    "legacy-desktop": {
+      "manuscriptFont": "Literata",
+      "manuscriptSize": 20,
       "manuscriptSpacing": 8,
       "appearance": 1,
       "textMeasure": 640
@@ -29,7 +32,7 @@
         {
           "title": "The Quiet Sea",
           "preset": "book",
-          "artwork": null,
+          "artwork": "quiet-sea-hires",
           "sections": [
             {
               "title": "Chapter 1",
@@ -39,7 +42,8 @@
               "title": "Beyond the harbor",
               "text": "By noon the water had drawn back from the old stone steps."
             }
-          ]
+          ],
+          "fixtureID": "neon.fixture.quiet-sea"
         }
       ]
     },
@@ -48,7 +52,7 @@
         {
           "title": "The Quiet Sea",
           "preset": "book",
-          "artwork": null,
+          "artwork": "quiet-sea-hires",
           "sections": [
             {
               "title": "Chapter 1",
@@ -58,29 +62,32 @@
               "title": "Beyond the harbor",
               "text": "By noon the water had drawn back from the old stone steps."
             }
-          ]
+          ],
+          "fixtureID": "neon.fixture.quiet-sea"
         },
         {
-          "title": "The Longer Road",
+          "title": "Stone Paths",
           "preset": "book",
-          "artwork": null,
+          "artwork": "stone-paths-hires",
           "sections": [
             {
               "title": "Chapter 1",
               "text": ""
             }
-          ]
+          ],
+          "fixtureID": "neon.fixture.stone-paths"
         },
         {
-          "title": "North of Here",
+          "title": "The Glass Field",
           "preset": "book",
-          "artwork": null,
+          "artwork": "glass-field-hires",
           "sections": [
             {
               "title": "Chapter 1",
               "text": ""
             }
-          ]
+          ],
+          "fixtureID": "neon.fixture.glass-field"
         }
       ]
     },
@@ -89,7 +96,7 @@
         {
           "title": "The Quiet Sea",
           "preset": "book",
-          "artwork": null,
+          "artwork": "quiet-sea-hires",
           "sections": [
             {
               "title": "Chapter 1",
@@ -99,29 +106,32 @@
               "title": "Beyond the harbor",
               "text": "By noon the water had drawn back from the old stone steps."
             }
-          ]
+          ],
+          "fixtureID": "neon.fixture.quiet-sea"
         },
         {
-          "title": "The Longer Road",
+          "title": "Stone Paths",
           "preset": "book",
-          "artwork": null,
+          "artwork": "stone-paths-hires",
           "sections": [
             {
               "title": "Chapter 1",
               "text": ""
             }
-          ]
+          ],
+          "fixtureID": "neon.fixture.stone-paths"
         },
         {
-          "title": "North of Here",
+          "title": "The Glass Field",
           "preset": "book",
-          "artwork": null,
+          "artwork": "glass-field-hires",
           "sections": [
             {
               "title": "Chapter 1",
               "text": ""
             }
-          ]
+          ],
+          "fixtureID": "neon.fixture.glass-field"
         },
         {
           "title": "Fixture project 04",
@@ -361,7 +371,7 @@
         {
           "title": "The Quiet Sea",
           "preset": "book",
-          "artwork": null,
+          "artwork": "quiet-sea-hires",
           "sections": [
             {
               "title": "Chapter 01",
@@ -459,7 +469,8 @@
               "title": "Chapter 24",
               "text": "Chapter 24 text."
             }
-          ]
+          ],
+          "fixtureID": "neon.fixture.quiet-sea"
         }
       ]
     },
@@ -468,7 +479,7 @@
         {
           "title": "The Quiet Sea — a long project title for narrow window and accessibility coverage",
           "preset": "book",
-          "artwork": null,
+          "artwork": "quiet-sea-hires",
           "sections": [
             {
               "title": "A chapter heading long enough to wrap naturally across several lines in a narrow writing window",
@@ -478,7 +489,8 @@
               "title": "Beyond the harbor",
               "text": "The sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, too, and the day before.\n\nShe tucked the envelope into her coat and began to walk.\n\nThe boards were still damp with night, and each step brought her closer to a question she wasn’t sure she wanted answered."
             }
-          ]
+          ],
+          "fixtureID": "neon.fixture.quiet-sea"
         }
       ]
     }
