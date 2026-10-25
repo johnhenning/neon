@@ -25,6 +25,9 @@ class SelectionTests(unittest.TestCase):
             (['native/scripts/ui_walkthrough.py'], (True, True, True)),
             (['.github/workflows/apple-report.yml'], (True, True, True)),
             (['README.md', 'native/README.md', 'docs/design.md'], (False, False, False)),
+            (['native/apple/README.md', 'native/core/design.md',
+              'native/macos/design.markdown', 'native/ios/README.MD'], (False, False, False)),
+            (['native/resources/fonts/Example-OFL.txt'], (True, True, False)),
         ]
         for paths, expected in cases:
             with self.subTest(paths=paths):

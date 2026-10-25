@@ -9,6 +9,9 @@ import subprocess
 def classify(paths):
     selected = {'macos': False, 'ios': False, 'core': False}
     for path in paths:
+        # Markdown references are documentation even beside platform sources.
+        if pathlib.PurePosixPath(path).suffix.lower() in {'.md', '.markdown'}:
+            continue
         if path.startswith('native/core/'):
             selected.update(macos=True, ios=True, core=True)
         elif path.startswith('native/macos/'):
