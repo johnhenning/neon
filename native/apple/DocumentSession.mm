@@ -307,6 +307,20 @@ bool validHistory(id history, const neon::core::Project& project) {
                ? ns(_project.documents[0].sections[_selected].blocks[0].text)
                : @"";
 }
+- (NSUInteger)projectWordCount {
+    __block NSUInteger count = 0;
+    for (const auto& document : _project.documents)
+        for (const auto& section : document.sections)
+            if (!section.trashed)
+                for (const auto& block : section.blocks)
+                    [ns(block.text)
+                        enumerateSubstringsInRange:NSMakeRange(0, ns(block.text).length)
+                                           options:NSStringEnumerationByWords
+                                        usingBlock:^(NSString*, NSRange, NSRange, BOOL*) {
+                                          ++count;
+                                        }];
+    return count;
+}
 - (NSString*)projectID {
     return ns(_project.id);
 }

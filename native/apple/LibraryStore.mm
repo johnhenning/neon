@@ -50,6 +50,7 @@
             @"trashed" : @NO,
             @"title" : session.title ?: file.lastPathComponent,
             @"sections" : @(session.sections.count),
+            @"wordCount" : session ? @(session.projectWordCount) : NSNull.null,
             @"sectionLabel" : session.preset[@"sectionsLabel"] ?: @"Sections",
             @"preset" : session.preset[@"title"] ?: @"Project",
             @"modified" : modified ?: NSDate.distantPast,

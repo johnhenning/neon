@@ -17,6 +17,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly) NSString* text;
 @property(nonatomic, readonly) BOOL dirty;
 @property(nonatomic, readonly) NSString* projectID;
+@property(nonatomic, readonly) NSUInteger projectWordCount;
 @property(nonatomic, readonly) NSString* title;
 @property(nonatomic, readonly) NSString* sectionTitle;
 @property(nonatomic, readonly) NSString* selectedSectionID;
