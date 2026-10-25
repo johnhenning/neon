@@ -36,7 +36,7 @@ const publish = require('./publish_report.cjs');
     assert.match(posted, /Open screenshot artifact \(1 captures\)/);
     assert.match(posted, /runs\/123\/artifacts\/456/);
     assert.match(posted, /`iPad.png`/);
-    assert.match(posted, /Video recording.*artifacts\/457/);
+    assert.match(posted, /Unverified or failed recording.*artifacts\/457/);
     assert.match(posted, /Download app.*artifacts\/458/);
     assert.doesNotMatch(posted, /raw.githubusercontent|ci-evidence|!\[/);
     // The mock deliberately has no Git mutation API: all evidence is artifact-backed.
@@ -58,11 +58,43 @@ const publish = require('./publish_report.cjs');
       commands.push(args);
       return args[0] === 'api' ? 'test-user\n' : 'https://github.com/test/neon/pull/6#issuecomment-999\n';
     };
+    fs.mkdirSync('evidence/iPad');
+    const resultFile = 'evidence/iPad/result.json';
+    const result = {platform: 'iPad', status: 'failed', ui_status: 'passed',
+      recording_status: 'passed', video_complete: true,
+      media_validation: {duration_seconds: 10, width: 960, height: 720, sampled_frames: 6, changed_transitions: 4}};
+    fs.writeFileSync(resultFile, JSON.stringify(result));
+    fs.writeFileSync('evidence/iPad-walkthrough.mov', 'duplicate raw capture');
     await publish({github, context, core, cli});
+    const preview = fs.readFileSync('platform-report.md', 'utf8');
+    assert.match(preview, /\| iPad \| passed \| \[Validated recording\]/);
+    assert.match(preview, /\*\*iPad: Validated recording\*\*\n\n!\[\]\(evidence\/iPad-walkthrough.mp4\)/);
+    assert.doesNotMatch(preview, /!\[iPad-walkthrough|walkthrough.mov/);
     const comment = commands.find(args => args[0] === 'pr');
     assert.ok(comment.includes('--attach'));
     assert.ok(comment.includes('evidence/iPad.png'));
     assert.ok(comment.includes('--body-file'));
+    assert.ok(comment.includes('evidence/iPad-walkthrough.mp4'));
+    assert.ok(!comment.includes('evidence/iPad-walkthrough.mov'));
+    result.ui_status = 'failed';
+    result.video_complete = false;
+    fs.writeFileSync(resultFile, JSON.stringify(result));
+    await publish({github, context, core, cli});
+    assert.match(fs.readFileSync('platform-report.md', 'utf8'),
+      /iPad: Partial recording — UI walkthrough incomplete/);
+    result.recording_status = 'failed';
+    fs.writeFileSync(resultFile, JSON.stringify(result));
+    commands.length = 0;
+    await publish({github, context, core, cli});
+    assert.ok(!commands.find(args => args[0] === 'pr').includes('evidence/iPad-walkthrough.mp4'));
+    assert.match(fs.readFileSync('platform-report.md', 'utf8'), /Unverified or failed recording/);
+    result.recording_status = 'passed';
+    delete result.media_validation;
+    fs.writeFileSync(resultFile, JSON.stringify(result));
+    commands.length = 0;
+    await publish({github, context, core, cli});
+    assert.ok(!commands.find(args => args[0] === 'pr').includes('evidence/iPad-walkthrough.mp4'),
+      'Legacy captures without validation stay artifact-only');
     assert.equal(posted, undefined, 'Successful attachment publishing needs no bot fallback');
     await publish({github, context, core, cli: () => { throw new Error('test upload failure'); }});
     assert.match(posted, /Inline attachments unavailable/);
