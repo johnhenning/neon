@@ -112,6 +112,25 @@ int main(int argc, const char* argv[]) {
                 require(control.bounds.size.height >= 44 && control.bounds.size.width >= 44,
                         "minimum target bounds");
         }
+        // Reproduce a dark host: the isolated catalog must start light, then switch.
+        window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+        window.contentView = NeonControlStateFixture();
+        require([window.effectiveAppearance.name isEqual:NSAppearanceNameAqua],
+                "catalog starts light on dark host");
+        NSStackView* catalog = (NSStackView*)((NSScrollView*)window.contentView).documentView;
+        NeonButton* themeButton = nil;
+        for (NSView* control in catalog.arrangedSubviews) {
+            if ([control isKindOfClass:NeonButton.class] &&
+                [((NeonButton*)control).title isEqual:@"Change theme"])
+                themeButton = (NeonButton*)control;
+        }
+        require(themeButton != nil, "catalog theme switch reachable");
+        [themeButton performClick:nil];
+        require([window.effectiveAppearance.name isEqual:NSAppearanceNameDarkAqua],
+                "first catalog switch is dark");
+        [themeButton performClick:nil];
+        require([window.effectiveAppearance.name isEqual:NSAppearanceNameAqua],
+                "second catalog switch returns light");
         if (argc > 1) {
             [window setContentSize:NSMakeSize(560, 940)];
             window.contentView = NeonControlStateFixture();

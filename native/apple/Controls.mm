@@ -496,7 +496,22 @@
 - (void)select:(NeonButton*)sender;
 @end
 @implementation NeonControlCatalog
-#if !TARGET_OS_IPHONE
+#if TARGET_OS_IPHONE
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    if (self.window) {
+        self.dark = NO;
+        self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+    }
+}
+#else
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    if (self.window) {
+        self.dark = NO;
+        self.window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+    }
+}
 - (BOOL)isFlipped {
     return YES;
 }
