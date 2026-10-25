@@ -5,7 +5,26 @@ on:
 permissions:
   contents: read
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      macos: ${{ steps.paths.outputs.macos }}
+      ios: ${{ steps.paths.outputs.ios }}
+      core: ${{ steps.paths.outputs.core }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test path classification
+        run: python3 -m unittest discover -s native/scripts -p test_ci_paths.py
+      - name: Select affected platforms
+        id: paths
+        run: python3 native/scripts/ci_paths.py
+
   portable-core:
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -13,6 +32,8 @@ jobs:
       - run: cmake --build build-portable --parallel 2
       - run: ctest --test-dir build-portable --output-on-failure
   macos-native:
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +83,8 @@ jobs:
           path: staged-macOS/Diagnostics/
 
   ios-native:
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
     timeout-minutes: 50
     runs-on: macos-26
     steps:
@@ -111,7 +134,7 @@ jobs:
 
   report-macos:
     needs: macos-native
-    if: ${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ always() && needs.macos-native.result != 'skipped' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       actions: read
       contents: read
@@ -127,7 +150,7 @@ jobs:
 
   report-ios:
     needs: ios-native
-    if: ${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ always() && needs.ios-native.result != 'skipped' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       actions: read
       contents: read
