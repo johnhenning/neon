@@ -33,6 +33,16 @@ class SelectionTests(unittest.TestCase):
             with self.subTest(paths=paths):
                 self.assertEqual(tuple(classify(paths).values()), expected)
 
+    def test_platform_concurrency_is_independent(self):
+        root = pathlib.Path(__file__).resolve().parents[2]
+        workflow = (root / '.github/workflows/native-macos.yml').read_text()
+        self.assertNotIn('concurrency:', workflow.split('jobs:', 1)[0])
+        for job, platform in [('portable-core', 'core'), ('macos-native', 'macos'),
+                              ('ios-native', 'ios')]:
+            section = workflow.split(f'  {job}:', 1)[1].split('    runs-on:', 1)[0]
+            self.assertIn(f'group: native-apple-{platform}-', section)
+            self.assertIn('cancel-in-progress: true', section)
+
     def test_report_jobs_do_not_outlive_cancelled_workflows(self):
         root = pathlib.Path(__file__).resolve().parents[2]
         native = (root / '.github/workflows/native-macos.yml').read_text()

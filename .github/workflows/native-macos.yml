@@ -4,9 +4,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: native-apple-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
 jobs:
   changes:
     runs-on: ubuntu-24.04
@@ -26,6 +23,9 @@ jobs:
         run: python3 native/scripts/ci_paths.py
 
   portable-core:
+    concurrency:
+      group: native-apple-core-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     needs: changes
     if: needs.changes.outputs.core == 'true'
     runs-on: ubuntu-24.04
@@ -35,6 +35,9 @@ jobs:
       - run: cmake --build build-portable --parallel 2
       - run: ctest --test-dir build-portable --output-on-failure
   macos-native:
+    concurrency:
+      group: native-apple-macos-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     needs: changes
     if: needs.changes.outputs.macos == 'true'
     runs-on: macos-26
@@ -86,6 +89,9 @@ jobs:
           path: staged-macOS/Diagnostics/
 
   ios-native:
+    concurrency:
+      group: native-apple-ios-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     needs: changes
     if: needs.changes.outputs.ios == 'true'
     timeout-minutes: 50
