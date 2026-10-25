@@ -1,70 +1,104 @@
-# Editor shell: first implementation slice
+# Native design-parity baseline
 
-Reference file: https://www.figma.com/design/DOW2IVUIDIt2Z4cM4XtM8I
+Reference: [Neon Figma](https://www.figma.com/design/DOW2IVUIDIt2Z4cM4XtM8I).
+Reviewed S05 nodes include Mac light `34:72`, iPhone light `34:81`, and iPad
+portrait light `144:16148`. Native Apple controls own window chrome, text input,
+accessibility, menus and keyboard behavior. This baseline does not establish full
+S05 or application-wide design parity.
 
-High-fidelity context reviewed for S05 Mac light (`34:72`), iPhone light
-(`34:81`), and iPad portrait light (`144:16148`). The native Apple controls remain
-responsible for window chrome, input, accessibility, menus, and keyboard behavior.
+## Implemented contract
 
-Implemented in this slice:
+- Native system UI fonts; Literata is the manuscript default and Source Sans is a
+  separate manuscript choice. Default size is Mac 20 pt/mobile 18 pt, with a 640 pt
+  writing measure. User preferences retain priority. Book headings are left aligned;
+  other preset alignment semantics remain intact.
+- Mobile project title lives in navigation, without a duplicate canvas title or
+  decorative rule. Typography remains available from the action menu.
+- History has a clock command and a separate return command. Search is independently
+  accessible. An unchanged history round trip reuses the current section editor;
+  restore invalidates its cache. Undo is local to an editor/section visit.
+- Mac chapter rows expose a complete accessibility group with separate title and
+  Actions controls. One sidebar toggle moves between expanded/collapsed positions;
+  toolbar changes use identifiers. Geometry assertions compare the complete row.
+- iPad starts with the sidebar hidden below 1000 pt. An explicit sidebar choice
+  persists within that width class; changing layout class reapplies the width policy.
 
-- Native system UI fonts; Source Sans remains a distinct manuscript font choice.
-- Left-aligned chapter kicker/title and a shared maximum writing measure of 640 pt.
-  Default manuscript size is 20 pt on Mac and 18 pt on mobile; saved preferences
-  continue to override defaults. Settings show the matching defaults.
-- Mobile project title moves into navigation; the duplicate canvas title and
-  decorative rule are removed. Typography remains available in the action menu.
-- Version history is a clock command, with a separate return-to-editor command.
-  History search remains independently accessible, including on narrow screens.
-- Returning from history reuses the editor when session, section and text still
-  match. Restore invalidates this cache. Mac also restores the scroll position.
-- iPad starts with the primary pane hidden below 1000 pt. Rotation reapplies the
-  width policy; the navigation control can explicitly show or hide the pane.
-- Mac chapter navigation precedes Library/Trash; chapter rows use smaller native
-  labels and retain inline rename and action menus.
+## Fixtures and reproducible captures
 
-Verification:
-
-- Portable core tests pass (2/2) on Linux.
-- `native/scripts/quality.py` passes with clang-format 19.1.7 and cpplint 2.0.2.
-- Updated XCTest walkthrough covers the history command/return, navigation,
-  history search, edits and save/reopen. Native smoke includes editor identity and
-  selection checks across the history round trip.
-- Apple compilation, smoke, XCTest and screenshot review are pending the branch
-  push and GitHub Actions. Linux checks do not establish native runtime success.
-
-Still required before claiming S05 parity:
-
-- Inspect light/dark Apple captures at matching viewport sizes; refine native
-  toolbar title placement, sidebar dimensions and pinned bottom actions.
-- Match manuscript paragraph/line rhythm without overriding preset semantics or
-  existing user preferences. Let the heading scroll naturally with the manuscript.
-- Finish status bar treatment and adaptive wide-iPad typography.
-- Complete separate full-screen compact navigation and keyboard-visible layouts.
-- Implement the broader project search from NEON-073; this slice adds no placeholder
-  search button. Library/chooser, other screen families and deferred rich content
-  remain separate implementation slices in the October 1 Notion plan.
-
-Task 1 deterministic XCTest captures use the driver, which supplies the required
-fixture JSON, unique preferences suite and platform profile to the tested app:
+Use the XCTest driver to supply fixture JSON, a UUID preferences suite and a named
+profile to the actual CMake-built app:
 
 ```sh
 python3 native/scripts/ui_walkthrough.py macOS /absolute/path/Neon.app /absolute/path/evidence --fixture 3
 python3 native/scripts/ui_walkthrough.py iPhone /absolute/path/Neon.app /absolute/path/evidence --device SIMULATOR_UDID --fixture 24chapters
 ```
 
+Fixture variants are `0`, `1`, `3`, `many` (24 projects), `24chapters` and `longtext`.
 Profiles default to `desktop` (20 pt) on Mac and `mobile` (18 pt) on iPhone/iPad;
-`--profile desktop|mobile` explicitly overrides the default. Each test run installs
-its profile as authoritative values in a unique test-only suite. A raw
-`Neon --ui-testing` launch without the driver's environment is intentionally invalid.
-The fixture is the prior prototype text/titles, not certified exact Figma content.
-Approved artwork exists in `outputs/neon-deep-review/assets` (`quiet-sea`,
-`stone-paths`, `glass-field`, `coast` hires PNGs); it is not bundled or rendered until
-Task 4. Exported XCTest screenshot attachments have manifests; earlier direct
-simulator smoke screenshots are outside this manifest. Source SHA describes the
-checkout, not independently verified build provenance for an arbitrary app path.
+`--profile desktop|mobile` overrides this. UI mode requires the driver's validated
+profile/run environment. All `--smoke-*` modes also use fresh isolated preferences,
+without requiring driver environment. UIKit smoke follows system appearance so
+`ios_smoke.py` controls light/dark captures; Mac smoke switches appearance itself.
+Production preferences and manuscripts are not reset for captures.
 
-All explicit smoke modes also use isolated per-process preferences without driver
-environment. UIKit smoke follows system appearance so `ios_smoke.py` owns the
-simulator light/dark precondition; Mac smoke starts light and switches explicitly.
-XCTest continues to use its named explicit appearance/typography profile.
+Fixtures preserve the prior prototype sample text/titles, not certified exact Figma
+content or stable canonical document/section IDs. Approved `quiet-sea`, `stone-paths`,
+`glass-field` and `coast` hires artwork exists in the review workspace under
+`outputs/neon-deep-review/assets`; it is not bundled/rendered until the Library
+artwork slice. Null fixture artwork explicitly records that gap.
+
+Each XCTest capture attaches measured native window bounds (or null with a reason),
+runtime OS, platform, preference profile, fixture, Figma node and checkout SHA/dirty
+state. Unmapped captures have a null Figma node. Exported screenshot checksums and
+capture metadata appear in `visual-manifest.json`; earlier direct simulator smoke
+screenshots are outside that manifest. Checkout SHA is not independently verified
+build provenance for an arbitrary supplied app path.
+
+Recordings prefer XCTest's bounded real interaction video; mobile can fall back to
+`simctl recordVideo` when XCTest footage is unavailable. Exported video is decoded
+and checked for visual changes. `result.json` separates `ui_status` from
+`recording_status`; usable footage does not establish a passing journey, and a
+passing UI test does not establish valid footage. Overall success requires both.
+
+## Verification and remaining acceptance
+
+Apple builds, core/session tests and native smoke have run successfully during this
+baseline iteration; local CLT checks also cover preference isolation (11 permanent
+CTest cases), formatting/lint and portable boundaries. This supersedes the earlier
+Linux-only compilation caveat. Recorded XCTest results remain candidate-specific.
+Run `40236756993` at candidate `d1d69fb` passed the Mac recorded journey;
+its 78.5-second XCTest video was decoded and visually inspected through typing,
+navigation, History and Settings. Run `40240129933` at `24a8412` passed both iPhone
+and iPad journeys after correcting the manuscript accessibility activation point.
+The prior iPhone default tap hit the surrounding view at the rounded manuscript
+boundary; the new interior point retains UIKit's normal touch/focus behavior and
+the unchanged XCTest assertions. Bounded test-only window traces established the
+cause without recording manuscript text.
+
+Runs `40238182159` and `40240129933` selected only iOS for UIKit-only pushes;
+Mac, core and the Mac report were skipped. Local pipeline coverage passes nine
+Python tests plus the report-publisher checks. These results do not certify
+untested UI variants.
+
+Task 1 still requires exact canonical fixture text/titles/IDs/art, recorded variant
+coverage, matching screenshot inspection and full cross-layout/theme acceptance.
+Explicit caret/scroll preservation, restore-cache invalidation, and iPad sidebar
+choice through Library/reopen/layout changes still need complete regression
+coverage. Do not infer those guarantees from history text persistence alone.
+
+Later staged work includes shared design controls, Library/creation, adaptive
+heading/measure/status treatment, compact navigation and keyboard-safe layouts,
+recovery, search, richer local editing and optional connected capabilities. Verify
+line rhythm and light/dark captures at matching viewports while retaining preset
+semantics and user typography. The baseline does not claim completion of those
+stages or full design parity.
+
+## CI selection
+
+The native workflow classifies the latest validated PR push diff on synchronize
+(and falls back to the whole PR diff when prior history is unavailable). Mac-only
+and UIKit-only paths select their platform; shared adapters/resources/tests and
+build changes select both. Markdown-only changes skip expensive native jobs.
+Manual dispatch selects all targets. Concurrency is per platform/core job, so a new
+Mac-only push does not cancel an independent UIKit validation. Classification tests
+run before selecting jobs; skipped platform jobs are not fresh runtime evidence.
