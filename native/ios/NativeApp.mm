@@ -8,6 +8,82 @@
 #import "UITestFixtures.h"
 #import <UIKit/UIKit.h>
 
+namespace {
+NSURL* focusDiagnosticURL() {
+    NSURL* support = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
+                                                            inDomains:NSUserDomainMask]
+                         .firstObject;
+    return [support URLByAppendingPathComponent:@"neon-focus-diagnostics.log"];
+}
+void recordFocusDiagnostic(NSString* message) {
+    if (![NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"])
+        return;
+    NSFileHandle* file = [NSFileHandle fileHandleForWritingAtPath:focusDiagnosticURL().path];
+    if (!file)
+        return;
+    if ([file seekToEndOfFile] < 65536)
+        [file writeData:[[message stringByAppendingString:@"\n"]
+                            dataUsingEncoding:NSUTF8StringEncoding]];
+    [file closeFile];
+}
+UIView* focusedView(UIView* root) {
+    if (root.isFirstResponder)
+        return root;
+    for (UIView* child in root.subviews) {
+        UIView* match = focusedView(child);
+        if (match)
+            return match;
+    }
+    return nil;
+}
+NSString* focusAncestry(UIView* target) {
+    NSMutableArray<NSString*>* chain = [NSMutableArray array];
+    for (UIView* view = target; view && chain.count < 20; view = view.superview) {
+        NSMutableArray<NSString*>* gestures = [NSMutableArray array];
+        for (UIGestureRecognizer* gesture in view.gestureRecognizers)
+            [gestures addObject:[NSString stringWithFormat:@"%@:state=%ld:enabled=%d:cancels=%d",
+                                                           NSStringFromClass(gesture.class),
+                                                           static_cast<NSInteger>(gesture.state),
+                                                           gesture.enabled,
+                                                           gesture.cancelsTouchesInView]];
+        NSString* textFlags = [view isKindOfClass:UITextView.class]
+                                  ? [NSString stringWithFormat:@":editable=%d:selectable=%d",
+                                                               ((UITextView*)view).editable,
+                                                               ((UITextView*)view).selectable]
+                                  : @"";
+        [chain addObject:[NSString
+                             stringWithFormat:
+                                 @"%@:interaction=%d:hidden=%d:alpha=%.2f:frame=%@%@:gestures=[%@]",
+                                 NSStringFromClass(view.class), view.userInteractionEnabled,
+                                 view.hidden, view.alpha, NSStringFromCGRect(view.frame), textFlags,
+                                 [gestures componentsJoinedByString:@","]]];
+    }
+    return [chain componentsJoinedByString:@" -> "];
+}
+} // namespace
+@interface NeonDiagnosticWindow : UIWindow
+@property(nonatomic) NSUInteger recordedTouches;
+@end
+@implementation NeonDiagnosticWindow
+- (void)sendEvent:(UIEvent*)event {
+    UITouch* touch = event.allTouches.anyObject;
+    BOOL record = touch.phase == UITouchPhaseEnded && self.recordedTouches < 40;
+    if (record) {
+        ++self.recordedTouches;
+        recordFocusDiagnostic(
+            [NSString stringWithFormat:@"touch ended point=%@ target=%@ responder=%@",
+                                       NSStringFromCGPoint([touch locationInView:self]),
+                                       focusAncestry(touch.view),
+                                       NSStringFromClass(focusedView(self).class)]);
+    }
+    [super sendEvent:event];
+    if (record)
+        dispatch_async(dispatch_get_main_queue(), ^{
+          recordFocusDiagnostic([NSString
+              stringWithFormat:@"after dispatch responder=%@", focusAncestry(focusedView(self))]);
+        });
+}
+@end
 // Keep the next simulator failure actionable without changing UIKit focus behavior.
 @interface NeonManuscriptView : UITextView
 @property(nonatomic) NSUInteger focusDiagnosticCount;
@@ -1798,7 +1874,21 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     (void)options;
     if (![scene isKindOfClass:UIWindowScene.class])
         return;
-    self.window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene*)scene];
+    BOOL uiTesting = [NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"];
+    if (uiTesting) {
+        [NSFileManager.defaultManager
+                   createDirectoryAtURL:focusDiagnosticURL().URLByDeletingLastPathComponent
+            withIntermediateDirectories:YES
+                             attributes:nil
+                                  error:nil];
+        [@"Neon test window ready\n" writeToURL:focusDiagnosticURL()
+                                     atomically:YES
+                                       encoding:NSUTF8StringEncoding
+                                          error:nil];
+    }
+    self.window = uiTesting
+                      ? [[NeonDiagnosticWindow alloc] initWithWindowScene:(UIWindowScene*)scene]
+                      : [[UIWindow alloc] initWithWindowScene:(UIWindowScene*)scene];
     self.coordinator = [NeonCoordinator new];
     self.window.rootViewController = self.coordinator;
     [self.window makeKeyAndVisible];

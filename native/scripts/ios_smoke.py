@@ -111,6 +111,18 @@ for family in ['iPhone', 'iPad']:
             for result in (container / 'Library/Application Support').glob('smoke-*.txt'):
                 (output / f'{family}-{result.name}').write_bytes(result.read_bytes())
     finally:
+        # XCTest can redirect NSLog away from unified logging. Preserve the bounded
+        # window event trace from app storage before deleting this simulator.
+        if container is not None:
+            try:
+                current = pathlib.Path(run('get_app_container', udid, bundle, 'data'))
+                trace = current / 'Library/Application Support/neon-focus-diagnostics.log'
+                if trace.exists():
+                    target = output / family / 'focus-window-diagnostics.log'
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(trace.read_bytes())
+            except (OSError, subprocess.SubprocessError) as error:
+                print(f'Could not export focus window diagnostics: {error}', flush=True)
         if booted_here:
             run('shutdown', udid)
             run('delete', udid)
