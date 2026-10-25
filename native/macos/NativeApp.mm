@@ -581,8 +581,12 @@ NSUInteger words(NSString* text) {
             chapter.currentChapter = selected;
             chapter.spacing = 7;
             chapter.edgeInsets = NSEdgeInsetsMake(10, 16, 10, 16);
-            // Expose the title and Actions independently rather than aggregating the row.
-            chapter.accessibilityElement = NO;
+            // A semantic row exposes its full sidebar bounds while retaining both controls.
+            chapter.accessibilityElement = YES;
+            chapter.accessibilityRole = NSAccessibilityGroupRole;
+            chapter.accessibilityIdentifier =
+                [NSString stringWithFormat:@"section-row-%ld", row.tag];
+            chapter.accessibilityLabel = section[@"title"];
             row.accessibilityElement = YES;
             NSButton* more = button(@"Actions", @"ellipsis", self, @selector(chapterActions:));
             more.imagePosition = NSImageOnly;
@@ -592,6 +596,7 @@ NSUInteger words(NSString* text) {
                 [NSString stringWithFormat:@"section-actions-%ld", row.tag];
             more.toolTip = [NSString stringWithFormat:@"Actions for %@", section[@"title"]];
             [chapter addArrangedSubview:more];
+            chapter.accessibilityChildren = @[ row, more ];
             row.accessibilityValue =
                 selected
                     ? [@"Current " stringByAppendingString:self.session.preset[@"sectionLabel"]]
