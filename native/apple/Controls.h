@@ -19,6 +19,9 @@ typedef NS_ENUM(NSInteger, NeonButtonKind) {
 @property(nonatomic) BOOL loading;
 @property(nonatomic, copy) NSString* errorMessage;
 @property(nonatomic) BOOL chosen;
+#if !TARGET_OS_IPHONE
+@property(nonatomic, readonly) BOOL hovered;
+#endif
 @end
 
 // Native editors are public so callers retain delegates, selection and undo/IME APIs.
@@ -57,5 +60,5 @@ UIView* NeonControlStateFixture();
 #else
 NSView* NeonControlStateFixture();
 // Shared full-width sidebar selection and divider treatment.
-void NeonDrawSidebarRow(NSView* view, BOOL selected);
+void NeonDrawSidebarRow(NSView* view, BOOL selected, BOOL hovered);
 #endif

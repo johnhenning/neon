@@ -46,14 +46,39 @@
 @interface NeonChapterRow : NSStackView
 @property(nonatomic) BOOL currentChapter;
 @end
-@implementation NeonChapterRow
+@implementation NeonChapterRow {
+    NSTrackingArea* _rowTracking;
+    BOOL _hovered;
+}
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+    if (_rowTracking)
+        [self removeTrackingArea:_rowTracking];
+    _rowTracking =
+        [[NSTrackingArea alloc] initWithRect:self.bounds
+                                     options:NSTrackingMouseEnteredAndExited |
+                                             NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect
+                                       owner:self
+                                    userInfo:nil];
+    [self addTrackingArea:_rowTracking];
+}
+- (void)mouseEntered:(NSEvent*)event {
+    (void)event;
+    _hovered = YES;
+    self.needsDisplay = YES;
+}
+- (void)mouseExited:(NSEvent*)event {
+    (void)event;
+    _hovered = NO;
+    self.needsDisplay = YES;
+}
 - (void)viewDidChangeEffectiveAppearance {
     [super viewDidChangeEffectiveAppearance];
     self.needsDisplay = YES;
 }
 - (void)drawRect:(NSRect)rect {
     (void)rect;
-    NeonDrawSidebarRow(self, self.currentChapter);
+    NeonDrawSidebarRow(self, self.currentChapter, _hovered);
 }
 @end
 

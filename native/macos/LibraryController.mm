@@ -79,7 +79,7 @@
     if (self.navigationRow) {
         [NeonPanel() setFill];
         NSRectFill(self.bounds);
-        NeonDrawSidebarRow(self, self.chosen);
+        NeonDrawSidebarRow(self, self.chosen, self.hovered);
         NSImage* original = self.image;
         NSImage* tinted = [NSImage imageWithSize:NSMakeSize(20, 20)
                                          flipped:NO

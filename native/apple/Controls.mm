@@ -3,9 +3,12 @@
 #include <string>
 
 #if !TARGET_OS_IPHONE
-void NeonDrawSidebarRow(NSView* view, BOOL selected) {
+void NeonDrawSidebarRow(NSView* view, BOOL selected, BOOL hovered) {
     if (selected) {
         [NeonSelection() setFill];
+        NSRectFill(view.bounds);
+    } else if (hovered) {
+        [[NeonInk() colorWithAlphaComponent:.05] setFill];
         NSRectFill(view.bounds);
     }
     [NeonLine() setFill];
@@ -154,6 +157,9 @@ void NeonDrawSidebarRow(NSView* view, BOOL selected) {
                                        owner:self
                                     userInfo:nil];
     [self addTrackingArea:_tracking];
+}
+- (BOOL)hovered {
+    return _hovered && self.enabled && !self.loading;
 }
 - (void)mouseEntered:(NSEvent*)event {
     (void)event;
