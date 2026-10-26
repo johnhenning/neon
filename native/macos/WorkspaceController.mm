@@ -102,6 +102,7 @@
 @implementation NeonWorkspaceController {
     NeonWorkspaceDocument* _document;
     BOOL _layingOut;
+    NSSize _lastViewportSize;
     NSTextField* _mode;
     NSView* _footer;
 }
@@ -190,6 +191,9 @@
     if (_layingOut || !self.isViewLoaded)
         return;
     _layingOut = YES;
+    NSSize viewportSize = self.view.bounds.size;
+    BOOL resized = !NSEqualSizes(viewportSize, _lastViewportSize);
+    _lastViewportSize = viewportSize;
     CGFloat width = self.view.bounds.size.width, height = self.view.bounds.size.height;
     _scrollView.frame = NSMakeRect(0, 0, width, MAX(0, height - 84));
     _sessionSlot.frame = NSMakeRect(0, MAX(0, height - 84), width, 44);
@@ -225,5 +229,7 @@
     _document.needsDisplay = YES;
     [_scrollView tile];
     _layingOut = NO;
+    if (resized && _editor.window.firstResponder == _editor)
+        [_editor scrollRangeToVisible:_editor.selectedRange];
 }
 @end
