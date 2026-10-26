@@ -53,15 +53,7 @@
 }
 - (void)drawRect:(NSRect)rect {
     (void)rect;
-    if (self.currentChapter) {
-        [NeonSelection() setFill];
-        NSRectFill(self.bounds);
-    }
-    // Continuous, translucent rules remain visible on unselected rows too.
-    [NeonLine() setFill];
-    CGFloat pixel = 1.0 / (self.window.backingScaleFactor ?: 2.0);
-    CGFloat bottom = self.isFlipped ? self.bounds.size.height - pixel : 0;
-    NSRectFill(NSMakeRect(0, bottom, self.bounds.size.width, pixel));
+    NeonDrawSidebarRow(self, self.currentChapter);
 }
 @end
 

@@ -56,4 +56,6 @@ typedef NS_ENUM(NSInteger, NeonButtonKind) {
 UIView* NeonControlStateFixture();
 #else
 NSView* NeonControlStateFixture();
+// Shared full-width sidebar selection and divider treatment.
+void NeonDrawSidebarRow(NSView* view, BOOL selected);
 #endif

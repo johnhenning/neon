@@ -77,18 +77,15 @@
         return;
     }
     if (self.navigationRow) {
-        [(self.chosen ? NeonSelection() : NeonPanel()) setFill];
+        [NeonPanel() setFill];
         NSRectFill(self.bounds);
-        if (self.chosen) {
-            [NeonAccent() setStroke];
-            [[NSBezierPath bezierPathWithRect:NSInsetRect(self.bounds, .5, .5)] stroke];
-        }
+        NeonDrawSidebarRow(self, self.chosen);
         NSImage* original = self.image;
         NSImage* tinted = [NSImage imageWithSize:NSMakeSize(20, 20)
                                          flipped:NO
                                   drawingHandler:^BOOL(NSRect dst) {
                                     [original drawInRect:dst];
-                                    [NeonMuted() setFill];
+                                    [(self.chosen ? NeonAccent() : NeonMuted()) setFill];
                                     NSRectFillUsingOperation(dst, NSCompositingOperationSourceIn);
                                     return YES;
                                   }];
@@ -96,7 +93,9 @@
         [self.title drawInRect:NSMakeRect(44, 14, self.bounds.size.width - 60, 24)
                 withAttributes:@{
                     NSFontAttributeName : NeonUI(14),
-                    NSForegroundColorAttributeName : self.enabled ? NeonInk() : NeonMuted()
+                    NSForegroundColorAttributeName : !self.enabled ? NeonMuted()
+                    : self.chosen                                  ? NeonAccent()
+                                                                   : NeonInk()
                 }];
         return;
     }
