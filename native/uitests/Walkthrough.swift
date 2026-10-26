@@ -185,6 +185,11 @@ final class Walkthrough: XCTestCase {
         let project = app.buttons[projectTitle]
         XCTAssertTrue(project.waitForExistence(timeout: 15))
         capture("01-library")
+        #if !os(macOS)
+        project.press(forDuration: 0.7)
+        XCTAssertTrue(app.buttons["Rename"].waitForExistence(timeout: 5), "Project actions remain available by long press")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap()
+        #endif
         activate(project)
         #if !os(macOS)
         XCTAssertFalse(app.buttons["Move to Trash…"].exists, "A normal tap must open the project, not its context menu")
@@ -305,10 +310,15 @@ final class Walkthrough: XCTestCase {
         activate(historySearch)
         historySearch.typeText("NoSuchRevisionForWalkthrough")
         let revisionPreview = element("Read-only revision preview")
-        XCTAssertTrue((revisionPreview.value as? String ?? "").contains("No versions match this filter."))
+        #if os(macOS)
+        let noMatchesMessage = "No versions match this filter."
+        #else
+        let noMatchesMessage = "No matching revisions."
+        #endif
+        XCTAssertTrue((revisionPreview.value as? String ?? "").contains(noMatchesMessage))
         activate(app.buttons["Search History"])
         XCTAssertFalse(historySearch.isHittable)
-        XCTAssertFalse((revisionPreview.value as? String ?? "").contains("No versions match this filter."))
+        XCTAssertFalse((revisionPreview.value as? String ?? "").contains(noMatchesMessage))
         activate(app.buttons["Back to editor"])
         XCTAssertTrue(element("manuscript").waitForExistence(timeout: 10))
         XCTAssertTrue((element("manuscript").value as? String ?? "").contains("Neon recorded UI persistence check."))
@@ -336,14 +346,13 @@ final class Walkthrough: XCTestCase {
             .contains("History undo scope marker."), "Settings return must preserve the editor draft")
         #else
         chapters()
-        // A narrow iPad sidebar moves native bar items into its overflow menu.
-        if !element("Settings").isHittable {
-            activate(app.buttons["OverflowBarButtonItem"])
-        }
         activate(element("Settings"))
-        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["settings-back"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Settings"].exists)
         capture("07-settings")
-        activate(app.buttons["Done"])
+        activate(app.buttons["settings-back"])
+        XCTAssertTrue(element("manuscript").waitForExistence(timeout: 10))
+        XCTAssertTrue((element("manuscript").value as? String ?? "").contains("Neon recorded UI persistence check."))
         #endif
     }
 }

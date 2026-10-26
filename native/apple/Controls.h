@@ -6,7 +6,8 @@ typedef NS_ENUM(NSInteger, NeonButtonKind) {
     NeonButtonPrimary,
     NeonButtonSecondary,
     NeonButtonQuiet,
-    NeonButtonSelection
+    NeonButtonSelection,
+    NeonButtonFlatRow
 };
 #if TARGET_OS_IPHONE
 @interface NeonButton : UIButton
@@ -14,6 +15,8 @@ typedef NS_ENUM(NSInteger, NeonButtonKind) {
 @interface NeonButton : NSButton
 #endif
 @property(nonatomic) NeonButtonKind kind;
+// Zero selects the style default (15pt flat rows, 14pt other controls).
+@property(nonatomic) CGFloat textSize;
 // Compact desktop actions retain the standard 44pt target on touch platforms.
 @property(nonatomic) BOOL compact;
 @property(nonatomic) BOOL loading;

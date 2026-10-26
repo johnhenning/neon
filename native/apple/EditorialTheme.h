@@ -22,6 +22,7 @@ NeonColor* NeonActionText();
 NeonFont* NeonSerif(CGFloat size);
 NeonFont* NeonUI(CGFloat size);
 NeonFont* NeonUISemibold(CGFloat size);
+NeonFont* NeonUIBold(CGFloat size);
 BOOL NeonReduceMotion();
 BOOL NeonReduceTransparency();
 BOOL NeonGlassEnabled();

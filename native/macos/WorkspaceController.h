@@ -14,6 +14,7 @@
 @property(nonatomic, readonly) NSTextField* guidance;
 @property(nonatomic, readonly) NSTextField* status;
 @property(nonatomic, readonly) NSView* sessionSlot;
+@property(nonatomic) BOOL showsFooter;
 @property(nonatomic) CGFloat textMeasure;
 @property(nonatomic) CGFloat contentInset;
 @property(nonatomic) CGFloat bodyBaselineAdjustment;

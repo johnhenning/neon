@@ -17,7 +17,6 @@ NSUserDefaults* NeonPreferences() {
           // Mobile smoke scripts own simulator appearance; Mac smoke switches explicitly.
           @"appearance" : @(TARGET_OS_IPHONE ? 0 : 1),
           @"manuscriptFont" : @"Literata",
-          @"manuscriptSize" : @(TARGET_OS_IPHONE ? 17 : 19),
           @"textMeasure" : @760
       };
       if (uiTesting) {

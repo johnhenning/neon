@@ -45,33 +45,33 @@ void NeonRegisterFonts() {
     }
 }
 NeonColor* NeonPaper() {
-    return tone(249.0 / 255, 246.0 / 255, 239.0 / 255, 32.0 / 255, 33.0 / 255, 31.0 / 255);
+    return tone(249.0 / 255, 246.0 / 255, 239.0 / 255, 32.0 / 255, 34.0 / 255, 31.0 / 255);
 }
 NeonColor* NeonPanel() {
-    return tone(243.0 / 255, 239.0 / 255, 231.0 / 255, 40.0 / 255, 40.0 / 255, 38.0 / 255);
+    return tone(243.0 / 255, 239.0 / 255, 231.0 / 255, 39.0 / 255, 41.0 / 255, 37.0 / 255);
 }
 NeonColor* NeonInk() {
-    return tone(32.0 / 255, 30.0 / 255, 25.0 / 255, 240.0 / 255, 236.0 / 255, 227.0 / 255);
+    return tone(32.0 / 255, 30.0 / 255, 25.0 / 255, 237.0 / 255, 231.0 / 255, 218.0 / 255);
 }
 NeonColor* NeonMuted() {
-    return tone(99.0 / 255, 94.0 / 255, 84.0 / 255, 178.0 / 255, 176.0 / 255, 166.0 / 255);
+    return tone(99.0 / 255, 94.0 / 255, 84.0 / 255, 184.0 / 255, 181.0 / 255, 170.0 / 255);
 }
 NeonColor* NeonAccent() {
-    return tone(117.0 / 255, 82.0 / 255, 38.0 / 255, 204.0 / 255, 171.0 / 255, 115.0 / 255);
+    return tone(117.0 / 255, 82.0 / 255, 38.0 / 255, 199.0 / 255, 163.0 / 255, 103.0 / 255);
 }
 NeonColor* NeonSelection() {
-    return tone(117.0 / 255, 82.0 / 255, 38.0 / 255, 204.0 / 255, 171.0 / 255, 115.0 / 255, .14,
-                .18);
+    return tone(117.0 / 255, 82.0 / 255, 38.0 / 255, 199.0 / 255, 163.0 / 255, 103.0 / 255, .12,
+                .12);
 }
 NeonColor* NeonLine() {
-    return tone(32.0 / 255, 30.0 / 255, 25.0 / 255, 240.0 / 255, 236.0 / 255, 227.0 / 255, .16,
-                .18);
+    return tone(32.0 / 255, 30.0 / 255, 25.0 / 255, 237.0 / 255, 231.0 / 255, 218.0 / 255,
+                36.0 / 255, 36.0 / 255);
 }
 NeonColor* NeonDanger() {
     return tone(.630, .200, .160, .950, .530, .460);
 }
 NeonColor* NeonActionText() {
-    return tone(1, 1, 1, .120, .120, .110);
+    return NeonPaper();
 }
 NeonFont* NeonSerif(CGFloat size) {
 #if TARGET_OS_IPHONE
@@ -92,6 +92,15 @@ NeonFont* NeonUI(CGFloat size) {
 NeonFont* NeonUISemibold(CGFloat size) {
     NeonFont* font = NeonUI(size);
     NSDictionary* axes = @{@(0x77676874) : @600};
+    return [NeonFont fontWithDescriptor:[font.fontDescriptor fontDescriptorByAddingAttributes:@{
+                         (__bridge NSString*)kCTFontVariationAttribute : axes
+                     }]
+                                   size:size]
+               ?: font;
+}
+NeonFont* NeonUIBold(CGFloat size) {
+    NeonFont* font = NeonUI(size);
+    NSDictionary* axes = @{@(0x77676874) : @700};
     return [NeonFont fontWithDescriptor:[font.fontDescriptor fontDescriptorByAddingAttributes:@{
                          (__bridge NSString*)kCTFontVariationAttribute : axes
                      }]
@@ -215,6 +224,11 @@ static char NeonGlassBackdropKey;
 #if TARGET_OS_IPHONE
 void NeonApplyGlassBackdrop(UIView* view, CGFloat radius) {
     UIView* previous = objc_getAssociatedObject(view, &NeonGlassBackdropKey);
+    if (previous && NeonGlassEnabled()) {
+        previous.frame = view.bounds;
+        previous.layer.cornerRadius = radius;
+        return;
+    }
     [previous removeFromSuperview];
     objc_setAssociatedObject(view, &NeonGlassBackdropKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     view.backgroundColor = NeonPanel();
@@ -237,6 +251,16 @@ void NeonApplyGlassBackdrop(UIView* view, CGFloat radius) {
 #else
 void NeonApplyGlassBackdrop(NSView* view, CGFloat radius) {
     NSView* previous = objc_getAssociatedObject(view, &NeonGlassBackdropKey);
+    if (previous && NeonGlassEnabled()) {
+        previous.frame = view.bounds;
+        view.layer.backgroundColor = NeonPanel().CGColor;
+        if (@available(macOS 26.0, *)) {
+            NeonGlassBackdrop* glass = (NeonGlassBackdrop*)previous;
+            glass.cornerRadius = radius;
+            glass.tintColor = [NeonPanel() colorWithAlphaComponent:.35];
+        }
+        return;
+    }
     [previous removeFromSuperview];
     objc_setAssociatedObject(view, &NeonGlassBackdropKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     view.wantsLayer = YES;

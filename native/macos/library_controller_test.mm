@@ -80,7 +80,7 @@ int main(int argc, const char* argv[]) {
         require([findButton(c.sidebarView, @"Recent").accessibilityLabel isEqual:@"Recent"],
                 "filter accessibility must name its destination");
         require(!findButton(c.view, @"Import a document").enabled, "unavailable import enabled");
-        require(c.sidebarView.frame.size.width == 248, "library sidebar measure incorrect");
+        require(c.sidebarView.frame.size.width == 210, "library sidebar measure incorrect");
         require(c.view.wantsDefaultClipping && c.view.layer.masksToBounds &&
                     c.sidebarView.layer.masksToBounds,
                 "library canvases must clip to their own bounds");
@@ -110,13 +110,13 @@ int main(int argc, const char* argv[]) {
                 "open must carry stable record");
         [c setLibraryView:NeonLibraryList];
         require([c.selectedProjectID isEqual:@"stable-a"], "list switch lost selection");
-        require(findButton(c.view, record[@"title"]).frame.size.height == 34,
+        require(findButton(c.view, record[@"title"]).frame.size.height == 25,
                 "list title must retain serif line height");
         NSUInteger covers = 0;
         for (NSView* v in descendants(c.view))
             if ([NSStringFromClass(v.class) isEqual:@"NeonLibraryCover"]) {
                 covers++;
-                require(v.frame.size.width == 70 && v.frame.size.height == 104,
+                require(v.frame.size.width > 300 && v.frame.size.height == 65,
                         "list cover geometry incorrect");
                 require([v valueForKey:@"image"] == nil,
                         "ordinary document acquired fixture image");
@@ -141,16 +141,29 @@ int main(int argc, const char* argv[]) {
         [c setLibraryView:NeonLibraryGrid];
         for (NSView* v in descendants(c.view))
             if ([NSStringFromClass(v.class) isEqual:@"NeonLibraryCover"])
-                require(fabs(v.frame.size.height / v.frame.size.width - 1.46) < .001,
-                        "grid cover ratio incorrect");
+                require(v.frame.size.height == 220,
+                        "grid cover height must match approved preview");
         NSButton* gridTitle = findButton(c.view, record[@"title"]);
-        NSButton* actions = nil;
+        require(gridTitle.menu.numberOfItems > 0,
+                "quiet grid title must preserve contextual project actions");
+        NSWindow* window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1200, 800)
+                                                       styleMask:NSWindowStyleMaskBorderless
+                                                         backing:NSBackingStoreBuffered
+                                                           defer:NO];
+        window.contentViewController = c;
+        [window setContentSize:NSMakeSize(1200, 800)];
+        [c updateWithRecords:@[ record ] error:nil];
         for (NSView* v in descendants(c.view))
-            if ([v isKindOfClass:NSButton.class] &&
-                [((NSButton*)v).accessibilityLabel hasPrefix:@"Actions for "])
-                actions = (NSButton*)v;
-        require(actions && !NSIntersectsRect(gridTitle.frame, actions.frame),
-                "grid title and action hit areas must not overlap");
+            if ([NSStringFromClass(v.class) isEqual:@"NeonLibraryCover"])
+                require(fabs(v.frame.size.width - (1200 - 64 - 44) / 3.0) < .01,
+                        "wide library must use three columns with32padding and22gaps");
+        [window setContentSize:NSMakeSize(760, 800)];
+        [c updateWithRecords:@[ record ] error:nil];
+        for (NSView* v in descendants(c.view))
+            if ([NSStringFromClass(v.class) isEqual:@"NeonLibraryCover"])
+                require(fabs(v.frame.size.width - (760 - 56 - 22) / 2.0) < .01 &&
+                            v.frame.size.height == 220,
+                        "narrow library must use two columns with28padding and220height");
         puts("Library controller state, action, geometry and fallback checks passed");
     }
 }

@@ -110,6 +110,44 @@ int main() {
                     check(NSMaxX(child.frame) <= 335.5 && NSMaxY(child.frame) <= height.doubleValue,
                           "335-point History controls fit both compact heights");
         }
+        // Exercise the actual overlay controls instead of invoking persistence directly.
+        NSButton* checkpoint = (id)find(history.view, ^BOOL(NSView* view) {
+          return [view isKindOfClass:NSButton.class] &&
+                 [((NSButton*)view).title isEqual:@"＋ Save checkpoint"];
+        });
+        NSUInteger beforeDialog = session.history.count;
+        [checkpoint performClick:nil];
+        NSTextField* name = (id)find(history.view, ^BOOL(NSView* view) {
+          return [view.accessibilityLabel isEqual:@"Checkpoint name"];
+        });
+        NSTextView* note = (id)find(history.view, ^BOOL(NSView* view) {
+          return [view.accessibilityLabel isEqual:@"Note"];
+        });
+        NSButton* submit = (id)find(history.view, ^BOOL(NSView* view) {
+          return [view isKindOfClass:NSButton.class] &&
+                 [((NSButton*)view).title isEqual:@"Save checkpoint"];
+        });
+        check(name && note && submit, "checkpoint overlay exposes editable name and note");
+        [submit performClick:nil];
+        check(session.history.count == beforeDialog && name.window,
+              "empty checkpoint title leaves dialog open without saving");
+        name.stringValue = @"Overlay checkpoint";
+        note.string = @"Multiline note\nSecond line";
+        [submit performClick:nil];
+        check(session.history.count == beforeDialog + 1 && !name.window,
+              "checkpoint overlay saves once and dismisses");
+        BOOL savedNote = NO;
+        for (NSDictionary* entry in session.history)
+            if ([entry[@"note"] isEqual:@"Multiline note\nSecond line"])
+                savedNote = YES;
+        check(savedNote, "checkpoint overlay persists multiline note");
+        [checkpoint performClick:nil];
+        NSButton* cancel = (id)find(history.view, ^BOOL(NSView* view) {
+          return [view isKindOfClass:NSButton.class] && [((NSButton*)view).title isEqual:@"Cancel"];
+        });
+        [cancel performClick:nil];
+        check(session.history.count == beforeDialog + 1 && !cancel.window,
+              "cancel checkpoint leaves history unchanged");
         NeonSettingsController* settings = [NeonSettingsController new];
         __block BOOL browsed = NO;
         settings.showHistory = ^{
@@ -131,13 +169,13 @@ int main() {
             NSScrollView* scroll = (id)find(settings.view, ^BOOL(NSView* view) {
               return [view isKindOfClass:NSScrollView.class];
             });
-            NSStackView* stack = (id)scroll.documentView;
-            for (NSView* child in stack.arrangedSubviews) {
+            NSView* stack = scroll.documentView;
+            for (NSView* child in stack.subviews) {
                 if (![child.identifier isEqual:@"settingsRow"])
                     continue;
-                NSStackView* row = (id)child;
+                NSView* row = child;
                 check(row.bounds.size.width > 0, "settings row laid out");
-                for (NSView* part in row.arrangedSubviews)
+                for (NSView* part in row.subviews)
                     if (!part.hidden)
                         check(NSMaxX(part.frame) <= row.bounds.size.width + 1,
                               "settings controls fit full-width and compact rows");

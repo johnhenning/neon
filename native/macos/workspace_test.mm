@@ -51,7 +51,7 @@ int main() {
         require(editor.frame.size.width <= 372, "Narrow shell retains horizontal insets");
         require(editor.selectedRange.length == 5, "Resize preserves selection");
         require(workspace.sessionSlot.hidden && workspace.scrollView.frame.size.height ==
-                                                    workspace.view.bounds.size.height - 36,
+                                                    workspace.view.bounds.size.height - 36.5,
                 "Inactive writing session leaves only the compact footer");
         NSView* sessionControls = [NSView new];
         [workspace.sessionSlot addSubview:sessionControls];

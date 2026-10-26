@@ -68,10 +68,27 @@ void NeonDrawSidebarRow(NSView* view, BOOL selected, BOOL hovered) {
     config.title = self.loading               ? @"Loading…"
                    : self.errorMessage.length ? self.errorMessage
                                               : [self titleForState:UIControlStateNormal];
-    config.attributedTitle =
-        [[NSAttributedString alloc] initWithString:config.title ?: @""
-                                        attributes:@{NSFontAttributeName : NeonUI(14)}];
-    BOOL quiet = self.kind == NeonButtonQuiet;
+    config.attributedTitle = [[NSAttributedString alloc]
+        initWithString:config.title ?: @""
+            attributes:@{
+                NSFontAttributeName : NeonUI(
+                    self.textSize > 0
+                        ? self.textSize
+                        : ((self.kind == NeonButtonFlatRow || self.kind == NeonButtonPrimary) ? 15
+                                                                                              : 14))
+            }];
+    UIFont* resolvedFont = NeonUI(
+        self.textSize > 0
+            ? self.textSize
+            : ((self.kind == NeonButtonFlatRow || self.kind == NeonButtonPrimary) ? 15 : 14));
+    config.titleTextAttributesTransformer = ^NSDictionary*(NSDictionary* attributes) {
+      NSMutableDictionary* result = [attributes mutableCopy];
+      result[NSFontAttributeName] = resolvedFont;
+      return result;
+    };
+    self.titleLabel.numberOfLines = 1;
+    BOOL flat = self.kind == NeonButtonFlatRow;
+    BOOL quiet = self.kind == NeonButtonQuiet || flat;
     config.baseBackgroundColor =
         quiet && !self.errorMessage.length ? ((_hovered || self.highlighted) && self.enabled
                                                   ? [NeonInk() colorWithAlphaComponent:.05]
@@ -85,13 +102,21 @@ void NeonDrawSidebarRow(NSView* view, BOOL selected, BOOL hovered) {
                                  : (self.kind == NeonButtonPrimary || self.errorMessage.length)
                                      ? NeonActionText()
                                      : NeonInk();
-    config.background.cornerRadius = quiet ? NeonQuietControlRadius : NeonControlRadius;
+    config.background.cornerRadius = flat                             ? 0
+                                     : self.kind == NeonButtonPrimary ? 5
+                                     : quiet                          ? NeonQuietControlRadius
+                                                                      : NeonControlRadius;
     config.background.strokeColor = self.kind == NeonButtonSelection
                                         ? (self.chosen ? NeonAccent() : NeonLine())
                                         : UIColor.clearColor;
     config.background.strokeWidth = self.kind == NeonButtonSelection ? 1 : 0;
-    config.contentInsets = quiet ? NSDirectionalEdgeInsetsMake(4, 8, 4, 8)
-                                 : NSDirectionalEdgeInsetsMake(12, 12, 12, 12);
+    config.contentInsets = flat    ? NSDirectionalEdgeInsetsMake(12, 20, 12, 20)
+                           : quiet ? NSDirectionalEdgeInsetsMake(4, 8, 4, 8)
+                           : self.kind == NeonButtonPrimary
+                               ? NSDirectionalEdgeInsetsMake(8, 16, 8, 16)
+                               : NSDirectionalEdgeInsetsMake(12, 12, 12, 12);
+    if (flat)
+        self.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
     config.showsActivityIndicator = self.loading;
     self.configuration = config;
     if (self.focused) {
@@ -99,7 +124,7 @@ void NeonDrawSidebarRow(NSView* view, BOOL selected, BOOL hovered) {
         config.background.strokeWidth = quiet ? 2 : 3;
         self.configuration = config;
     }
-    self.alpha = !self.enabled ? .65 : self.highlighted ? .75 : _hovered ? .90 : 1;
+    self.alpha = !self.enabled ? .65 : flat ? 1 : self.highlighted ? .75 : _hovered ? .90 : 1;
     self.accessibilityValue = self.loading ? @"Loading"
                               : self.kind == NeonButtonSelection
                                   ? (self.chosen ? @"Selected" : @"Not selected")
@@ -138,7 +163,14 @@ void NeonDrawSidebarRow(NSView* view, BOOL selected, BOOL hovered) {
 - (NSSize)intrinsicContentSize {
     return NSMakeSize(
         MAX(self.compact ? 28 : 44,
-            [self.title sizeWithAttributes:@{NSFontAttributeName : NeonUI(14)}].width +
+            [self.title sizeWithAttributes:@{
+                NSFontAttributeName : NeonUI(
+                    self.textSize > 0
+                        ? self.textSize
+                        : ((self.kind == NeonButtonFlatRow || self.kind == NeonButtonPrimary) ? 15
+                                                                                              : 14))
+            }]
+                    .width +
                 (self.compact ? 16 : 24)),
         self.compact ? NeonCompactControlHeight : NeonMinimumTouchTarget);
 }
@@ -190,7 +222,8 @@ void NeonDrawSidebarRow(NSView* view, BOOL selected, BOOL hovered) {
 }
 - (void)drawRect:(NSRect)rect {
     (void)rect;
-    BOOL quiet = self.kind == NeonButtonQuiet;
+    BOOL flat = self.kind == NeonButtonFlatRow;
+    BOOL quiet = self.kind == NeonButtonQuiet || flat;
     NSColor* fill =
         quiet && !self.errorMessage.length ? ((_hovered || self.highlighted) && self.enabled
                                                   ? [NeonInk() colorWithAlphaComponent:.05]
@@ -200,13 +233,21 @@ void NeonDrawSidebarRow(NSView* view, BOOL selected, BOOL hovered) {
         : self.kind == NeonButtonPrimary   ? NeonAccent()
         : self.kind == NeonButtonSelection ? (self.chosen ? NeonSelection() : NeonPaper())
                                            : NeonPanel();
-    CGFloat opacity = !self.enabled ? .65 : self.highlighted ? .75 : _hovered ? .90 : 1;
+    CGFloat opacity = !self.enabled ? .65 : flat ? 1 : self.highlighted ? .75 : _hovered ? .90 : 1;
     self.alphaValue = opacity;
     NSBezierPath* path = [NSBezierPath
-        bezierPathWithRoundedRect:NSInsetRect(self.bounds, self.compact ? 0 : 2,
-                                              self.compact ? 0 : 2)
-                          xRadius:self.compact ? NeonQuietControlRadius : NeonControlRadius
-                          yRadius:self.compact ? NeonQuietControlRadius : NeonControlRadius];
+        bezierPathWithRoundedRect:NSInsetRect(
+                                      self.bounds,
+                                      (self.compact || flat || self.kind == NeonButtonPrimary) ? 0
+                                                                                               : 2,
+                                      (self.compact || flat || self.kind == NeonButtonPrimary) ? 0
+                                                                                               : 2)
+                          xRadius:flat           ? 0
+                                  : self.compact ? NeonQuietControlRadius
+                                                 : NeonControlRadius
+                          yRadius:flat           ? 0
+                                  : self.compact ? NeonQuietControlRadius
+                                                 : NeonControlRadius];
     [fill setFill];
     [path fill];
     if (self.kind == NeonButtonSelection) {
@@ -227,13 +268,17 @@ void NeonDrawSidebarRow(NSView* view, BOOL selected, BOOL hovered) {
                      : self.errorMessage.length ? self.errorMessage
                                                 : self.title;
     NSDictionary* attributes = @{
-        NSFontAttributeName : NeonUI(14),
+        NSFontAttributeName : NeonUI(
+            self.textSize > 0
+                ? self.textSize
+                : ((self.kind == NeonButtonFlatRow || self.kind == NeonButtonPrimary) ? 15 : 14)),
         NSForegroundColorAttributeName : !self.enabled                 ? NeonMuted()
         : (self.kind == NeonButtonPrimary || self.errorMessage.length) ? NeonActionText()
                                                                        : NeonInk()
     };
     NSSize size = [text sizeWithAttributes:attributes];
-    [text drawAtPoint:NSMakePoint(self.alignment == NSTextAlignmentLeft
+    [text drawAtPoint:NSMakePoint(flat ? 20
+                                  : self.alignment == NSTextAlignmentLeft
                                       ? 8
                                       : (self.bounds.size.width - size.width) / 2,
                                   (self.bounds.size.height - size.height) / 2)
@@ -251,6 +296,11 @@ void NeonDrawSidebarRow(NSView* view, BOOL selected, BOOL hovered) {
     _minimumWidth.constant = value ? 28 : NeonMinimumTouchTarget;
     [self invalidateIntrinsicContentSize];
 #endif
+    [self refresh];
+}
+- (void)setTextSize:(CGFloat)value {
+    _textSize = value;
+    [self invalidateIntrinsicContentSize];
     [self refresh];
 }
 - (void)setKind:(NeonButtonKind)value {

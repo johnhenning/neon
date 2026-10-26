@@ -16,18 +16,18 @@
 - (NSSize)intrinsicContentSize {
     CGFloat width = MAX(1, self.bounds.size.width);
     NSSize size = [self.cell cellSizeForBounds:NSMakeRect(0, 0, width, CGFLOAT_MAX)];
-    return NSMakeSize(NSViewNoIntrinsicMetric, MAX(44, ceil(size.height)));
+    return NSMakeSize(NSViewNoIntrinsicMetric, MAX(42, ceil(size.height)));
 }
 - (void)setStringValue:(NSString*)value {
     [super setStringValue:value];
     NSMutableParagraphStyle* paragraph = [NSMutableParagraphStyle new];
-    paragraph.minimumLineHeight = 44;
-    paragraph.maximumLineHeight = 44;
+    paragraph.minimumLineHeight = 42;
+    paragraph.maximumLineHeight = 42;
     paragraph.lineBreakMode = NSLineBreakByWordWrapping;
     self.attributedStringValue =
         [[NSAttributedString alloc] initWithString:value
                                         attributes:@{
-                                            NSFontAttributeName : self.font ?: NeonSerif(32),
+                                            NSFontAttributeName : self.font ?: NeonSerif(30),
                                             NSForegroundColorAttributeName : NeonInk(),
                                             NSParagraphStyleAttributeName : paragraph
                                         }];
@@ -112,6 +112,7 @@
         return nil;
     _editor = editor;
     _textMeasure = 760;
+    _showsFooter = YES;
     _contentInset = 48;
     return self;
 }
@@ -135,7 +136,7 @@
     _scrollView.documentView = _document;
     [root addSubview:_scrollView];
     _heading = [NeonChapterHeading new];
-    _heading.font = NeonSerif(32);
+    _heading.font = NeonSerif(30);
     _kicker = [NSTextField labelWithString:@""];
     _kicker.font = NeonUI(13);
     _kicker.textColor = NeonAccent();
@@ -184,6 +185,10 @@
     _bodyBaselineAdjustment = value;
     [self refreshLayout];
 }
+- (void)setShowsFooter:(BOOL)value {
+    _showsFooter = value;
+    [self refreshLayout];
+}
 - (void)setContentInset:(CGFloat)inset {
     _contentInset = inset;
     [self refreshLayout];
@@ -201,11 +206,13 @@
     _lastViewportSize = viewportSize;
     CGFloat width = self.view.bounds.size.width, height = self.view.bounds.size.height;
     CGFloat sessionHeight = _sessionSlot.subviews.count ? 44 : 0;
-    CGFloat bodyHeight = MAX(0, height - 36 - sessionHeight);
+    CGFloat footerHeight = self.showsFooter ? 36.5 : 0;
+    _footer.hidden = !self.showsFooter;
+    CGFloat bodyHeight = MAX(0, height - footerHeight - sessionHeight);
     _scrollView.frame = NSMakeRect(0, 0, width, bodyHeight);
     _sessionSlot.hidden = sessionHeight == 0;
     _sessionSlot.frame = NSMakeRect(0, bodyHeight, width, sessionHeight);
-    _footer.frame = NSMakeRect(0, MAX(0, height - 36), width, 36);
+    _footer.frame = NSMakeRect(0, MAX(0, height - footerHeight), width, footerHeight);
     _status.frame = NSMakeRect(12, 8, MAX(0, width - 100), 20);
     _mode.frame = NSMakeRect(MAX(12, width - 62), 8, 50, 20);
     CGFloat viewport = _scrollView.contentSize.width;
@@ -213,11 +220,11 @@
     CGFloat measure = MAX(1, MIN(_textMeasure, viewport - inset * 2));
     CGFloat x = inset, y = 36;
     _kicker.frame = NSMakeRect(x - 2, y, measure + 4, 18);
-    y += 42;
-    _heading.frame = NSMakeRect(x - 2, y + 2, measure + 4, 44);
+    y += 18 + 20;
+    _heading.frame = NSMakeRect(x - 2, y, measure + 4, 42);
     CGFloat headingHeight = _heading.intrinsicContentSize.height;
-    _heading.frame = NSMakeRect(x - 2, y + 2, measure + 4, headingHeight);
-    y += headingHeight + 24 + self.bodyBaselineAdjustment;
+    _heading.frame = NSMakeRect(x - 2, y, measure + 4, headingHeight);
+    y += headingHeight + 28 + self.bodyBaselineAdjustment;
     if (!_guidance.hidden && _guidance.stringValue.length) {
         _guidance.frame = NSMakeRect(x, y, measure, 100);
         CGFloat guidanceHeight =

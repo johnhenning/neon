@@ -22,6 +22,16 @@ static void require(BOOL value, const char* message) {
 int main(int argc, const char* argv[]) {
     @autoreleasepool {
         [NSApplication sharedApplication];
+        NSView* glassSurface = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 300, 56)];
+        NeonApplyGlassBackdrop(glassSurface, 0);
+        NSView* originalGlass = glassSurface.subviews.firstObject;
+        NeonApplyGlassBackdrop(glassSurface, 0);
+        require(glassSurface.subviews.firstObject == originalGlass,
+                "layout retains glass identity instead of flashing a replacement");
+        glassSurface.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+        NeonApplyGlassBackdrop(glassSurface, 0);
+        require(glassSurface.subviews.firstObject == originalGlass,
+                "appearance retains glass identity");
         Counter* counter = [Counter new];
         NSWindow* window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1000, 840)
                                                        styleMask:NSWindowStyleMaskTitled

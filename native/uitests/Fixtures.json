@@ -21,6 +21,11 @@
       "manuscriptSpacing": 8,
       "appearance": 1,
       "textMeasure": 640
+    },
+    "approved-preview": {
+      "manuscriptFont": "Literata",
+      "appearance": 1,
+      "textMeasure": 760
     }
   },
   "variants": {
@@ -567,6 +572,49 @@
         "figmaNode": "34:72",
         "paragraphSeparator": "single newline"
       }
+    },
+    "approved-preview": {
+      "projects": [
+        {
+          "title": "The Quiet Sea",
+          "preset": "book",
+          "fixtureID": "neon.fixture.quiet-sea",
+          "sections": [
+            {
+              "title": "The departure",
+              "text": "The sea was quiet that morning. Mara stood at the end of the pier, holding a letter she had promised herself never to open.\n\nBeyond the harbor, a single light moved through the fog. It had been there yesterday, and the day before.\n\nShe tucked the letter into her coat. Some journeys began long before the first step."
+            },
+            {
+              "title": "A map of silence",
+              "text": "By morning, the rain had drawn a new coastline on the window. Mara watched the last drops gather at the edge of the glass, each one holding a smaller version of the room.\n\nShe unfolded the map on the kitchen table. There were no roads where she was going, only a pale line that followed the river north.\n\nOutside, the town was beginning to wake. Somewhere a gate closed, and the sound carried farther than it should have."
+            },
+            {
+              "title": "At the water’s edge",
+              "text": "At the water’s edge, the path narrowed to a line of pale stones. She followed it until the harbor was out of sight.\n\nThe letter was still in her pocket. She could feel the fold through the cloth, a small reminder of the distance left to travel.\n\nFor the first time that morning, she stopped looking back."
+            }
+          ]
+        },
+        {
+          "title": "North of Here",
+          "preset": "book",
+          "sections": [
+            {
+              "title": "Opening",
+              "text": ""
+            }
+          ]
+        },
+        {
+          "title": "The Long Way Home",
+          "preset": "book",
+          "sections": [
+            {
+              "title": "Opening",
+              "text": ""
+            }
+          ]
+        }
+      ]
     }
   }
 }

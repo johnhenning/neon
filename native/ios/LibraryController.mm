@@ -35,9 +35,11 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
     value.titleLineBreakMode = NSLineBreakByTruncatingTail;
     value.titleTextAttributesTransformer = ^NSDictionary*(NSDictionary* incoming) {
       NSMutableDictionary* attributes = [incoming mutableCopy];
-      attributes[NSFontAttributeName] = NeonUI(14);
+      attributes[NSFontAttributeName] = NeonUI(15);
       return attributes;
     };
+    if (self.kind == NeonButtonPrimary)
+        value.contentInsets = NSDirectionalEdgeInsetsMake(8, 16, 8, 16);
     if ([[self titleForState:UIControlStateNormal] isEqual:@"•••"])
         value.contentInsets = NSDirectionalEdgeInsetsZero;
     [super setConfiguration:value];
@@ -57,12 +59,19 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
 - (void)setConfiguration:(UIButtonConfiguration*)configuration {
     UIButtonConfiguration* value = [configuration copy];
     value.background.cornerRadius = 0;
-    value.contentInsets = NSDirectionalEdgeInsetsMake(10, 20, 10, 20);
-    if (self.navigationImage) {
-        value.image = self.navigationImage;
-        value.imagePadding = 8;
-        value.imagePlacement = NSDirectionalRectEdgeLeading;
-    }
+    value.contentInsets = NSDirectionalEdgeInsetsMake(12, 20, 12, 20);
+    value.background.strokeWidth = 0;
+    value.background.backgroundColor =
+        self.chosen ? [NeonAccent() colorWithAlphaComponent:0.12] : UIColor.clearColor;
+    BOOL selected = self.chosen;
+    value.baseForegroundColor = selected ? NeonAccent() : NeonInk();
+    value.titleTextAttributesTransformer = ^NSDictionary*(NSDictionary* incoming) {
+      NSMutableDictionary* attributes = [incoming mutableCopy];
+      attributes[NSFontAttributeName] = selected ? NeonUISemibold(14) : NeonUI(14);
+      attributes[NSForegroundColorAttributeName] = selected ? NeonAccent() : NeonInk();
+      return attributes;
+    };
+    value.image = nil;
     [super setConfiguration:value];
 }
 @end
@@ -104,7 +113,8 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
     [super setConfiguration:value];
 }
 @end
-@interface NeonLibraryController ()
+@interface NeonLibraryController () <UIContextMenuInteractionDelegate>
+@property(nonatomic) NSMapTable<UIView*, NSDictionary*>* contextRecords;
 @property(nonatomic) NeonLibraryQuery* query;
 @property(nonatomic) NeonLibraryPresentation* presentation;
 @property(nonatomic) NSArray<NSDictionary*>* source;
@@ -114,6 +124,9 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
 @property(nonatomic) CGFloat renderedWidth;
 @end
 @implementation NeonLibraryController
+- (UIView*)statusFooter {
+    return self.footer;
+}
 + (UIImage*)navigationImageForFilter:(NeonLibraryFilter)filter {
     NSArray* names = @[ @"library", @"recent", @"favorites", @"device", @"trash" ];
     if (filter < NeonLibraryAll || filter > NeonLibraryTrash)
@@ -145,6 +158,7 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
     if ((self = [super init])) {
         _query = [NeonLibraryQuery new];
         _fixtureIDs = @{};
+        _contextRecords = [NSMapTable weakToStrongObjectsMapTable];
     }
     return self;
 }
@@ -160,8 +174,11 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+    CGFloat viewport = self.parentViewController ? self.parentViewController.view.bounds.size.width
+                                                 : self.view.bounds.size.width;
+    CGFloat statusHeight = viewport <= 600 ? 36 : 36.5;
     if (self.renderedWidth != self.view.bounds.size.width ||
-        self.footer.frame.origin.y != self.view.bounds.size.height - 40)
+        self.scroll.frame.size.height != MAX(0, self.view.bounds.size.height - statusHeight))
         [self render];
 }
 - (void)traitCollectionDidChange:(UITraitCollection*)previous {
@@ -191,6 +208,21 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
     self.query.view = view;
     [self.query savePreferences];
     [self render];
+}
+- (UIContextMenuConfiguration*)contextMenuInteraction:(UIContextMenuInteraction*)interaction
+                       configurationForMenuAtLocation:(CGPoint)location {
+    (void)location;
+    NSDictionary* record = [self.contextRecords objectForKey:interaction.view];
+    if (!record)
+        return nil;
+    __weak NeonLibraryController* weak = self;
+    return [UIContextMenuConfiguration
+        configurationWithIdentifier:record[@"projectID"]
+                    previewProvider:nil
+                     actionProvider:^UIMenu*(NSArray<UIMenuElement*>* suggested) {
+                       (void)suggested;
+                       return [weak menu:record];
+                     }];
 }
 - (UIMenu*)menu:(NSDictionary*)record {
     __weak NeonLibraryController* weak = self;
@@ -277,32 +309,50 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
     self.selectedProjectID = self.presentation.selectedProjectID;
     CGFloat w = self.view.bounds.size.width, h = self.view.bounds.size.height;
     self.renderedWidth = w;
-    self.scroll.frame = CGRectMake(0, 0, w, MAX(0, h - 40));
-    self.footer.frame = CGRectMake(0, MAX(0, h - 40), w, 40);
+    CGFloat statusHeight =
+        (self.parentViewController ? self.parentViewController.view.bounds.size.width : w) <= 600
+            ? 36
+            : 36.5;
+    self.scroll.frame = CGRectMake(0, 0, w, MAX(0, h - statusHeight));
+    CGFloat footerWidth =
+        self.footer.superview == self.view ? w : self.footer.superview.bounds.size.width;
+    CGFloat footerBottom =
+        self.footer.superview.bounds.size.height -
+        (self.footer.superview == self.view ? 0 : self.footer.superview.safeAreaInsets.bottom);
+    self.footer.frame =
+        CGRectMake(0, MAX(0, footerBottom - statusHeight), footerWidth, statusHeight);
     self.view.backgroundColor = NeonPaper();
     self.footer.backgroundColor = NeonPanel();
     for (UIView* child in self.scroll.subviews.copy)
         [child removeFromSuperview];
     for (UIView* child in self.footer.subviews.copy)
         [child removeFromSuperview];
-    BOOL narrow = w <= 600;
-    CGFloat x = narrow ? 20 : 32, m = MAX(0, w - 2 * x);
+    CGFloat viewportWidth =
+        self.parentViewController ? self.parentViewController.view.bounds.size.width : w;
+    BOOL narrow = viewportWidth <= 600;
+    BOOL medium = viewportWidth > 600 && viewportWidth <= 850;
+    CGFloat x = narrow ? 20 : (medium ? 28 : 32), m = MAX(0, w - 2 * x);
+    CGFloat top = narrow ? 24 : (medium ? 28 : 32);
     __weak NeonLibraryController* weak = self;
     label(self.scroll, @"Library", NeonSerif(narrow ? 28 : 32), NeonInk(),
-          CGRectMake(x, 24, m, 42));
-    label(self.scroll, @"A place for your next idea.", NeonUI(14), NeonMuted(),
-          CGRectMake(x, 68, m, 24));
-    CGFloat commandsY = narrow || m < 620 ? 110 : 32;
-    CGFloat commandsX = narrow || m < 620 ? x : x + m - 240;
+          CGRectMake(x, top, m, narrow ? 41.5 : 47.5));
+    label(self.scroll, @"A place for your next idea.", NeonUI(15), NeonMuted(),
+          CGRectMake(x, top + (narrow ? 41.5 : 47.5) + 8, m, 21.5));
+    CGFloat commandsY = top + (narrow ? 89 : 18.75);
+    CGFloat commandsX = narrow ? x : (medium ? x + 180.3359375 : x + m - 191.4609375);
     button(self.scroll, self.query.view == NeonLibraryGrid ? @"List view" : @"Grid view",
-           CGRectMake(commandsX, commandsY, 100, 44), ^{
+           CGRectMake(commandsX, commandsY, 78.0390625, 39.5), ^{
              [weak setLibraryView:weak.query.view == NeonLibraryGrid ? NeonLibraryList
                                                                      : NeonLibraryGrid];
            });
-    button(self.scroll, @"New project", CGRectMake(x + m - 132, commandsY, 132, 44), ^{
-      [weak send:@"new" record:nil];
-    }).kind = NeonButtonPrimary;
-    CGFloat y = commandsY > 40 ? 176 : 120;
+    button(self.scroll, @"New project",
+           CGRectMake(narrow ? x + m - 107.421875 : commandsX + 84.0390625, commandsY + 1,
+                      107.421875, 37.5),
+           ^{
+             [weak send:@"new" record:nil];
+           })
+        .kind = NeonButtonPrimary;
+    CGFloat y = top + (narrow ? 128.5 + 22 : 77 + 28);
     if (self.presentation.error) {
         label(self.scroll, @"Unable to load projects", NeonSerif(24), NeonInk(),
               CGRectMake(x, y, m, 44));
@@ -335,46 +385,41 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
         }
         y += 440;
     } else {
-        NSInteger columns = m >= 700 ? 3 : 2;
+        NSInteger columns = viewportWidth > 850 ? 3 : 2;
         CGFloat gap = narrow ? 14 : 22;
         CGFloat tile = (m - gap * (columns - 1)) / columns;
         NSUInteger i = 0;
         for (NSDictionary* r in self.presentation.records) {
             BOOL list = self.query.view == NeonLibraryList;
             CGFloat rx = list ? x : x + (i % columns) * (tile + gap),
-                    ry = y + (list ? i * 144 : (i / columns) * ((narrow ? 170 : 220) + 86)),
-                    cw = list ? 70 : tile, ch = list ? 104 : (narrow ? 170 : 220);
-            if (list) {
-                UIView* panel = [[UIView alloc] initWithFrame:CGRectMake(rx, ry, m, 128)];
-                panel.backgroundColor = NeonPanel();
-                panel.layer.cornerRadius = 12;
-                [self.scroll addSubview:panel];
-                rx += 12;
-                ry += 12;
-            }
+                    ry = y + (list ? i * 151 : (i / columns) * (narrow ? 246.5 : 301.5)),
+                    cw = list ? m : tile, ch = list ? 65 : (narrow ? 170 : 220);
             UIView* cover = [[UIView alloc] initWithFrame:CGRectMake(rx, ry, cw, ch)];
             cover.backgroundColor = NeonPanel();
-            cover.layer.cornerRadius = 8;
+            cover.layer.cornerRadius = 0;
+            cover.layer.borderWidth = 1;
+            cover.layer.borderColor = [NeonInk() colorWithAlphaComponent:0.14].CGColor;
             cover.clipsToBounds = YES;
             NSString* fixture = self.fixtureIDs[r[@"projectID"]] ?: r[@"fixtureID"];
-            NSString* stem = fixture ? [NeonLibraryPresentation artworkForFixtureID:fixture] : nil;
-            NSString* path = stem ? [[NSBundle mainBundle] pathForResource:stem
-                                                                    ofType:@"png"
-                                                               inDirectory:@"artwork"]
-                                  : nil;
-            UIImage* image = path ? [UIImage imageWithContentsOfFile:path] : nil;
-            UIImageView* artwork = [[UIImageView alloc]
-                initWithImage:image ?: [UIImage systemImageNamed:@"book.closed"]];
-            artwork.contentMode =
-                image ? UIViewContentModeScaleAspectFill : UIViewContentModeCenter;
-            artwork.tintColor = NeonMuted();
-            artwork.frame = cover.bounds;
-            artwork.autoresizingMask =
+            NSString* titleText = [r[@"title"] length] ? r[@"title"] : @"Untitled";
+            NSString* initialText = [titleText hasPrefix:@"The "] && titleText.length > 4
+                                        ? [titleText substringFromIndex:4]
+                                        : titleText;
+            NSString* glyph =
+                [fixture isEqual:@"neon.fixture.quiet-sea"] || [titleText isEqual:@"The Quiet Sea"]
+                    ? @"≈"
+                    : [initialText
+                          substringWithRange:[initialText
+                                                 rangeOfComposedCharacterSequenceAtIndex:0]];
+            UILabel* placeholder = label(cover, glyph, NeonSerif(28), NeonAccent(), cover.bounds);
+            placeholder.textAlignment = NSTextAlignmentCenter;
+            placeholder.autoresizingMask =
                 UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-            [cover addSubview:artwork];
             [self.scroll addSubview:cover];
             UIButton* open = [UIButton buttonWithType:UIButtonTypeCustom];
             open.frame = cover.frame;
+            [self.contextRecords setObject:r forKey:open];
+            [open addInteraction:[[UIContextMenuInteraction alloc] initWithDelegate:self]];
             open.accessibilityLabel = [@"Open " stringByAppendingString:r[@"title"] ?: @"Untitled"];
             [open addAction:[UIAction actionWithHandler:^(__kindof UIAction* a) {
                     (void)a;
@@ -382,11 +427,10 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
                   }]
                 forControlEvents:UIControlEventTouchUpInside];
             [self.scroll addSubview:open];
-            CGFloat tx = list ? rx + 86 : rx, ty = list ? ry : ry + ch + 8,
-                    tw = list ? m - 110 : tile;
-            NeonLibraryTitleButton* title =
-                [[NeonLibraryTitleButton alloc] initWithFrame:CGRectMake(tx, ty, tw, 34)];
-            title.editorialFont = list ? NeonSerif(24) : NeonSerif(narrow ? 15 : 17);
+            CGFloat tx = rx, ty = ry + ch + 13, tw = list ? m : tile;
+            NeonLibraryTitleButton* title = [[NeonLibraryTitleButton alloc]
+                initWithFrame:CGRectMake(tx, ty, tw, narrow ? 22 : 25)];
+            title.editorialFont = NeonSerif(narrow ? 15 : 17);
             [title addAction:[UIAction actionWithHandler:^(__kindof UIAction* action) {
                      (void)action;
                      [weak send:@"open" record:r];
@@ -409,28 +453,45 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
                                                      dateStyle:NSDateFormatterMediumStyle
                                                      timeStyle:NSDateFormatterNoStyle]
                     : @"Unknown date";
+            if ([date isKindOfClass:NSDate.class]) {
+                if ([NSCalendar.currentCalendar isDateInToday:date])
+                    edited = @"Edited today";
+                else if ([NSCalendar.currentCalendar isDateInYesterday:date])
+                    edited = @"Edited yesterday";
+                else
+                    edited = [@"Edited " stringByAppendingString:edited];
+            }
             label(self.scroll,
                   [r[@"error"] length] > 0
                       ? @"Unable to read project"
                       : [NSString stringWithFormat:@"%@ · %@", r[@"preset"] ?: @"Project", edited],
-                  NeonUI(13), NeonMuted(), CGRectMake(tx, ty + 34, tw, 24));
-            NeonButton* more =
-                button(self.scroll, @"•••",
-                       CGRectMake(list ? tx + 110 : rx + cw - 48, list ? ty + 64 : ry + 8, 44, 34),
-                       ^{
-                       });
-            more.menu = [self menu:r];
-            more.showsMenuAsPrimaryAction = YES;
-            more.accessibilityLabel =
-                [@"Actions for " stringByAppendingString:r[@"title"] ?: @"Untitled"];
-            if (list)
-                label(self.scroll, @"On this device", NeonUI(13), NeonMuted(),
-                      CGRectMake(tx, ty + 64, 110, 24));
+                  NeonUI(narrow ? 12 : 12.5), NeonMuted(),
+                  CGRectMake(tx, ty + (narrow ? 25 : 27.5), tw, narrow ? 17.5 : 18));
+            UIMenu* projectMenu = [self menu:r];
+            [self.contextRecords setObject:r forKey:title];
+            [title addInteraction:[[UIContextMenuInteraction alloc] initWithDelegate:self]];
+            __weak NeonLibraryTitleButton* weakTitle = title;
+            NSMutableArray* accessibilityActions = [NSMutableArray new];
+            for (UIMenuElement* item in projectMenu.children) {
+                if (![item isKindOfClass:UIAction.class])
+                    continue;
+                UIAction* action = (UIAction*)item;
+                [accessibilityActions
+                    addObject:[[UIAccessibilityCustomAction alloc]
+                                   initWithName:action.title
+                                  actionHandler:^BOOL(UIAccessibilityCustomAction* custom) {
+                                    (void)custom;
+                                    [weakTitle sendAction:action];
+                                    return YES;
+                                  }]];
+            }
+            title.accessibilityCustomActions = accessibilityActions;
+            open.accessibilityCustomActions = accessibilityActions;
             i++;
         }
         y += self.query.view == NeonLibraryList
-                 ? i * 144
-                 : ((i + columns - 1) / columns) * ((narrow ? 170 : 220) + 86);
+                 ? i * 151
+                 : ((i + columns - 1) / columns) * (narrow ? 246.5 : 301.5);
     }
     self.scroll.contentSize = CGSizeMake(w, y + 32);
     NSString* count =
@@ -440,12 +501,14 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
                   stringWithFormat:@"%lu %@ · On this device",
                                    (unsigned long)self.presentation.records.count,
                                    self.presentation.records.count == 1 ? @"project" : @"projects"];
-    UILabel* countLabel =
-        label(self.footer, count, NeonUI(13), NeonMuted(), CGRectMake(12, 12, MAX(0, w - 130), 18));
+    UILabel* countLabel = label(self.footer, count, NeonUI(narrow ? 11 : 13), NeonMuted(),
+                                CGRectMake(narrow ? 12 : 15, narrow ? 10 : 9,
+                                           MAX(0, footerWidth - 130), narrow ? 16 : 18.5));
     countLabel.accessibilityIdentifier =
         self.presentation.error ? @"library-projects-unavailable"
                                 : [NSString stringWithFormat:@"library-project-count-%lu",
                                                              self.presentation.records.count];
-    label(self.footer, @"Local first", NeonUI(13), NeonMuted(), CGRectMake(w - 100, 12, 88, 18));
+    label(self.footer, @"Local first", NeonUI(narrow ? 11 : 13), NeonMuted(),
+          CGRectMake(footerWidth - 100, narrow ? 10 : 9, 88, narrow ? 16 : 18.5));
 }
 @end

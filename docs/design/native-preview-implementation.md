@@ -16,7 +16,9 @@ The design reference is [the approved interactive preview](approved-preview.html
 
 Existing documents and history without notes remain readable. Nonempty checkpoint notes add an optional `note` member to history entries; older builds with strict history validation will refuse such files rather than discard notes. Empty notes retain the previous entry shape. The current build preserves notes, Unicode content and IDs across reopen; failed/conflicted restores leave the draft and on-disk file unchanged.
 
-## Verification
+## Initial implementation verification
+
+The subsequent measured correction pass is documented in [visual parity verification](visual-parity-verification.md). The results below describe the initial implementation, before that correction pass.
 
 - macOS and iOS simulator builds succeed.
 - All 19 shared/core/controller CTest checks pass, including new History/Settings geometry and persistence cases. The separate Mac native UI smoke also passes, including real preset creation/reopen and screenshot capture.
