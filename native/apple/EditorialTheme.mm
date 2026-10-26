@@ -2,6 +2,7 @@
 #import "Controls.h"
 #import "Preferences.h"
 #import <CoreText/CoreText.h>
+#import <objc/runtime.h>
 
 namespace {
 NeonColor* tone(CGFloat r, CGFloat g, CGFloat b, CGFloat dr, CGFloat dg, CGFloat db,
@@ -84,15 +85,46 @@ NeonFont* NeonSerif(CGFloat size) {
 #endif
 }
 NeonFont* NeonUI(CGFloat size) {
-    return [NeonFont systemFontOfSize:size];
+    return regular([NeonFont fontWithName:@"SourceSans3-Roman" size:size]
+                       ?: [NeonFont systemFontOfSize:size],
+                   size);
+}
+NeonFont* NeonUISemibold(CGFloat size) {
+    NeonFont* font = NeonUI(size);
+    NSDictionary* axes = @{@(0x77676874) : @600};
+    return [NeonFont fontWithDescriptor:[font.fontDescriptor fontDescriptorByAddingAttributes:@{
+                         (__bridge NSString*)kCTFontVariationAttribute : axes
+                     }]
+                                   size:size]
+               ?: font;
+}
+BOOL NeonReduceMotion() {
+#if TARGET_OS_IPHONE
+    BOOL system = UIAccessibilityIsReduceMotionEnabled();
+#else
+    BOOL system = NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion;
+#endif
+    return system || [NeonPreferences() boolForKey:@"reduceMotion"];
+}
+BOOL NeonReduceTransparency() {
+#if TARGET_OS_IPHONE
+    BOOL system = UIAccessibilityIsReduceTransparencyEnabled();
+#else
+    BOOL system = NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceTransparency;
+#endif
+    return system || [NeonPreferences() boolForKey:@"reduceTransparency"];
+}
+BOOL NeonGlassEnabled() {
+    NSNumber* enabled = [NeonPreferences() objectForKey:@"liquidGlass"];
+    return (!enabled || enabled.boolValue) && !NeonReduceTransparency();
 }
 CGFloat NeonTextSize() {
     double size = [NeonPreferences() doubleForKey:@"manuscriptSize"];
     return size >= 16 && size <= 32 ? size :
 #if TARGET_OS_IPHONE
-                                    18;
+                                    17;
 #else
-                                    20;
+                                    19;
 #endif
 }
 CGFloat NeonLineSpacing() {
@@ -133,7 +165,7 @@ CGFloat NeonParagraphSpacing() {
 }
 CGFloat NeonTextMeasure() {
     double value = [NeonPreferences() doubleForKey:@"textMeasure"];
-    return value >= 480 && value <= 960 ? value : 640;
+    return value >= 480 && value <= 960 ? value : 760;
 }
 BOOL NeonWritingPreference(NSString* key) {
     NSNumber* value = [NeonPreferences() objectForKey:key];
@@ -167,3 +199,59 @@ NSView* NeonPillSelector(NSArray<NSString*>* titles, NSInteger selected, id targ
     }
     return stack;
 }
+
+#if !TARGET_OS_IPHONE
+API_AVAILABLE(macos(26.0))
+@interface NeonGlassBackdrop : NSGlassEffectView
+@end
+@implementation NeonGlassBackdrop
+- (NSView*)hitTest:(NSPoint)point {
+    (void)point;
+    return nil;
+}
+@end
+#endif
+static char NeonGlassBackdropKey;
+#if TARGET_OS_IPHONE
+void NeonApplyGlassBackdrop(UIView* view, CGFloat radius) {
+    UIView* previous = objc_getAssociatedObject(view, &NeonGlassBackdropKey);
+    [previous removeFromSuperview];
+    objc_setAssociatedObject(view, &NeonGlassBackdropKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    view.backgroundColor = NeonPanel();
+    if (!NeonGlassEnabled())
+        return;
+    if (@available(iOS 26.0, *)) {
+        UIGlassEffect* effect = [UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
+        effect.tintColor = [NeonPanel() colorWithAlphaComponent:.35];
+        UIVisualEffectView* glass = [[UIVisualEffectView alloc] initWithEffect:effect];
+        glass.frame = view.bounds;
+        glass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        glass.userInteractionEnabled = NO;
+        glass.layer.cornerRadius = radius;
+        glass.clipsToBounds = YES;
+        [view insertSubview:glass atIndex:0];
+        objc_setAssociatedObject(view, &NeonGlassBackdropKey, glass,
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+#else
+void NeonApplyGlassBackdrop(NSView* view, CGFloat radius) {
+    NSView* previous = objc_getAssociatedObject(view, &NeonGlassBackdropKey);
+    [previous removeFromSuperview];
+    objc_setAssociatedObject(view, &NeonGlassBackdropKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    view.wantsLayer = YES;
+    view.layer.backgroundColor = NeonPanel().CGColor;
+    if (!NeonGlassEnabled())
+        return;
+    if (@available(macOS 26.0, *)) {
+        NeonGlassBackdrop* glass = [[NeonGlassBackdrop alloc] initWithFrame:view.bounds];
+        glass.style = NSGlassEffectViewStyleRegular;
+        glass.tintColor = [NeonPanel() colorWithAlphaComponent:.35];
+        glass.cornerRadius = radius;
+        glass.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        [view addSubview:glass positioned:NSWindowBelow relativeTo:nil];
+        objc_setAssociatedObject(view, &NeonGlassBackdropKey, glass,
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+#endif

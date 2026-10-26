@@ -13,7 +13,7 @@ int main(int argc, const char** argv) {
             return isolated == standard ? 0 : 4;
         BOOL uiTesting = [NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"];
         NSInteger expectedAppearance = TARGET_OS_IPHONE && !uiTesting ? 0 : 1;
-        NSInteger expectedSize = TARGET_OS_IPHONE && !uiTesting ? 18 : 20;
+        NSInteger expectedSize = uiTesting ? 20 : (TARGET_OS_IPHONE ? 17 : 19);
         if (isolated == standard || [isolated integerForKey:@"appearance"] != expectedAppearance ||
             [isolated integerForKey:@"manuscriptSize"] != expectedSize)
             return 1;

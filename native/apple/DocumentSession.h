@@ -11,6 +11,9 @@ NS_ASSUME_NONNULL_BEGIN
 // Only valid before a new project has been saved. Never replaces an existing manuscript.
 - (BOOL)initializePreset:(NSString*)identifier error:(NSError**)error;
 @property(nonatomic, readonly) NSArray<NSDictionary*>* history;
+@property(nonatomic, readonly) NSDictionary* currentSnapshot;
+- (nullable NSDictionary*)revisionSnapshot:(NSString*)identifier error:(NSError**)error;
+- (BOOL)createCheckpoint:(NSString*)name note:(NSString*)note error:(NSError**)error;
 - (nullable NSString*)previewRevision:(NSString*)identifier error:(NSError**)error;
 - (BOOL)createCheckpoint:(NSString*)name error:(NSError**)error;
 - (BOOL)restoreRevision:(NSString*)identifier error:(NSError**)error;

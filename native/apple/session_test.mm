@@ -1,5 +1,6 @@
 #import "DocumentSession.h"
 #import "LibraryStore.h"
+#import "Preferences.h"
 #include <cstdlib>
 #include <iostream>
 
@@ -151,9 +152,20 @@ int main() {
                       [writing.sections.firstObject[@"role"] isEqual:role],
                   "rename retains semantic role");
             check([writing replaceText:text error:&error] &&
-                      [writing createCheckpoint:@"First complete draft" error:&error],
+                      [writing createCheckpoint:@"First complete draft"
+                                           note:@"Unicode note: Café 🌊"
+                                          error:&error],
                   "checkpoint saves current draft");
             NSString* checkpoint = writing.history.firstObject[@"id"];
+            check([writing.history.firstObject[@"note"] isEqual:@"Unicode note: Café 🌊"],
+                  "checkpoint note stored");
+            NSDictionary* saved = [writing revisionSnapshot:checkpoint error:&error];
+            check([saved[@"sections"][0][@"id"] isEqual:sectionID] &&
+                      [saved[@"sections"][0][@"text"] isEqual:text],
+                  "structured revision retains IDs and Unicode text");
+            check([writing.currentSnapshot[@"sections"][0][@"text"] isEqual:text] &&
+                      [writing.selectedSectionID isEqual:sectionID],
+                  "working snapshot does not change selection");
             check([[writing previewRevision:checkpoint error:&error] containsString:text],
                   "preview Unicode revision");
             check([writing replaceText:@"A newer unsaved draft" error:&error] &&
@@ -186,6 +198,12 @@ int main() {
             check(writing.history.count == historyCount &&
                       [[writing previewRevision:checkpoint error:&error] containsString:text],
                   "history reopens durably");
+            NSDictionary* reopenedNote = nil;
+            for (NSDictionary* entry in writing.history)
+                if ([entry[@"id"] isEqual:checkpoint])
+                    reopenedNote = entry;
+            check([reopenedNote[@"note"] isEqual:@"Unicode note: Café 🌊"],
+                  "checkpoint note reopens durably");
             NSURL* duplicate = [store duplicateProject:presetURL error:&error];
             NeonDocumentSession* copy = [store openURL:duplicate error:&error];
             check([copy.preset[@"id"] isEqual:preset[@"id"]] && copy.history.count == 0 &&
@@ -211,6 +229,22 @@ int main() {
                       [[NSData dataWithContentsOfURL:presetURL] isEqualToData:badHistory],
                   "corrupt history refused without overwrite");
         }
+        [NeonPreferences() setBool:NO forKey:@"automaticCheckpoints"];
+        NSURL* manualURL = [directory URLByAppendingPathComponent:@"manual-history.json"];
+        NeonDocumentSession* manual = [[NeonDocumentSession alloc] initWithURL:manualURL
+                                                                         actor:@"author"
+                                                                         error:&error];
+        check([manual replaceText:@"Persist without automatic checkpoint" error:&error] &&
+                  [manual save:&error] && manual.history.count == 0,
+              "disabling automatic checkpoints still saves content");
+        check([manual replaceText:@"Persist without automatic checkpoint again" error:&error] &&
+                  [manual save:&error] && manual.history.count == 0,
+              "later saves do not synthesize automatic checkpoints when disabled");
+        manual = [[NeonDocumentSession alloc] initWithURL:manualURL actor:@"author" error:&error];
+        check([manual.text isEqual:@"Persist without automatic checkpoint again"] &&
+                  [manual createCheckpoint:@"Manual" note:@"Still supported" error:&error],
+              "manual checkpoint works with automatic checkpoints disabled");
+        [NeonPreferences() removeObjectForKey:@"automaticCheckpoints"];
         NSData* data = [NSData dataWithContentsOfURL:file];
         NSMutableDictionary* future = [[NSJSONSerialization JSONObjectWithData:data
                                                                        options:0

@@ -224,7 +224,9 @@ BOOL NeonLibraryTitleStyleSmoke(NeonLibraryController* library) {
         [library setLibraryView:view];
         valid = libraryCommandsFit(library.view) && valid;
         NeonButton* title = (NeonButton*)libraryTitle(library.view);
-        UIFont* font = view == NeonLibraryList ? NeonSerif(24) : NeonUI(16);
+        UIFont* font = view == NeonLibraryList
+                           ? NeonSerif(24)
+                           : NeonSerif(library.view.bounds.size.width <= 600 ? 15 : 17);
         NSString* accessibility = title.accessibilityLabel;
         NSString* mode = view == NeonLibraryList ? @"list" : @"grid";
         valid = titleConfiguration(title, font, [mode stringByAppendingString:@"-normal"]) && valid;

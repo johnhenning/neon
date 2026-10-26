@@ -111,7 +111,8 @@
     if (!self)
         return nil;
     _editor = editor;
-    _textMeasure = 640;
+    _textMeasure = 760;
+    _contentInset = 48;
     return self;
 }
 - (void)loadView {
@@ -183,6 +184,10 @@
     _bodyBaselineAdjustment = value;
     [self refreshLayout];
 }
+- (void)setContentInset:(CGFloat)inset {
+    _contentInset = inset;
+    [self refreshLayout];
+}
 - (void)setTextMeasure:(CGFloat)measure {
     _textMeasure = measure;
     [self refreshLayout];
@@ -195,14 +200,18 @@
     BOOL resized = !NSEqualSizes(viewportSize, _lastViewportSize);
     _lastViewportSize = viewportSize;
     CGFloat width = self.view.bounds.size.width, height = self.view.bounds.size.height;
-    _scrollView.frame = NSMakeRect(0, 0, width, MAX(0, height - 84));
-    _sessionSlot.frame = NSMakeRect(0, MAX(0, height - 84), width, 44);
-    _footer.frame = NSMakeRect(0, MAX(0, height - 40), width, 40);
-    _status.frame = NSMakeRect(12, 10, MAX(0, width - 100), 20);
-    _mode.frame = NSMakeRect(MAX(12, width - 62), 10, 50, 20);
+    CGFloat sessionHeight = _sessionSlot.subviews.count ? 44 : 0;
+    CGFloat bodyHeight = MAX(0, height - 36 - sessionHeight);
+    _scrollView.frame = NSMakeRect(0, 0, width, bodyHeight);
+    _sessionSlot.hidden = sessionHeight == 0;
+    _sessionSlot.frame = NSMakeRect(0, bodyHeight, width, sessionHeight);
+    _footer.frame = NSMakeRect(0, MAX(0, height - 36), width, 36);
+    _status.frame = NSMakeRect(12, 8, MAX(0, width - 100), 20);
+    _mode.frame = NSMakeRect(MAX(12, width - 62), 8, 50, 20);
     CGFloat viewport = _scrollView.contentSize.width;
-    CGFloat measure = MAX(1, MIN(_textMeasure, viewport - 48));
-    CGFloat x = floor((viewport - measure) / 2), y = 48;
+    CGFloat inset = MIN(_contentInset, MAX(20, viewport / 8));
+    CGFloat measure = MAX(1, MIN(_textMeasure, viewport - inset * 2));
+    CGFloat x = inset, y = 36;
     _kicker.frame = NSMakeRect(x - 2, y, measure + 4, 18);
     y += 42;
     _heading.frame = NSMakeRect(x - 2, y + 2, measure + 4, 44);

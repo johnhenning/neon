@@ -115,9 +115,11 @@ final class Walkthrough: XCTestCase {
         }
         func assertSidebar(_ visible: Bool) {
             let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-                let width = manuscript.frame.width
-                return visible ? width < window.frame.width - 200
-                               : width > window.frame.width - 48
+                let row = self.element("section-0")
+                let sidebarVisible = row.exists && row.isHittable
+                let leading = manuscript.frame.minX - window.frame.minX
+                return visible ? sidebarVisible && leading > 200
+                               : !sidebarVisible && leading < 100
             }, object: nil)
             XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
             if visible {
@@ -139,7 +141,7 @@ final class Walkthrough: XCTestCase {
             }, object: nil)
             XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 10), .completed)
         }
-        assertSidebar(false)
+        assertSidebar(true)
         capture("adaptive-13-portrait-default", wholeScreen: true)
         XCUIDevice.shared.orientation = .landscapeRight
         waitForOrientation(true)
@@ -149,18 +151,18 @@ final class Walkthrough: XCTestCase {
         capture("adaptive-13-landscape-default", wholeScreen: true)
         XCUIDevice.shared.orientation = .portrait
         waitForOrientation(false)
-        assertSidebar(false)
-        activate(element("navigation-toggle"))
         assertSidebar(true)
+        activate(element("navigation-toggle"))
+        assertSidebar(false)
         XCUIDevice.shared.orientation = .landscapeRight
         waitForOrientation(true)
-        assertSidebar(true)
+        assertSidebar(false)
         XCUIDevice.shared.orientation = .portrait
         waitForOrientation(false)
-        assertSidebar(true) // Explicit writer choice survives later rotations.
-        capture("adaptive-13-portrait-manual-sidebar", wholeScreen: true)
+        assertSidebar(false) // Explicit writer choice survives later rotations.
+        capture("adaptive-13-portrait-manual-hidden", wholeScreen: true)
         activate(element("navigation-toggle"))
-        assertSidebar(false)
+        assertSidebar(true)
         #endif
     }
 
@@ -303,10 +305,10 @@ final class Walkthrough: XCTestCase {
         activate(historySearch)
         historySearch.typeText("NoSuchRevisionForWalkthrough")
         let revisionPreview = element("Read-only revision preview")
-        XCTAssertTrue((revisionPreview.value as? String ?? "").contains("No matching revisions"))
+        XCTAssertTrue((revisionPreview.value as? String ?? "").contains("No versions match this filter."))
         activate(app.buttons["Search History"])
         XCTAssertFalse(historySearch.isHittable)
-        XCTAssertFalse((revisionPreview.value as? String ?? "").contains("No matching revisions"))
+        XCTAssertFalse((revisionPreview.value as? String ?? "").contains("No versions match this filter."))
         activate(app.buttons["Back to editor"])
         XCTAssertTrue(element("manuscript").waitForExistence(timeout: 10))
         XCTAssertTrue((element("manuscript").value as? String ?? "").contains("Neon recorded UI persistence check."))
@@ -322,14 +324,16 @@ final class Walkthrough: XCTestCase {
         XCTAssertTrue((element("manuscript").value as? String ?? "")
             .contains("History undo scope marker."), "History return must preserve current editor redo")
         app.typeKey(",", modifierFlags: .command)
-        // AppKit exposes the Settings NSPanel as an accessibility dialog.
-        let settings = app.dialogs["Settings"]
+        let settings = element("settings-page")
         XCTAssertTrue(settings.waitForExistence(timeout: 10))
-        XCTAssertTrue(settings.searchFields["Search settings"].exists)
+        XCTAssertTrue(app.searchFields["Search settings"].exists)
         capture("07-settings")
-        activate(settings.buttons[XCUIIdentifierCloseWindow])
+        activate(element("settings-back"))
         let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: settings)
         XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 5), .completed)
+        XCTAssertTrue(element("manuscript").isHittable)
+        XCTAssertTrue((element("manuscript").value as? String ?? "")
+            .contains("History undo scope marker."), "Settings return must preserve the editor draft")
         #else
         chapters()
         // A narrow iPad sidebar moves native bar items into its overflow menu.

@@ -20,7 +20,7 @@ NSArray<NSDictionary*>* settings() {
             @"min" : @16,
             @"max" : @32,
             @"step" : @1,
-            @"default" : @(TARGET_OS_IPHONE ? 18 : 20),
+            @"default" : @(TARGET_OS_IPHONE ? 17 : 19),
             @"unit" : @"pt"
         },
         @{
@@ -53,7 +53,7 @@ NSArray<NSDictionary*>* settings() {
             @"min" : @480,
             @"max" : @960,
             @"step" : @40,
-            @"default" : @640,
+            @"default" : @760,
             @"unit" : @"pt",
             @"detail" : @"Maximum width; adapts to smaller windows"
         },
@@ -94,7 +94,42 @@ NSArray<NSDictionary*>* settings() {
             @"title" : @"Appearance",
             @"category" : @"Appearance",
             @"kind" : @"appearance",
-            @"detail" : @"System, Light or Dark"
+            @"detail" : @"Follow your device, or choose a palette for writing"
+        },
+        @{
+            @"key" : @"liquidGlass",
+            @"title" : @"Liquid Glass",
+            @"category" : @"Appearance",
+            @"kind" : @"toggle",
+            @"default" : @YES,
+            @"detail" : @"Translucent navigation and controls; respects reduced transparency"
+        },
+        @{
+            @"key" : @"automaticCheckpoints",
+            @"title" : @"Automatic checkpoints",
+            @"category" : @"History",
+            @"kind" : @"toggle",
+            @"default" : @YES,
+            @"detail" : @"Preserve a snapshot while saving, at most once a minute. Document saving "
+                        @"stays on."
+        },
+        @{
+            @"key" : @"reduceMotion",
+            @"title" : @"Reduce motion",
+            @"category" : @"Accessibility",
+            @"kind" : @"toggle",
+            @"default" : @NO,
+            @"detail" :
+                @"Use short fades instead of movement. Device accessibility settings also apply."
+        },
+        @{
+            @"key" : @"reduceTransparency",
+            @"title" : @"Reduce transparency",
+            @"category" : @"Accessibility",
+            @"kind" : @"toggle",
+            @"default" : @NO,
+            @"detail" : @"Use opaque surfaces for clearer contrast. Device accessibility settings "
+                        @"also apply."
         }
     ];
 }
@@ -128,20 +163,40 @@ void reset() {
 @interface NeonSettingsController ()
 @property(nonatomic, strong) NSArray<NSDictionary*>* visibleSettings;
 @property(nonatomic, strong) UISearchController* search;
+@property(nonatomic) BOOL regularRows;
 @end
 @implementation NeonSettingsController
 - (instancetype)init {
-    return [super initWithStyle:UITableViewStyleInsetGrouped];
+    return [super initWithStyle:UITableViewStyleGrouped];
 }
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Settings";
-    self.view.backgroundColor = NeonPanel();
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+    self.navigationController.navigationBar.tintColor = NeonAccent();
+    self.view.backgroundColor = NeonPaper();
     self.tableView.tintColor = NeonAccent();
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = 82;
     self.visibleSettings = settings();
+    UIView* intro = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 118)];
+    UILabel* heading = [[UILabel alloc] initWithFrame:CGRectMake(20, 16, 280, 44)];
+    heading.text = @"Your writing, your way.";
+    heading.font = NeonSerif(25);
+    heading.adjustsFontSizeToFitWidth = YES;
+    heading.minimumScaleFactor = 0.8;
+    heading.textColor = NeonInk();
+    heading.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    UILabel* detail = [[UILabel alloc] initWithFrame:CGRectMake(20, 65, 280, 40)];
+    detail.text = @"Changes apply immediately on this device.";
+    detail.numberOfLines = 2;
+    detail.font = NeonUI(14);
+    detail.textColor = NeonMuted();
+    detail.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [intro addSubview:heading];
+    [intro addSubview:detail];
+    self.tableView.tableHeaderView = intro;
     self.search = [[UISearchController alloc] initWithSearchResultsController:nil];
     self.search.searchResultsUpdater = self;
     self.search.obscuresBackgroundDuringPresentation = NO;
@@ -150,9 +205,18 @@ void reset() {
     self.navigationItem.hidesSearchBarWhenScrolling = NO;
     self.definesPresentationContext = YES;
     self.navigationItem.rightBarButtonItem =
-        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
-                                                      target:self
-                                                      action:@selector(done)];
+        [[UIBarButtonItem alloc] initWithTitle:@"Done"
+                                         style:UIBarButtonItemStylePlain
+                                        target:self
+                                        action:@selector(done)];
+}
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    BOOL regular = self.view.bounds.size.width >= 600;
+    if (regular != self.regularRows) {
+        self.regularRows = regular;
+        [self.tableView reloadData];
+    }
 }
 - (NSUInteger)visibleSettingCount {
     return self.visibleSettings.count;
@@ -166,27 +230,40 @@ void reset() {
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView*)tableView {
     (void)tableView;
-    return 3;
+    return 5;
 }
 - (NSArray*)itemsForSection:(NSInteger)section {
-    NSString* category = section == 0 ? @"Writing" : @"Appearance";
+    NSString* category = @[ @"Appearance", @"Writing", @"History", @"Accessibility" ][section];
     return [self.visibleSettings
         filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"category == %@", category]];
 }
 - (NSInteger)tableView:(UITableView*)tableView numberOfRowsInSection:(NSInteger)section {
     (void)tableView;
-    return section == 2 ? (self.search.searchBar.text.length ? 0 : 1)
-                        : [self itemsForSection:section].count;
+    if (section == 4)
+        return self.search.searchBar.text.length ? 0 : 1;
+    return [self itemsForSection:section].count +
+           (section == 2 && self.showHistory && !self.search.searchBar.text.length ? 1 : 0);
 }
 - (NSString*)tableView:(UITableView*)tableView titleForHeaderInSection:(NSInteger)section {
     (void)tableView;
-    if (section == 2 || ![self itemsForSection:section].count)
+    if (section == 4 || ![self itemsForSection:section].count)
         return nil;
-    return section == 0 ? @"Writing · This device" : @"Appearance · This device";
+    return @[ @"Appearance", @"Writing", @"History", @"Accessibility" ][section];
+}
+- (void)tableView:(UITableView*)tableView
+    willDisplayHeaderView:(UIView*)view
+               forSection:(NSInteger)section {
+    (void)tableView;
+    (void)section;
+    if ([view isKindOfClass:UITableViewHeaderFooterView.class]) {
+        UITableViewHeaderFooterView* header = (UITableViewHeaderFooterView*)view;
+        header.textLabel.font = NeonUI(13);
+        header.textLabel.textColor = NeonMuted();
+    }
 }
 - (NSString*)tableView:(UITableView*)tableView titleForFooterInSection:(NSInteger)section {
     (void)tableView;
-    if (section == 2)
+    if (section == 4)
         return self.visibleSettings.count
                    ? @"Personal editor preferences. Document content and export styles are "
                      @"unchanged."
@@ -199,8 +276,15 @@ void reset() {
                                                    reuseIdentifier:nil];
     cell.backgroundColor = NeonPaper();
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
-    if (path.section == 2) {
+    if (path.section == 4) {
         cell.textLabel.text = @"Reset Device Preferences…";
+        cell.textLabel.textColor = NeonAccent();
+        cell.accessibilityTraits = UIAccessibilityTraitButton;
+        return cell;
+    }
+    if (path.section == 2 && path.row == (NSInteger)[self itemsForSection:2].count) {
+        cell.textLabel.text = @"Browse version history →";
+        cell.textLabel.font = NeonUI(17);
         cell.textLabel.textColor = NeonAccent();
         cell.accessibilityTraits = UIAccessibilityTraitButton;
         return cell;
@@ -254,26 +338,31 @@ void reset() {
         [stack addArrangedSubview:row];
     } else if ([kind isEqual:@"font"]) {
         __weak NeonSettingsController* weakSelf = self;
+        UIButton* font = [UIButton buttonWithType:UIButtonTypeSystem];
+        [font setTitle:[NeonFontChoice() stringByAppendingString:@" ▾"]
+              forState:UIControlStateNormal];
+        font.titleLabel.font = NeonUI(16);
+        font.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+        font.accessibilityLabel = @"Editor font";
+        font.showsMenuAsPrimaryAction = YES;
+        [font.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
+        NSMutableArray* choices = [NSMutableArray array];
         for (NSString* name in @[ @"Literata", @"Source Sans 3", @"System Serif" ]) {
-            UIButton* font = [UIButton buttonWithType:UIButtonTypeSystem];
-            [font setTitle:[NSString stringWithFormat:@"%@  %@", name,
-                                                      [NeonFontChoice() isEqual:name] ? @"✓" : @""]
-                  forState:UIControlStateNormal];
-            font.titleLabel.font = NeonFontNamed(name, 20);
-            font.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
-            font.accessibilityLabel = name;
-            font.accessibilityTraits |=
-                [NeonFontChoice() isEqual:name] ? UIAccessibilityTraitSelected : 0;
-            [font.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
-            [font addAction:[UIAction actionWithHandler:^(UIAction* action) {
-                    (void)action;
-                    [NeonPreferences() setObject:name forKey:@"manuscriptFont"];
-                    [weakSelf changed];
-                    [weakSelf.tableView reloadData];
-                  }]
-                forControlEvents:UIControlEventTouchUpInside];
-            [stack addArrangedSubview:font];
+            UIAction* choice = [UIAction actionWithTitle:name
+                                                   image:nil
+                                              identifier:nil
+                                                 handler:^(UIAction*) {
+                                                   [NeonPreferences() setObject:name
+                                                                         forKey:@"manuscriptFont"];
+                                                   [weakSelf changed];
+                                                   [weakSelf.tableView reloadData];
+                                                 }];
+            choice.state =
+                [NeonFontChoice() isEqual:name] ? UIMenuElementStateOn : UIMenuElementStateOff;
+            [choices addObject:choice];
         }
+        font.menu = [UIMenu menuWithChildren:choices];
+        [stack addArrangedSubview:font];
     } else {
         UISegmentedControl* control =
             [[UISegmentedControl alloc] initWithItems:@[ @"System", @"Light", @"Dark" ]];
@@ -292,13 +381,25 @@ void reset() {
         detail.numberOfLines = 0;
         [stack addArrangedSubview:detail];
     }
-    stack.translatesAutoresizingMaskIntoConstraints = NO;
-    [cell.contentView addSubview:stack];
+    UIStackView* content = stack;
+    if (self.view.bounds.size.width >= 600 && ![kind isEqual:@"toggle"]) {
+        UIView* control = stack.arrangedSubviews[1];
+        [stack removeArrangedSubview:control];
+        [control removeFromSuperview];
+        content = [[UIStackView alloc] initWithArrangedSubviews:@[ stack, control ]];
+        content.axis = UILayoutConstraintAxisHorizontal;
+        content.alignment = UIStackViewAlignmentCenter;
+        content.spacing = 24;
+        [control.widthAnchor constraintEqualToConstant:220].active = YES;
+    }
+    content.translatesAutoresizingMaskIntoConstraints = NO;
+    [cell.contentView addSubview:content];
     [NSLayoutConstraint activateConstraints:@[
-        [stack.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:16],
-        [stack.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-16],
-        [stack.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:12],
-        [stack.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-12]
+        [content.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:16],
+        [content.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor
+                                               constant:-16],
+        [content.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:12],
+        [content.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-12]
     ]];
     return cell;
 }
@@ -320,7 +421,12 @@ void reset() {
 }
 - (void)tableView:(UITableView*)tableView didSelectRowAtIndexPath:(NSIndexPath*)path {
     (void)tableView;
-    if (path.section != 2)
+    if (path.section == 2 && path.row == (NSInteger)[self itemsForSection:2].count &&
+        self.showHistory) {
+        self.showHistory();
+        return;
+    }
+    if (path.section != 4)
         return;
     UIAlertController* alert = [UIAlertController
         alertControllerWithTitle:@"Reset device preferences?"
@@ -363,6 +469,22 @@ void reset() {
     [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(x, NSMinY(track) + 2, 16, 16)] fill];
 }
 @end
+@interface NeonSettingsPaper : NSView
+@end
+@implementation NeonSettingsPaper
+- (BOOL)wantsDefaultClipping {
+    return YES;
+}
+- (void)drawRect:(NSRect)rect {
+    NSRectClip(self.bounds);
+    [NeonPaper() setFill];
+    NSRectFill(NSIntersectionRect(rect, self.bounds));
+}
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    self.needsDisplay = YES;
+}
+@end
 @interface NeonSettingsColumn : NSStackView
 @end
 @implementation NeonSettingsColumn
@@ -375,6 +497,8 @@ NSTextField* caption(NSString* text, NSFont* font, NSColor* color) {
     NSTextField* field = [NSTextField wrappingLabelWithString:text];
     field.font = font;
     field.textColor = color;
+    [field setContentCompressionResistancePriority:NSLayoutPriorityRequired
+                                    forOrientation:NSLayoutConstraintOrientationVertical];
     return field;
 }
 NSStackView* vertical(NSArray<NSView*>* children, CGFloat spacing) {
@@ -394,7 +518,7 @@ NSStackView* vertical(NSArray<NSView*>* children, CGFloat spacing) {
 @end
 @implementation NeonSettingsController
 - (void)loadView {
-    self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 580, 660)];
+    self.view = [[NeonSettingsPaper alloc] initWithFrame:NSMakeRect(0, 0, 580, 660)];
     self.search = [[NSSearchField alloc] initWithFrame:NSZeroRect];
     self.search.placeholderString = @"Search settings";
     self.search.delegate = self;
@@ -403,16 +527,21 @@ NSStackView* vertical(NSArray<NSView*>* children, CGFloat spacing) {
     self.scroll.drawsBackground = NO;
     self.scroll.hasVerticalScroller = YES;
     self.scroll.autohidesScrollers = YES;
+    NSTextField* heading = caption(@"Your writing, your way.", NeonSerif(28), NeonInk());
     NSTextField* scope =
-        caption(@"Personal editor preferences · This Mac", NeonUI(13), NeonMuted());
-    for (NSView* child in @[ self.search, scope, self.scroll ]) {
+        caption(@"Personalize your writing space · Changes apply immediately on this Mac",
+                NeonUI(13), NeonMuted());
+    for (NSView* child in @[ heading, self.search, scope, self.scroll ]) {
         child.translatesAutoresizingMaskIntoConstraints = NO;
         [self.view addSubview:child];
     }
     [NSLayoutConstraint activateConstraints:@[
         [self.search.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:24],
         [self.search.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-24],
-        [self.search.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:20],
+        [heading.leadingAnchor constraintEqualToAnchor:self.search.leadingAnchor],
+        [heading.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:24],
+        [heading.trailingAnchor constraintEqualToAnchor:self.search.trailingAnchor],
+        [self.search.topAnchor constraintEqualToAnchor:heading.bottomAnchor constant:16],
         [scope.leadingAnchor constraintEqualToAnchor:self.search.leadingAnchor],
         [scope.topAnchor constraintEqualToAnchor:self.search.bottomAnchor constant:12],
         [self.scroll.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
@@ -433,17 +562,23 @@ NSStackView* vertical(NSArray<NSView*>* children, CGFloat spacing) {
     self.visibleSettings = matches(query);
     NSMutableArray* rows = [NSMutableArray array];
     NSString* category = @"";
-    for (NSDictionary* item in self.visibleSettings) {
+    NSMutableArray* ordered = [NSMutableArray array];
+    for (NSString* group in @[ @"Appearance", @"Writing", @"History", @"Accessibility" ])
+        for (NSDictionary* item in self.visibleSettings)
+            if ([item[@"category"] isEqual:group])
+                [ordered addObject:item];
+    for (NSDictionary* item in ordered) {
         if (![category isEqual:item[@"category"]]) {
             category = item[@"category"];
-            [rows addObject:caption(category, NeonSerif(25), NeonInk())];
+            [rows addObject:caption(category, NeonUI(13), NeonMuted())];
         }
         NSMutableArray* labels =
             [NSMutableArray arrayWithObject:caption(item[@"title"], NeonUI(16), NeonInk())];
         if (item[@"detail"])
             [labels addObject:caption(item[@"detail"], NeonUI(12), NeonMuted())];
         NSStackView* text = vertical(labels, 5);
-        [text.widthAnchor constraintEqualToConstant:260].active = YES;
+        [text.widthAnchor constraintLessThanOrEqualToConstant:640].active = YES;
+        [text.widthAnchor constraintGreaterThanOrEqualToConstant:100].active = YES;
         NSView* control;
         NSString* kind = item[@"kind"];
         if ([kind isEqual:@"toggle"]) {
@@ -490,9 +625,34 @@ NSStackView* vertical(NSArray<NSView*>* children, CGFloat spacing) {
             appearance.selectedSegmentBezelColor = NeonAccent();
             control = appearance;
         }
-        NSStackView* row = [NSStackView stackViewWithViews:@[ text, control ]];
-        row.spacing = 24;
+        NSView* spacer = [NSView new];
+        spacer.identifier = @"settingsSpacer";
+        [spacer setContentHuggingPriority:1 forOrientation:NSLayoutConstraintOrientationHorizontal];
+        [spacer.widthAnchor constraintGreaterThanOrEqualToConstant:0].active = YES;
+        NSStackView* row = [NSStackView stackViewWithViews:@[ text, spacer, control ]];
+        row.identifier = @"settingsRow";
+        row.spacing = 16;
+        row.edgeInsets = NSEdgeInsetsMake(14, 16, 14, 16);
+        [row.heightAnchor constraintGreaterThanOrEqualToConstant:64].active = YES;
+        [row setContentCompressionResistancePriority:NSLayoutPriorityRequired
+                                      forOrientation:NSLayoutConstraintOrientationVertical];
+        NSBox* divider = [NSBox new];
+        divider.boxType = NSBoxSeparator;
+        divider.translatesAutoresizingMaskIntoConstraints = NO;
+        [row addSubview:divider];
+        [NSLayoutConstraint activateConstraints:@[
+            [divider.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
+            [divider.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
+            [divider.bottomAnchor constraintEqualToAnchor:row.bottomAnchor]
+        ]];
         [rows addObject:row];
+        if ([item[@"key"] isEqual:@"automaticCheckpoints"] && self.showHistory) {
+            NSButton* history = [NSButton buttonWithTitle:@"Browse version history →"
+                                                   target:self
+                                                   action:@selector(browseHistory:)];
+            history.font = NeonUI(15);
+            [rows addObject:history];
+        }
     }
     if (!rows.count)
         [rows addObject:caption(@"No settings found. Try “font”, “spacing” or “appearance”.",
@@ -506,18 +666,46 @@ NSStackView* vertical(NSArray<NSView*>* children, CGFloat spacing) {
         resetButton.bezelStyle = NSBezelStyleRounded;
         [rows addObject:resetButton];
     }
-    NSStackView* stack = vertical(rows, 24);
+    NSStackView* stack = vertical(rows, 12);
     stack.edgeInsets = NSEdgeInsetsMake(16, 24, 24, 24);
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     self.scroll.documentView = stack;
     [stack.widthAnchor constraintEqualToAnchor:self.scroll.contentView.widthAnchor].active = YES;
+    for (NSView* row in rows)
+        if ([row.identifier isEqual:@"settingsRow"])
+            [row.widthAnchor constraintEqualToAnchor:stack.widthAnchor constant:-48].active = YES;
+    [self layoutSettingRows];
+}
+- (void)viewDidLayout {
+    [super viewDidLayout];
+    [self layoutSettingRows];
+}
+- (void)layoutSettingRows {
+    BOOL narrow = self.view.bounds.size.width < 560;
+    for (NSView* view in ((NSStackView*)self.scroll.documentView).arrangedSubviews) {
+        if (![view.identifier isEqual:@"settingsRow"])
+            continue;
+        NSStackView* row = (NSStackView*)view;
+        row.orientation = narrow ? NSUserInterfaceLayoutOrientationVertical
+                                 : NSUserInterfaceLayoutOrientationHorizontal;
+        row.alignment = narrow ? NSLayoutAttributeLeading : NSLayoutAttributeCenterY;
+        for (NSView* child in row.arrangedSubviews)
+            if ([child.identifier isEqual:@"settingsSpacer"])
+                child.hidden = narrow;
+    }
+}
+- (void)browseHistory:(id)sender {
+    (void)sender;
+    if (self.showHistory)
+        self.showHistory();
 }
 - (void)changed {
     self.view.window.appearance =
         NeonAppearance() == 1   ? [NSAppearance appearanceNamed:NSAppearanceNameAqua]
         : NeonAppearance() == 2 ? [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua]
                                 : nil;
-    self.view.window.backgroundColor = NeonPanel();
+    self.view.window.backgroundColor = NeonPaper();
+    self.view.needsDisplay = YES;
     if (self.preferencesChanged)
         self.preferencesChanged();
 }

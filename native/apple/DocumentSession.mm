@@ -1,4 +1,5 @@
 #include "DocumentSession.h"
+#import "Preferences.h"
 #include "neon/document.h"
 #include "neon/presets.h"
 #include <cmath>
@@ -127,6 +128,18 @@ NSDictionary* projectObject(const neon::core::Project& project) {
             @[ @{@"id" : ns(document.id), @"title" : ns(document.title), @"sections" : sections} ]
     };
 }
+NSDictionary* displaySnapshot(const neon::core::Project& project) {
+    NSMutableArray* sections = [NSMutableArray array];
+    for (const auto& section : project.documents[0].sections) {
+        [sections addObject:@{
+            @"id" : ns(section.id),
+            @"title" : ns(section.title),
+            @"text" : ns(section.blocks[0].text),
+            @"trashed" : @(section.trashed)
+        }];
+    }
+    return @{@"title" : ns(project.title), @"sections" : sections};
+}
 NSData* encode(const neon::core::Project& project, NSArray* history, NSError** error) {
     NSMutableDictionary* root = [projectObject(project) mutableCopy];
     root[@"history"] = history;
@@ -151,7 +164,9 @@ bool validHistory(id history, const neon::core::Project& project) {
         return false;
     NSMutableSet* identifiers = [NSMutableSet set];
     for (id entry in history) {
-        if (!keys(entry, @[ @"id", @"createdAt", @"actor", @"label", @"kind", @"project" ]) ||
+        if (!(keys(entry, @[ @"id", @"createdAt", @"actor", @"label", @"kind", @"project" ]) ||
+              keys(entry,
+                   @[ @"id", @"createdAt", @"actor", @"label", @"kind", @"project", @"note" ])) ||
             !strings(entry, @[ @"id", @"actor", @"label", @"kind" ]) ||
             ![entry[@"createdAt"] isKindOfClass:NSNumber.class] ||
             !std::isfinite([entry[@"createdAt"] doubleValue]) ||
@@ -159,6 +174,8 @@ bool validHistory(id history, const neon::core::Project& project) {
             ![entry[@"actor"] length] || ![entry[@"label"] length] ||
             [identifiers containsObject:entry[@"id"]] ||
             ![@[ @"automatic", @"checkpoint", @"restore" ] containsObject:entry[@"kind"]])
+            return false;
+        if (entry[@"note"] && ![entry[@"note"] isKindOfClass:NSString.class])
             return false;
         neon::core::Project revision;
         if (!decode(entry[@"project"], &revision) || revision.id != project.id ||
@@ -526,9 +543,12 @@ bool validHistory(id history, const neon::core::Project& project) {
 - (BOOL)save:(NSError**)error {
     if (!_dirty)
         return YES;
-    NSMutableArray* history = [self historyIncludingBaseline];
-    if (!history.count ||
-        NSDate.date.timeIntervalSince1970 - [history.lastObject[@"createdAt"] doubleValue] >= 60)
+    NSNumber* automatic = [NeonPreferences() objectForKey:@"automaticCheckpoints"];
+    BOOL enabled = !automatic || automatic.boolValue;
+    NSMutableArray* history = enabled ? [self historyIncludingBaseline] : [_history mutableCopy];
+    if (enabled &&
+        (!history.count ||
+         NSDate.date.timeIntervalSince1970 - [history.lastObject[@"createdAt"] doubleValue] >= 60))
         [history addObject:snapshot(_project, _actor, @"Automatic snapshot", @"automatic")];
     return [self writeProject:_project history:history error:error];
 }
@@ -541,7 +561,8 @@ bool validHistory(id history, const neon::core::Project& project) {
             @"actor" : entry[@"actor"],
             @"label" : entry[@"label"],
             @"kind" : entry[@"kind"],
-            @"revision" : entry[@"project"][@"revision"]
+            @"revision" : entry[@"project"][@"revision"],
+            @"note" : entry[@"note"] ?: @""
         }];
     }
     return result;
@@ -551,6 +572,18 @@ bool validHistory(id history, const neon::core::Project& project) {
         if ([entry[@"id"] isEqual:identifier])
             return entry;
     return nil;
+}
+- (NSDictionary*)currentSnapshot {
+    return displaySnapshot(_project);
+}
+- (NSDictionary*)revisionSnapshot:(NSString*)identifier error:(NSError**)error {
+    NSDictionary* entry = [self revision:identifier];
+    neon::core::Project project;
+    if (!entry || !decode(entry[@"project"], &project)) {
+        fail(error, @"This revision cannot be read safely.");
+        return nil;
+    }
+    return displaySnapshot(project);
 }
 - (NSString*)previewRevision:(NSString*)identifier error:(NSError**)error {
     NSDictionary* entry = [self revision:identifier];
@@ -571,11 +604,19 @@ bool validHistory(id history, const neon::core::Project& project) {
     return preview;
 }
 - (BOOL)createCheckpoint:(NSString*)name error:(NSError**)error {
+    return [self createCheckpoint:name note:@"" error:error];
+}
+- (BOOL)createCheckpoint:(NSString*)name note:(NSString*)note error:(NSError**)error {
     name = [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (!name.length)
         return fail(error, @"Give the checkpoint a name.");
     NSMutableArray* history = [self historyIncludingBaseline];
-    [history addObject:snapshot(_project, _actor, name, @"checkpoint")];
+    NSMutableDictionary* entry = [snapshot(_project, _actor, name, @"checkpoint") mutableCopy];
+    NSString* cleanNote =
+        [note stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (cleanNote.length)
+        entry[@"note"] = cleanNote;
+    [history addObject:entry];
     return [self writeProject:_project history:history error:error];
 }
 - (BOOL)restoreRevision:(NSString*)identifier error:(NSError**)error {

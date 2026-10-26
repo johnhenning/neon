@@ -7,6 +7,7 @@
 @interface NeonSettingsController : NSViewController <NSSearchFieldDelegate>
 #endif
 @property(nonatomic, copy) void (^preferencesChanged)(void);
+@property(nonatomic, copy) void (^showHistory)(void);
 - (void)filterSettings:(NSString*)query;
 @property(nonatomic, readonly) NSUInteger visibleSettingCount;
 @end

@@ -56,6 +56,8 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
 }
 - (void)setConfiguration:(UIButtonConfiguration*)configuration {
     UIButtonConfiguration* value = [configuration copy];
+    value.background.cornerRadius = 0;
+    value.contentInsets = NSDirectionalEdgeInsetsMake(10, 20, 10, 20);
     if (self.navigationImage) {
         value.image = self.navigationImage;
         value.imagePadding = 8;
@@ -283,40 +285,24 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
         [child removeFromSuperview];
     for (UIView* child in self.footer.subviews.copy)
         [child removeFromSuperview];
-    CGFloat m = MIN(!self.usesSidebarNavigation && w >= 700 && w < 1000 ? 720 : 820,
-                    MAX(0, w - 40)),
-            x = (w - m) / 2;
+    BOOL narrow = w <= 600;
+    CGFloat x = narrow ? 20 : 32, m = MAX(0, w - 2 * x);
     __weak NeonLibraryController* weak = self;
-    label(self.scroll, @"Library", NeonSerif(32), NeonInk(), CGRectMake(x, 24, m - 44, 46));
+    label(self.scroll, @"Library", NeonSerif(narrow ? 28 : 32), NeonInk(),
+          CGRectMake(x, 24, m, 42));
     label(self.scroll, @"A place for your next idea.", NeonUI(14), NeonMuted(),
-          CGRectMake(x, 86, m, 28));
-    if (!self.usesSidebarNavigation && w < 1000) {
-        NeonButton* all = button(self.scroll, @"All projects", CGRectMake(x, 138, 116, 44), ^{
-          [weak selectFilter:NeonLibraryAll];
-        });
-        all.accessibilityIdentifier = @"library-filter-all";
-        all.kind = NeonButtonSelection;
-        all.chosen = self.query.filter == NeonLibraryAll;
-        NeonButton* recent = button(self.scroll, @"Recent", CGRectMake(x + 124, 138, 72, 44), ^{
-          [weak selectFilter:NeonLibraryRecent];
-        });
-        recent.accessibilityIdentifier = @"library-filter-recent";
-        recent.kind = NeonButtonSelection;
-        recent.chosen = self.query.filter == NeonLibraryRecent;
-    } else
-        button(self.scroll, self.query.view == NeonLibraryGrid ? @"List view" : @"Grid view",
-               CGRectMake(x + m - 240, 138, 100, 44), ^{
-                 [weak setLibraryView:weak.query.view == NeonLibraryGrid ? NeonLibraryList
-                                                                         : NeonLibraryGrid];
-               });
-    button(
-        self.scroll, @"New project",
-        CGRectMake(!self.usesSidebarNavigation && w < 1000 ? x + 204 : x + m - 132, 138, 132, 44),
-        ^{
-          [weak send:@"new" record:nil];
-        })
-        .kind = NeonButtonPrimary;
-    CGFloat y = 198;
+          CGRectMake(x, 68, m, 24));
+    CGFloat commandsY = narrow || m < 620 ? 110 : 32;
+    CGFloat commandsX = narrow || m < 620 ? x : x + m - 240;
+    button(self.scroll, self.query.view == NeonLibraryGrid ? @"List view" : @"Grid view",
+           CGRectMake(commandsX, commandsY, 100, 44), ^{
+             [weak setLibraryView:weak.query.view == NeonLibraryGrid ? NeonLibraryList
+                                                                     : NeonLibraryGrid];
+           });
+    button(self.scroll, @"New project", CGRectMake(x + m - 132, commandsY, 132, 44), ^{
+      [weak send:@"new" record:nil];
+    }).kind = NeonButtonPrimary;
+    CGFloat y = commandsY > 40 ? 176 : 120;
     if (self.presentation.error) {
         label(self.scroll, @"Unable to load projects", NeonSerif(24), NeonInk(),
               CGRectMake(x, y, m, 44));
@@ -350,13 +336,14 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
         y += 440;
     } else {
         NSInteger columns = m >= 700 ? 3 : 2;
-        CGFloat tile = (m - 24 * (columns - 1)) / columns;
+        CGFloat gap = narrow ? 14 : 22;
+        CGFloat tile = (m - gap * (columns - 1)) / columns;
         NSUInteger i = 0;
         for (NSDictionary* r in self.presentation.records) {
             BOOL list = self.query.view == NeonLibraryList;
-            CGFloat rx = list ? x : x + (i % columns) * (tile + 24),
-                    ry = y + (list ? i * 144 : (i / columns) * (tile * 1.46 + 86)),
-                    cw = list ? 70 : tile, ch = list ? 104 : tile * 1.46;
+            CGFloat rx = list ? x : x + (i % columns) * (tile + gap),
+                    ry = y + (list ? i * 144 : (i / columns) * ((narrow ? 170 : 220) + 86)),
+                    cw = list ? 70 : tile, ch = list ? 104 : (narrow ? 170 : 220);
             if (list) {
                 UIView* panel = [[UIView alloc] initWithFrame:CGRectMake(rx, ry, m, 128)];
                 panel.backgroundColor = NeonPanel();
@@ -397,9 +384,9 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
             [self.scroll addSubview:open];
             CGFloat tx = list ? rx + 86 : rx, ty = list ? ry : ry + ch + 8,
                     tw = list ? m - 110 : tile;
-            NeonLibraryTitleButton* title = [[NeonLibraryTitleButton alloc]
-                initWithFrame:CGRectMake(tx, ty, list ? tw : MAX(0, tw - 52), 34)];
-            title.editorialFont = list ? NeonSerif(24) : NeonUI(16);
+            NeonLibraryTitleButton* title =
+                [[NeonLibraryTitleButton alloc] initWithFrame:CGRectMake(tx, ty, tw, 34)];
+            title.editorialFont = list ? NeonSerif(24) : NeonSerif(narrow ? 15 : 17);
             [title addAction:[UIAction actionWithHandler:^(__kindof UIAction* action) {
                      (void)action;
                      [weak send:@"open" record:r];
@@ -429,7 +416,7 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
                   NeonUI(13), NeonMuted(), CGRectMake(tx, ty + 34, tw, 24));
             NeonButton* more =
                 button(self.scroll, @"•••",
-                       CGRectMake(list ? tx + 110 : tx + tw - 44, list ? ty + 64 : ty, 44, 34),
+                       CGRectMake(list ? tx + 110 : rx + cw - 48, list ? ty + 64 : ry + 8, 44, 34),
                        ^{
                        });
             more.menu = [self menu:r];
@@ -443,7 +430,7 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
         }
         y += self.query.view == NeonLibraryList
                  ? i * 144
-                 : ((i + columns - 1) / columns) * (tile * 1.46 + 86);
+                 : ((i + columns - 1) / columns) * ((narrow ? 170 : 220) + 86);
     }
     self.scroll.contentSize = CGSizeMake(w, y + 32);
     NSString* count =

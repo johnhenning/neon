@@ -30,7 +30,12 @@ int main() {
         require(editor.enclosingScrollView == workspace.scrollView,
                 "Heading/body share native scroll view");
         require(editor.selectedRange.location == 2, "Layout preserves selection");
-        require(editor.frame.size.width == 640, "Default manuscript measure is 640");
+        require(editor.frame.size.width == 760, "Default manuscript measure is 760");
+        require(editor.frame.origin.x == 48, "Expanded manuscript starts 48 points from pane edge");
+        workspace.contentInset = 32;
+        require(editor.frame.origin.x == 32,
+                "Collapsed manuscript starts 32 points from pane edge");
+        workspace.contentInset = 48;
         require(workspace.heading.frame.origin.y < editor.frame.origin.y,
                 "Heading precedes manuscript");
         CGFloat shortHeight = workspace.heading.frame.size.height;
@@ -45,6 +50,16 @@ int main() {
                 "Long chapter title wraps on resize");
         require(editor.frame.size.width <= 372, "Narrow shell retains horizontal insets");
         require(editor.selectedRange.length == 5, "Resize preserves selection");
+        require(workspace.sessionSlot.hidden && workspace.scrollView.frame.size.height ==
+                                                    workspace.view.bounds.size.height - 36,
+                "Inactive writing session leaves only the compact footer");
+        NSView* sessionControls = [NSView new];
+        [workspace.sessionSlot addSubview:sessionControls];
+        [workspace refreshLayout];
+        require(!workspace.sessionSlot.hidden && workspace.sessionSlot.frame.size.height == 44,
+                "Active writing session receives its own space");
+        [sessionControls removeFromSuperview];
+        [workspace refreshLayout];
         require(workspace.sessionSlot.clipsToBounds,
                 "Session panel drawing cannot cover manuscript siblings");
         require(NSMaxY(workspace.scrollView.frame) <= workspace.sessionSlot.frame.origin.y,

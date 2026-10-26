@@ -11,10 +11,6 @@ void NeonDrawSidebarRow(NSView* view, BOOL selected, BOOL hovered) {
         [[NeonInk() colorWithAlphaComponent:.05] setFill];
         NSRectFill(view.bounds);
     }
-    [NeonLine() setFill];
-    CGFloat pixel = 1.0 / (view.window.backingScaleFactor ?: 2.0);
-    CGFloat bottom = view.isFlipped ? NSMaxY(view.bounds) - pixel : NSMinY(view.bounds);
-    NSRectFill(NSMakeRect(NSMinX(view.bounds), bottom, view.bounds.size.width, pixel));
 }
 
 @interface NeonFieldCell : NSTextFieldCell

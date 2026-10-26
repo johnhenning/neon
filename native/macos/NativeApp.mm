@@ -43,6 +43,76 @@
     return self;
 }
 @end
+@interface NeonPresetCard : NeonButton
+@property(nonatomic, copy) NSString* detail;
+@end
+@implementation NeonPresetCard
+- (void)drawRect:(NSRect)rect {
+    (void)rect;
+    NSBezierPath* border = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 1, 1)
+                                                           xRadius:7
+                                                           yRadius:7];
+    [(self.chosen ? NeonSelection() : self.hovered ? NeonPanel() : NeonPaper()) setFill];
+    [border fill];
+    [(self.chosen ? NeonAccent() : NeonLine()) setStroke];
+    border.lineWidth = self.chosen ? 1.5 : 1;
+    [border stroke];
+    [self.title drawAtPoint:NSMakePoint(22, self.isFlipped ? 22 : 60)
+             withAttributes:@{
+                 NSFontAttributeName : NeonSerif(22),
+                 NSForegroundColorAttributeName : NeonInk()
+             }];
+    [self.detail
+            drawInRect:NSMakeRect(22, self.isFlipped ? 64 : 20, self.bounds.size.width - 44, 28)
+        withAttributes:@{
+            NSFontAttributeName : NeonUI(14),
+            NSForegroundColorAttributeName : NeonMuted()
+        }];
+    if (self.window.firstResponder == self) {
+        [NeonAccent() setStroke];
+        border.lineWidth = 3;
+        [border stroke];
+    }
+}
+@end
+@interface NeonAddCommand : NeonPaperCommand
+@end
+@implementation NeonAddCommand
+- (void)drawRect:(NSRect)rect {
+    (void)rect;
+    if (self.hovered) {
+        [[NeonAccent() colorWithAlphaComponent:0.06] setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:5 yRadius:5] fill];
+    }
+    NSDictionary* attributes =
+        @{NSFontAttributeName : NeonUI(14), NSForegroundColorAttributeName : NeonAccent()};
+    NSSize size = [self.title sizeWithAttributes:attributes];
+    [self.title drawAtPoint:NSMakePoint(8, (self.bounds.size.height - size.height) / 2)
+             withAttributes:attributes];
+    if (self.window.firstResponder == self) {
+        [NeonAccent() setStroke];
+        [[NSBezierPath bezierPathWithRect:NSInsetRect(self.bounds, 1, 1)] stroke];
+    }
+}
+@end
+@interface NeonSidebarCommand : NeonButton
+@end
+@implementation NeonSidebarCommand
+- (void)drawRect:(NSRect)rect {
+    (void)rect;
+    NeonDrawSidebarRow(self, NO, self.hovered);
+    [self.image drawInRect:NSMakeRect(16, 12, 20, 20)];
+    [self.title drawAtPoint:NSMakePoint(44, 12)
+             withAttributes:@{
+                 NSFontAttributeName : NeonUI(14),
+                 NSForegroundColorAttributeName : NeonInk()
+             }];
+    if (self.window.firstResponder == self) {
+        [NeonAccent() setStroke];
+        [[NSBezierPath bezierPathWithRect:NSInsetRect(self.bounds, 2, 2)] stroke];
+    }
+}
+@end
 @interface NeonChapterRow : NSStackView
 @property(nonatomic) BOOL currentChapter;
 @end
@@ -170,13 +240,44 @@ NSUInteger words(NSString* text) {
 @property(nonatomic) BOOL panel;
 @end
 @implementation NeonSurface
+- (BOOL)wantsDefaultClipping {
+    return YES;
+}
 - (void)viewDidChangeEffectiveAppearance {
     [super viewDidChangeEffectiveAppearance];
     self.needsDisplay = YES;
 }
 - (void)drawRect:(NSRect)rect {
+    [NSGraphicsContext saveGraphicsState];
+    NSRectClip(self.bounds);
     [(self.panel ? NeonPanel() : NeonPaper()) setFill];
-    NSRectFill(rect);
+    NSRectFill(NSIntersectionRect(rect, self.bounds));
+    [NSGraphicsContext restoreGraphicsState];
+}
+@end
+@interface NeonCreationPage : NeonSurface
+@property(nonatomic, copy) void (^layoutContent)(void);
+@end
+@implementation NeonCreationPage
+- (void)layout {
+    [super layout];
+    if (self.layoutContent)
+        self.layoutContent();
+}
+@end
+@interface NeonCreationDocument : NeonSurface
+@end
+@implementation NeonCreationDocument
+- (BOOL)isFlipped {
+    return YES;
+}
+@end
+@interface NeonTransitionStage : NeonSurface
+@end
+@implementation NeonTransitionStage
+- (NSView*)hitTest:(NSPoint)point {
+    (void)point;
+    return nil;
 }
 @end
 @interface NeonTextView : NSTextView
@@ -289,10 +390,18 @@ NSUInteger words(NSString* text) {
 - (BOOL)renameInline:(NSString*)title section:(NSString*)identifier;
 @property(nonatomic, strong) NSTimer* timer;
 @property(nonatomic, strong) NSPopover* typography;
-@property(nonatomic, strong) NSPanel* settings;
-@property(nonatomic, strong) NSImageView* transitionOverlay;
+@property(nonatomic, strong) NeonSettingsController* settingsController;
+@property(nonatomic, strong) NSView* settingsPage;
+@property(nonatomic, strong) NSView* transitionOverlay;
+@property(nonatomic) NSInteger transitionDirection;
 @property(nonatomic, strong) NeonHistoryController* historyController;
 @property(nonatomic, strong) NSTextField* presetDescription;
+@property(nonatomic, strong) NSTextField* creationTitle;
+@property(nonatomic, copy) NSString* creationPreset;
+@property(nonatomic, strong) NSStackView* presetChoices;
+@property(nonatomic) BOOL creatingProject;
+@property(nonatomic, strong) NSViewController* creationController;
+@property(nonatomic) CGFloat creationWindowWidth;
 @property(nonatomic, strong) NSLayoutConstraint* measureConstraint;
 @property(nonatomic) BOOL trashMode;
 - (void)projectMenu:(NSURL*)url title:(NSString*)title anchor:(id)anchor rect:(NSRect)rect;
@@ -421,8 +530,13 @@ NSUInteger words(NSString* text) {
     [self.window center];
     [self.window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
-    if (self.smoke)
-        [self performSelector:@selector(captureLibrary) withObject:nil afterDelay:2];
+    if (self.smoke) {
+        if (NSProcessInfo.processInfo.environment[@"NEON_CREATION_ONLY"]) {
+            [self newProject:nil];
+            [self performSelector:@selector(captureCreation) withObject:nil afterDelay:2];
+        } else
+            [self performSelector:@selector(captureLibrary) withObject:nil afterDelay:2];
+    }
 }
 - (void)accessibilityChanged:(NSNotification*)note {
     (void)note;
@@ -514,6 +628,13 @@ NSUInteger words(NSString* text) {
 }
 - (NSArray*)toolbarDefaultItemIdentifiers:(NSToolbar*)toolbar {
     (void)toolbar;
+    if (self.creatingProject)
+        return @[ @"creationCancel", NSToolbarFlexibleSpaceItemIdentifier, @"creationTitle" ];
+    if (self.split.splitViewItems.firstObject.collapsed)
+        return @[
+            @"sidebar", @"projectTitle", NSToolbarFlexibleSpaceItemIdentifier, @"workspace",
+            @"search", @"type", @"more", NSToolbarSpaceItemIdentifier
+        ];
     return @[
         NSToolbarFlexibleSpaceItemIdentifier, @"sidebar", @"sidebarDivider", @"projectTitle",
         NSToolbarFlexibleSpaceItemIdentifier, @"workspace", @"search", @"type", @"more",
@@ -529,6 +650,23 @@ NSUInteger words(NSString* text) {
     willBeInsertedIntoToolbar:(BOOL)flag {
     (void)toolbar;
     (void)flag;
+    if ([identifier isEqual:@"creationCancel"] || [identifier isEqual:@"creationTitle"]) {
+        NSToolbarItem* item = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
+        if ([identifier isEqual:@"creationCancel"]) {
+            NeonAddCommand* cancel = [NeonAddCommand new];
+            cancel.title = @"Cancel";
+            cancel.target = self;
+            cancel.action = @selector(showLibrary:);
+            [cancel.widthAnchor constraintEqualToConstant:72].active = YES;
+            [cancel.heightAnchor constraintEqualToConstant:32].active = YES;
+            item.view = cancel;
+        } else {
+            item.view = label(@"New project", NeonUI(14), NeonInk());
+        }
+        item.label = [identifier isEqual:@"creationCancel"] ? @"Cancel" : @"New project";
+        item.bordered = NO;
+        return item;
+    }
     if ([identifier isEqual:@"sidebarDivider"])
         return [NSTrackingSeparatorToolbarItem
             trackingSeparatorToolbarItemWithIdentifier:identifier
@@ -546,7 +684,7 @@ NSUInteger words(NSString* text) {
         NSToolbarItem* titleItem = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
         self.windowTitle = [[NeonInlineTitle alloc] initWithFrame:NSMakeRect(0, 0, 210, 26)];
         self.windowTitle.font = NeonUI(13);
-        self.windowTitle.stringValue = @"Neon";
+        self.windowTitle.stringValue = @"Library";
         self.windowTitle.accessibilityLabel = @"Project title";
         __weak NeonApp* weakSelf = self;
         self.windowTitle.commitTitle = ^BOOL(NSString* title) {
@@ -653,6 +791,8 @@ NSUInteger words(NSString* text) {
     (void)sender;
     NSSplitViewItem* sidebar = self.split.splitViewItems.firstObject;
     BOOL collapsed = !sidebar.collapsed;
+    self.workspaceController.contentInset = collapsed ? 32 : 48;
+    [self.workspaceController refreshLayout];
     // Keep one toolbar toggle: against the sidebar edge when open, before the
     // document title when closed. The native separator tracks divider resizing.
     if (collapsed) {
@@ -688,8 +828,7 @@ NSUInteger words(NSString* text) {
         if (toggle != NSNotFound)
             [self.window.toolbar insertItemWithItemIdentifier:@"sidebarDivider" atIndex:toggle + 1];
     }
-    if (self.immediateSidebarTransition ||
-        NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) {
+    if (self.immediateSidebarTransition || NeonReduceMotion()) {
         sidebar.collapsed = collapsed;
         return;
     }
@@ -716,7 +855,7 @@ NSUInteger words(NSString* text) {
         __weak NeonApp* weakSelf = self;
         NeonInlineTitle* book = [NeonInlineTitle new];
         book.stringValue = self.session.title;
-        book.font = NeonSerif(24);
+        book.font = NeonUISemibold(16);
         book.accessibilityLabel = @"Project title";
         book.commitTitle = ^BOOL(NSString* title) {
           return [weakSelf renameInline:title section:nil];
@@ -726,19 +865,12 @@ NSUInteger words(NSString* text) {
             [NSString stringWithFormat:@"%lu %@ · %lu words", self.session.sections.count,
                                        [self.session.preset[@"sectionsLabel"] lowercaseString],
                                        self.session.projectWordCount];
-        NSStackView* project = column(
-            @[
-                book,
-                label([self.session.preset[@"documentLabel"] uppercaseString], NeonUI(13),
-                      NeonMuted()),
-                self.sidebarSummary
-            ],
-            8);
+        NSStackView* project = column(@[ book, self.sidebarSummary ], 8);
         project.edgeInsets = NSEdgeInsetsMake(24, 24, 24, 24);
         [book.widthAnchor constraintEqualToAnchor:project.widthAnchor constant:-48].active = YES;
         [book setContentCompressionResistancePriority:200
                                        forOrientation:NSLayoutConstraintOrientationHorizontal];
-        [project.heightAnchor constraintGreaterThanOrEqualToConstant:138].active = YES;
+        [project.heightAnchor constraintGreaterThanOrEqualToConstant:102].active = YES;
         [rows addObject:project];
         NSInteger index = 0;
         for (NSDictionary* section in self.session.sections) {
@@ -778,10 +910,10 @@ NSUInteger words(NSString* text) {
             }
             [chapter addArrangedSubview:row];
             chapter.currentChapter = selected;
-            [chapter.heightAnchor constraintEqualToConstant:52].active = YES;
+            [chapter.heightAnchor constraintEqualToConstant:44].active = YES;
             chapter.spacing = 7;
             chapter.alignment = NSLayoutAttributeCenterY;
-            chapter.edgeInsets = NSEdgeInsetsMake(4, 16, 4, 16);
+            chapter.edgeInsets = NSEdgeInsetsMake(0, 16, 0, 16);
             // A semantic row exposes its full sidebar bounds while retaining both controls.
             chapter.accessibilityElement = YES;
             chapter.accessibilityRole = NSAccessibilityGroupRole;
@@ -806,10 +938,10 @@ NSUInteger words(NSString* text) {
                     : self.session.preset[@"sectionLabel"];
             [rows addObject:chapter];
         }
-        [actions addObject:button([@"+  Add "
-                                      stringByAppendingString:[self.session.preset[@"sectionLabel"]
+        [actions
+            addObject:button([@"Add " stringByAppendingString:[self.session.preset[@"sectionLabel"]
                                                                   lowercaseString]],
-                                  @"plus", self, @selector(newSection:))];
+                             @"plus", self, @selector(newSection:))];
         if (self.session.trashedSections.count)
             [actions
                 addObject:button([@"Deleted "
@@ -823,8 +955,12 @@ NSUInteger words(NSString* text) {
     if (self.session) {
         for (NSUInteger index = 0; index < actions.count; ++index) {
             NSButton* original = actions[index];
-            NeonButton* command = [NeonPaperCommand new];
-            command.title = original.title;
+            NeonButton* command = original.action == @selector(newSection:)
+                                      ? [NeonAddCommand new]
+                                      : [NeonPaperCommand new];
+            command.title = original.action == @selector(newSection:)
+                                ? [@"＋ " stringByAppendingString:original.title]
+                                : original.title;
             command.alignment = NSTextAlignmentLeft;
             command.image = original.image;
             command.imagePosition = original.imagePosition;
@@ -835,6 +971,20 @@ NSUInteger words(NSString* text) {
     }
     if (!self.session)
         [actions addObject:button(@"Trash", @"trash", self, @selector(showTrash:))];
+    NeonSidebarCommand* settings = [NeonSidebarCommand new];
+    settings.title = @"Settings";
+    settings.image = [NSImage imageWithSystemSymbolName:@"gearshape" accessibilityDescription:nil];
+    settings.target = self;
+    settings.action = @selector(showSettings:);
+    settings.accessibilityLabel = @"Settings";
+    settings.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.sidebarBody addSubview:settings];
+    [NSLayoutConstraint activateConstraints:@[
+        [settings.leadingAnchor constraintEqualToAnchor:self.sidebarBody.leadingAnchor],
+        [settings.trailingAnchor constraintEqualToAnchor:self.sidebarBody.trailingAnchor],
+        [settings.bottomAnchor constraintEqualToAnchor:self.sidebarBody.bottomAnchor],
+        [settings.heightAnchor constraintEqualToConstant:44]
+    ]];
     NSScrollView* scroll = [NSScrollView new];
     scroll.drawsBackground = NO;
     scroll.hasVerticalScroller = YES;
@@ -866,8 +1016,8 @@ NSUInteger words(NSString* text) {
     }
     NSArray<NSView*>* arranged = rows;
     NSLayoutYAxisAnchor* top = self.sidebarBody.topAnchor;
-    if (self.session && rows.count >= 2) {
-        NSStackView* identity = column([rows subarrayWithRange:NSMakeRange(0, 2)], 0);
+    if (self.session && rows.count >= 1) {
+        NSStackView* identity = column([rows subarrayWithRange:NSMakeRange(0, 1)], 0);
         identity.translatesAutoresizingMaskIntoConstraints = NO;
         [self.sidebarBody addSubview:identity];
         [NSLayoutConstraint activateConstraints:@[
@@ -878,10 +1028,10 @@ NSUInteger words(NSString* text) {
         for (NSView* item in identity.arrangedSubviews)
             [item.widthAnchor constraintEqualToAnchor:identity.widthAnchor].active = YES;
         top = identity.bottomAnchor;
-        arranged = [rows subarrayWithRange:NSMakeRange(2, rows.count - 2)];
+        arranged = [rows subarrayWithRange:NSMakeRange(1, rows.count - 1)];
         [scroll.heightAnchor constraintLessThanOrEqualToConstant:312].active = YES;
         NSLayoutConstraint* preferred =
-            [scroll.heightAnchor constraintEqualToConstant:MIN(312, arranged.count * 52)];
+            [scroll.heightAnchor constraintEqualToConstant:MIN(312, arranged.count * 44)];
         preferred.priority = NSLayoutPriorityDefaultLow;
         preferred.active = YES;
         [scroll setContentCompressionResistancePriority:1
@@ -894,7 +1044,7 @@ NSUInteger words(NSString* text) {
         [scroll.bottomAnchor constraintEqualToAnchor:footer.topAnchor],
         [footer.leadingAnchor constraintEqualToAnchor:self.sidebarBody.leadingAnchor],
         [footer.trailingAnchor constraintEqualToAnchor:self.sidebarBody.trailingAnchor],
-        [footer.bottomAnchor constraintLessThanOrEqualToAnchor:self.sidebarBody.bottomAnchor]
+        [footer.bottomAnchor constraintLessThanOrEqualToAnchor:settings.topAnchor]
     ]];
     NSStackView* stack = column(arranged, 0);
     stack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -909,54 +1059,98 @@ NSUInteger words(NSString* text) {
     }
 }
 - (void)transitionContent:(void (^)(void))changes {
+    [self transitionContent:changes duration:0.38 manuscriptOnly:NO];
+}
+- (void)transitionContent:(void (^)(void))changes
+                 duration:(NSTimeInterval)duration
+           manuscriptOnly:(BOOL)manuscriptOnly {
+    [self transitionContent:changes duration:duration manuscriptOnly:manuscriptOnly direction:1];
+}
+- (void)transitionContent:(void (^)(void))changes
+                 duration:(NSTimeInterval)duration
+           manuscriptOnly:(BOOL)manuscriptOnly
+                direction:(NSInteger)direction {
     [self.transitionOverlay removeFromSuperview];
     self.transitionOverlay = nil;
-    NSView* host = self.content.view;
-    if (!self.window.visible || !host.subviews.count ||
-        NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) {
+    NSView* host = self.creatingProject ? self.creationController.view : self.content.view;
+    NSRect region = manuscriptOnly && self.workspaceController
+                        ? [self.workspaceController.scrollView
+                              convertRect:self.workspaceController.scrollView.bounds
+                                   toView:host]
+                        : host.bounds;
+    if (!self.window.visible || !host.subviews.count || NeonReduceMotion()) {
         changes();
         return;
     }
-    NSBitmapImageRep* bitmap = [host bitmapImageRepForCachingDisplayInRect:host.bounds];
+    NSBitmapImageRep* bitmap = [host bitmapImageRepForCachingDisplayInRect:region];
     if (!bitmap) {
         changes();
         return;
     }
-    [host cacheDisplayInRect:host.bounds toBitmapImageRep:bitmap];
-    NSImage* image = [[NSImage alloc] initWithSize:host.bounds.size];
-    [image addRepresentation:bitmap];
+    [host cacheDisplayInRect:region toBitmapImageRep:bitmap];
+    NSImage* departingImage = [[NSImage alloc] initWithSize:region.size];
+    [departingImage addRepresentation:bitmap];
     changes();
+    host = self.creatingProject ? self.creationController.view : self.content.view;
+    [self.window.contentView layoutSubtreeIfNeeded];
     [host layoutSubtreeIfNeeded];
-    NeonTransitionOverlay* overlay = [[NeonTransitionOverlay alloc] initWithFrame:host.bounds];
-    overlay.image = image;
-    overlay.imageScaling = NSImageScaleAxesIndependently;
-    overlay.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    overlay.accessibilityElement = NO;
-    [host addSubview:overlay];
-    self.transitionOverlay = overlay;
+    if (!manuscriptOnly)
+        region = host.bounds;
+    NSBitmapImageRep* incomingBitmap = [host bitmapImageRepForCachingDisplayInRect:region];
+    if (!incomingBitmap)
+        return;
+    [host cacheDisplayInRect:region toBitmapImageRep:incomingBitmap];
+    NSImage* arrivingImage = [[NSImage alloc] initWithSize:region.size];
+    [arrivingImage addRepresentation:incomingBitmap];
+    NeonTransitionStage* stage = [[NeonTransitionStage alloc] initWithFrame:region];
+    stage.wantsLayer = YES;
+    stage.layer.masksToBounds = YES;
+    stage.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    stage.accessibilityElement = NO;
+    NeonTransitionOverlay* departing = [[NeonTransitionOverlay alloc] initWithFrame:stage.bounds];
+    departing.image = departingImage;
+    departing.imageScaling = NSImageScaleAxesIndependently;
+    NeonTransitionOverlay* arriving = [[NeonTransitionOverlay alloc] initWithFrame:stage.bounds];
+    arriving.image = arrivingImage;
+    arriving.imageScaling = NSImageScaleAxesIndependently;
+    CGFloat distance = (manuscriptOnly ? 26 : 75) * (direction < 0 ? -1 : 1);
+    arriving.frame = NSOffsetRect(stage.bounds, distance, 0);
+    arriving.alphaValue = 0;
+    [stage addSubview:departing];
+    [stage addSubview:arriving];
+    [host addSubview:stage];
+    self.transitionOverlay = stage;
     [NSAnimationContext
         runAnimationGroup:^(NSAnimationContext* context) {
-          context.duration = 0.18;
-          context.timingFunction =
-              [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-          overlay.animator.alphaValue = 0;
+          context.duration = duration;
+          context.timingFunction = [CAMediaTimingFunction functionWithControlPoints:
+                                                                               0.22:0.61:0.36:1];
+          departing.animator.alphaValue = 0;
+          departing.animator.frame = NSOffsetRect(stage.bounds, -distance * 0.35, 0);
+          arriving.animator.alphaValue = 1;
+          arriving.animator.frame = stage.bounds;
         }
         completionHandler:^{
-          [overlay removeFromSuperview];
+          [stage removeFromSuperview];
         }];
 }
 - (void)showLibrary:(id)sender {
     if (![self flush])
         return;
-    [self transitionContent:^{
-      [self renderLibrary:sender];
-    }];
+    [self
+        transitionContent:^{
+          [self renderLibrary:sender];
+        }
+                 duration:0.38
+           manuscriptOnly:NO
+                direction:-1];
 }
 - (void)configureToolbarForLibrary:(BOOL)library {
     NSStackView* breadcrumb = (NSStackView*)self.windowTitle.superview;
     if (breadcrumb.arrangedSubviews.count >= 3) {
         breadcrumb.arrangedSubviews[0].hidden = library;
         breadcrumb.arrangedSubviews[1].hidden = library;
+        self.windowTitle.hidden = library;
     }
     NSToolbar* toolbar = self.window.toolbar;
     if (library) {
@@ -1061,6 +1255,8 @@ NSUInteger words(NSString* text) {
     }
 }
 - (void)renderLibrary:(id)sender {
+    [self finishProjectCreation];
+    [self dismissSettings:nil];
     (void)sender;
     [self.historyController removeFromParentViewController];
     self.historyController = nil;
@@ -1077,11 +1273,11 @@ NSUInteger words(NSString* text) {
     self.selectedURL = nil;
     self.chapterTitle = nil;
     self.guidance = nil;
-    [self setChromeHeight:64];
+    [self setChromeHeight:56];
     [self configureToolbarForLibrary:YES];
     self.window.title = @"Neon";
     self.window.subtitle = @"";
-    self.windowTitle.stringValue = @"Neon";
+    self.windowTitle.stringValue = @"Library";
     self.windowTitle.enabled = NO;
     [self updateHistoryCommand];
     if (!self.libraryController) {
@@ -1149,6 +1345,10 @@ NSUInteger words(NSString* text) {
     if (destination != NeonWorkspaceDestinationManuscript)
         return;
     if (sectionID && ![sectionID isEqual:self.session.selectedSectionID]) {
+        NSUInteger oldIndex = [[self.session.sections valueForKey:@"id"]
+            indexOfObject:self.session.selectedSectionID];
+        NSUInteger nextIndex = [[self.session.sections valueForKey:@"id"] indexOfObject:sectionID];
+        self.transitionDirection = nextIndex < oldIndex ? -1 : 1;
         if (![self flush])
             return;
         NSError* error = nil;
@@ -1160,12 +1360,19 @@ NSUInteger words(NSString* text) {
     [self showEditor];
 }
 - (void)showEditor {
-    [self transitionContent:^{
-      [self renderEditor];
-    }];
+    BOOL chapterChange = self.editor != nil && self.workspaceController != nil;
+    NSTimeInterval duration = chapterChange ? 0.26 : self.historyController ? 0.38 : 0.44;
+    [self
+        transitionContent:^{
+          [self renderEditor];
+        }
+                 duration:duration
+           manuscriptOnly:chapterChange];
 }
 - (void)renderEditor {
-    [self setChromeHeight:68];
+    [self finishProjectCreation];
+    [self dismissSettings:nil];
+    [self setChromeHeight:56];
     [self configureToolbarForLibrary:NO];
     if (self.libraryController.parentViewController) {
         [self.libraryController removeFromParentViewController];
@@ -1245,6 +1452,8 @@ NSUInteger words(NSString* text) {
     [self.content addChildViewController:self.workspaceController];
     pin(self.workspaceController.view, self.content.view);
     self.workspaceController.textMeasure = NeonTextMeasure();
+    self.workspaceController.contentInset =
+        self.split.splitViewItems.firstObject.collapsed ? 32 : 48;
     self.workspaceController.bodyBaselineAdjustment =
         [self.session.preset[@"id"] isEqual:@"book"] ? 4 : 0;
     NeonChapterHeading* heading = self.workspaceController.heading;
@@ -1298,7 +1507,9 @@ NSUInteger words(NSString* text) {
     self.window.title = self.session.title;
     // Defer label refresh until the field editor has finished committing.
     dispatch_async(dispatch_get_main_queue(), ^{
-      self.windowTitle.stringValue = self.session ? self.session.title : @"Neon";
+      self.windowTitle.stringValue = self.settingsPage ? @"Settings"
+                                     : self.session    ? self.session.title
+                                                       : @"Library";
       self.chapterTitle.stringValue = self.session.sectionTitle ?: @"";
       [self buildSidebar];
     });
@@ -1326,15 +1537,13 @@ NSUInteger words(NSString* text) {
         ![NeonPreferences() objectForKey:@"manuscriptSpacing"]) {
         paragraph.lineSpacing = 0;
         paragraph.lineHeightMultiple = 0;
-        paragraph.minimumLineHeight = NeonTextSize() * 34.0 / 20.0;
+        paragraph.minimumLineHeight = NeonTextSize() * 1.85;
         paragraph.maximumLineHeight = paragraph.minimumLineHeight;
     }
     paragraph.firstLineHeadIndent = [self.session.preset[@"firstLineIndent"] doubleValue];
     if ([self.session.preset[@"id"] isEqual:@"book"]) {
         paragraph.firstLineHeadIndent = 0;
         if (![NeonPreferences() objectForKey:@"paragraphSpacing"])
-            // Figma's paragraph boxes include 2pt beyond their 34pt line grid.
-            // Compensate in AppKit presentation without changing stored preferences.
             paragraph.paragraphSpacing = 26;
     }
     if ([self.session.sections count]) {
@@ -1347,6 +1556,8 @@ NSUInteger words(NSString* text) {
     }
     self.measureConstraint.constant = NeonTextMeasure();
     self.workspaceController.textMeasure = NeonTextMeasure();
+    self.workspaceController.contentInset =
+        self.split.splitViewItems.firstObject.collapsed ? 32 : 48;
     self.workspaceController.bodyBaselineAdjustment =
         [self.session.preset[@"id"] isEqual:@"book"] ? 4 : 0;
     self.editor.continuousSpellCheckingEnabled = NeonWritingPreference(@"spellcheck");
@@ -1361,6 +1572,38 @@ NSUInteger words(NSString* text) {
         NSForegroundColorAttributeName : NeonInk()
     }
                                      range:NSMakeRange(0, self.editor.string.length)];
+    // Plain-text manuscripts can contain explicit blank separator lines. Give
+    // those separators the paragraph gap once, rather than adding paragraph
+    // spacing to both the preceding text and every empty line. Text is untouched.
+    NSString* text = self.editor.string;
+    [text
+        enumerateSubstringsInRange:NSMakeRange(0, text.length)
+                           options:NSStringEnumerationByParagraphs
+                        usingBlock:^(NSString* substring, NSRange range, NSRange enclosing, BOOL*) {
+                          BOOL blank =
+                              ![substring
+                                   stringByTrimmingCharactersInSet:NSCharacterSet
+                                                                       .whitespaceCharacterSet]
+                                   .length;
+                          NSUInteger next = NSMaxRange(enclosing);
+                          BOOL followedByBlank =
+                              next < text.length && [text characterAtIndex:next] == '\n';
+                          if ([self.session.preset[@"id"] isEqual:@"book"] &&
+                              (blank || followedByBlank)) {
+                              NSMutableParagraphStyle* separated = [paragraph mutableCopy];
+                              separated.paragraphSpacing = 0;
+                              if (blank) {
+                                  separated.lineSpacing = 0;
+                                  separated.lineHeightMultiple = 0;
+                                  separated.minimumLineHeight = MAX(1, paragraph.paragraphSpacing);
+                                  separated.maximumLineHeight = separated.minimumLineHeight;
+                              }
+                              [self.editor.textStorage addAttribute:NSParagraphStyleAttributeName
+                                                              value:separated
+                                                              range:enclosing];
+                          }
+                          (void)range;
+                        }];
     self.editor.typingAttributes = @{
         NSFontAttributeName : ([NeonPreferences() objectForKey:@"manuscriptFont"]
                                    ? NeonManuscriptFont(NeonTextSize())
@@ -1386,7 +1629,7 @@ NSUInteger words(NSString* text) {
     (void)notification;
     if (self.editor.hasMarkedText)
         return;
-    if (self.pendingTypography)
+    if (self.pendingTypography || [self.session.preset[@"id"] isEqual:@"book"])
         [self styleEditor];
     NSError* error = nil;
     if (![self.session replaceText:self.editor.string error:&error]) {
@@ -1442,35 +1685,186 @@ NSUInteger words(NSString* text) {
     (void)sender;
     if (![self flush])
         return;
-    NSAlert* alert = [NSAlert new];
-    alert.messageText = @"Start a new project";
-    NSTextField* titleField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 380, 28)];
-    titleField.placeholderString = @"Working title";
-    NSPopUpButton* presets = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 380, 28)
-                                                        pullsDown:NO];
-    for (NSDictionary* preset in NeonDocumentSession.writingPresets)
-        [presets addItemWithTitle:preset[@"title"]];
-    presets.target = self;
-    presets.action = @selector(presetChanged:);
-    self.presetDescription = [NSTextField wrappingLabelWithString:@""];
-    self.presetDescription.font = NeonUI(12);
-    self.presetDescription.textColor = NeonMuted();
-    NSStackView* fields = column(@[ titleField, presets, self.presetDescription ], 12);
-    fields.frame = NSMakeRect(0, 0, 380, 190);
-    [self.presetDescription.widthAnchor constraintEqualToConstant:380].active = YES;
-    [titleField.widthAnchor constraintEqualToConstant:380].active = YES;
-    [presets.widthAnchor constraintEqualToConstant:380].active = YES;
-    alert.accessoryView = fields;
-    [self presetChanged:presets];
-    [alert addButtonWithTitle:@"Create"];
-    [alert addButtonWithTitle:@"Cancel"];
-    if ([alert runModal] != NSAlertFirstButtonReturn)
+    self.creationPreset = @"book";
+    [self transitionContent:^{
+      [self renderProjectCreation];
+    }];
+}
+- (void)replaceToolbar {
+    NSToolbar* toolbar = [[NSToolbar alloc]
+        initWithIdentifier:self.creatingProject ? @"NeonCreation" : @"NeonEditorial"];
+    toolbar.delegate = self;
+    toolbar.displayMode = NSToolbarDisplayModeIconOnly;
+    self.window.toolbar = toolbar;
+}
+- (void)finishProjectCreation {
+    if (!self.creatingProject)
         return;
+    NSRect windowFrame = self.window.frame;
+    self.creatingProject = NO;
+    self.window.contentViewController = self.split;
+    self.creationController = nil;
+    [self replaceToolbar];
+    [self.window setFrame:windowFrame display:YES];
+}
+- (void)renderProjectCreation {
+    NSRect windowFrame = self.window.frame;
+    self.creationWindowWidth = windowFrame.size.width;
+    [self renderLibrary:nil];
+    self.creatingProject = YES;
+    self.creationController = [NSViewController new];
+    self.creationController.view =
+        [[NeonCreationPage alloc] initWithFrame:self.window.contentView.bounds];
+    self.creationController.preferredContentSize = self.window.contentView.bounds.size;
+    [self.creationController.view.widthAnchor constraintGreaterThanOrEqualToConstant:760].active =
+        YES;
+    [self.creationController.view.heightAnchor constraintGreaterThanOrEqualToConstant:480].active =
+        YES;
+    self.window.contentViewController = self.creationController;
+    [self replaceToolbar];
+    [self setChromeHeight:56];
+    NSTextField* heading = label(@"What are you writing?", NeonSerif(30), NeonInk());
+    heading.alignment = NSTextAlignmentCenter;
+    heading.identifier = @"creation-heading";
+    NSTextField* intro =
+        label(@"Start with a structure that speaks your language.", NeonUI(15), NeonMuted());
+    intro.alignment = NSTextAlignmentCenter;
+    self.creationTitle = [NSTextField new];
+    self.creationTitle.font = NeonUI(16);
+    self.creationTitle.placeholderString = @"Working title";
+    self.creationTitle.accessibilityLabel = @"Project title";
+    self.creationTitle.accessibilityIdentifier = @"new-project-title";
+    [self.creationTitle.heightAnchor constraintEqualToConstant:36].active = YES;
+    self.presetChoices = column(@[], 16);
+    NSArray* identifiers = @[ @"book", @"research", @"newsletter", @"article", @"essay", @"blank" ];
+    NSArray* names =
+        @[ @"Book", @"Research paper", @"Newsletter", @"Article", @"Essay", @"Blank document" ];
+    NSArray* details = @[
+        @"Chapters, parts, front matter", @"Abstract, methods, references",
+        @"Subject, lead story, footer", @"Headline, sections, sources",
+        @"Introduction, argument, conclusion", @"A clean page. Your own structure."
+    ];
+    for (NSUInteger i = 0; i < identifiers.count; i += 2) {
+        NSStackView* row = [NSStackView new];
+        row.spacing = 16;
+        row.distribution = NSStackViewDistributionFillEqually;
+        for (NSUInteger j = i; j < i + 2; ++j) {
+            NeonPresetCard* choice = [NeonPresetCard new];
+            choice.title = names[j];
+            choice.detail = details[j];
+            choice.identifier = identifiers[j];
+            choice.accessibilityIdentifier = [@"preset-" stringByAppendingString:identifiers[j]];
+            choice.accessibilityLabel = [NSString stringWithFormat:@"%@. %@", names[j], details[j]];
+            choice.target = self;
+            choice.action = @selector(selectProjectPreset:);
+            choice.kind = NeonButtonSelection;
+            choice.chosen = [identifiers[j] isEqual:self.creationPreset];
+            [choice.heightAnchor constraintEqualToConstant:112].active = YES;
+            [row addArrangedSubview:choice];
+        }
+        [self.presetChoices addArrangedSubview:row];
+        [row.widthAnchor constraintEqualToAnchor:self.presetChoices.widthAnchor].active = YES;
+    }
+    NSTextField* guidance =
+        label(@"You can change the structure and formatting later.", NeonUI(14), NeonMuted());
+    guidance.alignment = NSTextAlignmentCenter;
+    NSStackView* form =
+        column(@[ heading, intro, self.presetChoices, guidance, self.creationTitle ], 20);
+    form.translatesAutoresizingMaskIntoConstraints = NO;
+    NSScrollView* scroll = [NSScrollView new];
+    scroll.drawsBackground = NO;
+    scroll.hasVerticalScroller = YES;
+    scroll.autohidesScrollers = YES;
+    scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    NSView* document = [[NeonCreationDocument alloc]
+        initWithFrame:NSMakeRect(0, 0, self.creationController.view.bounds.size.width, 640)];
+    document.autoresizingMask = NSViewNotSizable;
+    scroll.documentView = document;
+    [document addSubview:form];
+    [self.creationController.view addSubview:scroll];
+    NeonSurface* footer = [NeonSurface new];
+    footer.panel = YES;
+    footer.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.creationController.view addSubview:footer];
+    self.presetDescription = label(@"", NeonUI(14), NeonMuted());
+    self.presetDescription.translatesAutoresizingMaskIntoConstraints = NO;
+    [footer addSubview:self.presetDescription];
+    NeonButton* create = [NeonButton new];
+    create.title = @"Continue";
+    create.kind = NeonButtonPrimary;
+    create.target = self;
+    create.action = @selector(createSelectedProject:);
+    create.accessibilityIdentifier = @"create-project";
+    create.translatesAutoresizingMaskIntoConstraints = NO;
+    [footer addSubview:create];
+    [NSLayoutConstraint activateConstraints:@[
+        [scroll.topAnchor constraintEqualToAnchor:self.creationController.view.topAnchor],
+        [scroll.leadingAnchor constraintEqualToAnchor:self.creationController.view.leadingAnchor],
+        [scroll.trailingAnchor constraintEqualToAnchor:self.creationController.view.trailingAnchor],
+        [scroll.bottomAnchor constraintEqualToAnchor:footer.topAnchor],
+        [form.topAnchor constraintEqualToAnchor:document.topAnchor constant:32],
+        [form.centerXAnchor constraintEqualToAnchor:document.centerXAnchor],
+        [form.widthAnchor constraintLessThanOrEqualToConstant:800],
+        [form.leadingAnchor constraintGreaterThanOrEqualToAnchor:document.leadingAnchor
+                                                        constant:40],
+        [heading.widthAnchor constraintEqualToAnchor:form.widthAnchor],
+        [intro.widthAnchor constraintEqualToAnchor:form.widthAnchor],
+        [guidance.widthAnchor constraintEqualToAnchor:form.widthAnchor],
+        [self.presetChoices.widthAnchor constraintEqualToAnchor:form.widthAnchor],
+        [self.creationTitle.widthAnchor constraintEqualToAnchor:form.widthAnchor],
+        [footer.leadingAnchor constraintEqualToAnchor:self.creationController.view.leadingAnchor],
+        [footer.trailingAnchor constraintEqualToAnchor:self.creationController.view.trailingAnchor],
+        [footer.bottomAnchor constraintEqualToAnchor:self.creationController.view.bottomAnchor],
+        [footer.heightAnchor constraintEqualToConstant:76],
+        [self.presetDescription.leadingAnchor constraintEqualToAnchor:footer.leadingAnchor
+                                                             constant:24],
+        [self.presetDescription.centerYAnchor constraintEqualToAnchor:footer.centerYAnchor],
+        [self.presetDescription.trailingAnchor
+            constraintLessThanOrEqualToAnchor:create.leadingAnchor
+                                     constant:-24],
+        [create.trailingAnchor constraintEqualToAnchor:footer.trailingAnchor constant:-24],
+        [create.centerYAnchor constraintEqualToAnchor:footer.centerYAnchor],
+        [create.widthAnchor constraintEqualToConstant:112],
+        [create.heightAnchor constraintEqualToConstant:40]
+    ]];
+    NSLayoutConstraint* width = [form.widthAnchor constraintEqualToAnchor:document.widthAnchor
+                                                                 constant:-80];
+    width.priority = NSLayoutPriorityDefaultHigh;
+    width.active = YES;
+    __weak NSScrollView* weakScroll = scroll;
+    __weak NSView* weakDocument = document;
+    ((NeonCreationPage*)self.creationController.view).layoutContent = ^{
+      NSScrollView* viewport = weakScroll;
+      NSView* page = weakDocument;
+      page.frame =
+          NSMakeRect(0, 0, viewport.contentSize.width, MAX(640, viewport.contentSize.height));
+      [page layoutSubtreeIfNeeded];
+    };
+    [self selectProjectPreset:nil];
+    [self.window setFrame:windowFrame display:YES];
+    [self.creationController.view layoutSubtreeIfNeeded];
+    ((NeonCreationPage*)self.creationController.view).layoutContent();
+}
+- (void)selectProjectPreset:(NeonButton*)sender {
+    if (sender)
+        self.creationPreset = sender.identifier;
+    for (NSStackView* row in self.presetChoices.arrangedSubviews)
+        for (NeonButton* choice in row.arrangedSubviews) {
+            choice.chosen = [choice.identifier isEqual:self.creationPreset];
+            choice.needsDisplay = YES;
+        }
+    for (NSStackView* row in self.presetChoices.arrangedSubviews)
+        for (NeonPresetCard* choice in row.arrangedSubviews)
+            if (choice.chosen)
+                self.presetDescription.stringValue =
+                    [NSString stringWithFormat:@"%@ · %@", choice.title, choice.detail];
+}
+- (void)createSelectedProject:(id)sender {
+    (void)sender;
     NSError* error = nil;
-    NSURL* url = [self.library
-        createProject:titleField.stringValue
-               preset:NeonDocumentSession.writingPresets[presets.indexOfSelectedItem][@"id"]
-                error:&error];
+    NSURL* url = [self.library createProject:self.creationTitle.stringValue
+                                      preset:self.creationPreset
+                                       error:&error];
     if (!url) {
         [self showError:error];
         return;
@@ -1647,31 +2041,75 @@ NSUInteger words(NSString* text) {
 }
 - (void)showSettings:(id)sender {
     (void)sender;
+    if (self.settingsPage || ![self flush])
+        return;
     [self.typography close];
-    if (!self.settings) {
-        self.settings = [[NSPanel alloc]
-            initWithContentRect:NSMakeRect(0, 0, 580, 660)
-                      styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                                NSWindowStyleMaskResizable
-                        backing:NSBackingStoreBuffered
-                          defer:NO];
-        self.settings.title = @"Settings";
-        self.settings.minSize = NSMakeSize(580, 420);
-        self.settings.releasedWhenClosed = NO;
-        NeonSettingsController* controller = [NeonSettingsController new];
-        __weak NeonApp* weakSelf = self;
-        controller.preferencesChanged = ^{
-          [weakSelf applyAppearance];
-          [weakSelf styleEditor];
-          if (weakSelf.editor)
-              [weakSelf updateStatus:!weakSelf.session.dirty];
+    NeonDismissMenu();
+    NeonSettingsController* controller = [NeonSettingsController new];
+    self.settingsController = controller;
+    __weak NeonApp* weakSelf = self;
+    if (self.session)
+        controller.showHistory = ^{
+          [weakSelf dismissSettings:nil];
+          [weakSelf showHistory:nil];
         };
-        self.settings.contentViewController = controller;
-        [self.settings center];
-    }
-    self.settings.appearance = self.window.appearance;
-    self.settings.backgroundColor = NeonPanel();
-    [self.settings makeKeyAndOrderFront:nil];
+    controller.preferencesChanged = ^{
+      [weakSelf applyAppearance];
+      [weakSelf styleEditor];
+      if (weakSelf.editor)
+          [weakSelf updateStatus:!weakSelf.session.dirty];
+    };
+    [self transitionContent:^{
+      for (NSView* child in self.content.view.subviews)
+          child.hidden = YES;
+      NeonSurface* page = [NeonSurface new];
+      page.panel = YES;
+      page.accessibilityIdentifier = @"settings-page";
+      page.accessibilityElement = YES;
+      page.accessibilityRole = NSAccessibilityGroupRole;
+      self.settingsPage = page;
+      pin(page, self.content.view);
+      NeonAddCommand* back = [NeonAddCommand new];
+      back.title = self.session ? @"← Back to editor" : @"← Back to Library";
+      back.target = self;
+      back.action = @selector(dismissSettings:);
+      back.accessibilityIdentifier = @"settings-back";
+      [back.widthAnchor constraintEqualToConstant:160].active = YES;
+      back.translatesAutoresizingMaskIntoConstraints = NO;
+      [page addSubview:back];
+      [self.content addChildViewController:controller];
+      controller.view.translatesAutoresizingMaskIntoConstraints = NO;
+      [page addSubview:controller.view];
+      [NSLayoutConstraint activateConstraints:@[
+          [back.topAnchor constraintEqualToAnchor:page.topAnchor constant:12],
+          [back.leadingAnchor constraintEqualToAnchor:page.leadingAnchor constant:32],
+          [back.heightAnchor constraintEqualToConstant:32],
+          [controller.view.topAnchor constraintEqualToAnchor:back.bottomAnchor constant:8],
+          [controller.view.leadingAnchor constraintEqualToAnchor:page.leadingAnchor],
+          [controller.view.trailingAnchor constraintEqualToAnchor:page.trailingAnchor],
+          [controller.view.bottomAnchor constraintEqualToAnchor:page.bottomAnchor]
+      ]];
+      [self configureToolbarForLibrary:YES];
+      self.windowTitle.hidden = NO;
+      self.windowTitle.stringValue = @"Settings";
+      self.windowTitle.enabled = NO;
+      [self.window makeFirstResponder:back];
+    }];
+}
+- (void)dismissSettings:(id)sender {
+    (void)sender;
+    if (!self.settingsPage)
+        return;
+    [self.settingsController removeFromParentViewController];
+    self.settingsController = nil;
+    [self.settingsPage removeFromSuperview];
+    self.settingsPage = nil;
+    for (NSView* child in self.content.view.subviews)
+        child.hidden = NO;
+    [self configureToolbarForLibrary:self.session == nil];
+    self.windowTitle.stringValue = self.session ? self.session.title : @"Library";
+    self.windowTitle.enabled = self.session != nil;
+    [self.window makeFirstResponder:self.editor ?: self.content.view];
 }
 - (void)changeSize:(NSSlider*)sender {
     [NeonPreferences() setDouble:sender.doubleValue forKey:@"manuscriptSize"];
@@ -1891,6 +2329,9 @@ NSUInteger words(NSString* text) {
     return YES;
 }
 - (void)capture:(NSString*)file {
+    [self.window orderFrontRegardless];
+    [self.window displayIfNeeded];
+    [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
     NSTask* task = [NSTask new];
     task.executableURL = [NSURL fileURLWithPath:@"/usr/sbin/screencapture"];
     // Capture this app window even when another app retains foreground focus.
@@ -2050,8 +2491,8 @@ NSUInteger words(NSString* text) {
     [self performSelector:@selector(captureSettings) withObject:nil afterDelay:1];
 }
 - (void)captureSettings {
-    NeonSettingsController* controller = (id)self.settings.contentViewController;
-    if (controller.visibleSettingCount != 10)
+    NeonSettingsController* controller = self.settingsController;
+    if (controller.visibleSettingCount != 14)
         exit(10);
     [controller filterSettings:@"PARAGRAPH"];
     if (controller.visibleSettingCount != 1)
@@ -2080,7 +2521,7 @@ NSUInteger words(NSString* text) {
 }
 - (void)finishSettingsSmoke {
     [self capture:@"native-settings.png"];
-    [self.settings close];
+    [self dismissSettings:nil];
     NSError* error = nil;
     if (![self.session createCheckpoint:@"Before review" error:&error])
         exit(11);
@@ -2124,7 +2565,54 @@ NSUInteger words(NSString* text) {
 }
 - (void)capturePreset {
     [self capture:@"native-research.png"];
-    printf("Shared Mac editor/navigation/reopen, commands, settings, history and presets passed\n");
+    [self newProject:nil];
+    [self performSelector:@selector(captureCreation) withObject:nil afterDelay:1];
+}
+- (void)captureCreation {
+    [self capture:@"native-new-project.png"];
+    NSUInteger choices = 0;
+    for (NSStackView* row in self.presetChoices.arrangedSubviews) {
+        choices += row.arrangedSubviews.count;
+        for (NSView* card in row.arrangedSubviews) {
+            NSRect visible = NSIntersectionRect([card convertRect:card.bounds
+                                                           toView:self.window.contentView],
+                                                self.window.contentView.bounds);
+            if (NSWidth(visible) < 100 || NSHeight(visible) < 80 ||
+                NSWidth(card.visibleRect) < 100 || NSHeight(card.visibleRect) < 80) {
+                fprintf(stderr, "Creation card not visibly laid out: %s\n",
+                        NSStringFromRect(card.visibleRect).UTF8String);
+                exit(13);
+            }
+        }
+    }
+    NSView* heading = settingControl(self.creationController.view, @"creation-heading");
+    if (self.window.frame.size.width < 760 ||
+        self.window.frame.size.width + 0.5 < self.creationWindowWidth)
+        exit(13);
+    if (choices != 6 || !self.creationTitle.window || NSHeight(heading.visibleRect) < 20)
+        exit(13);
+    for (NSToolbarItem* item in self.window.toolbar.items)
+        if (![@[ @"creationCancel", @"creationTitle", NSToolbarFlexibleSpaceItemIdentifier ]
+                containsObject:item.itemIdentifier]) {
+            fprintf(stderr, "Unexpected creation toolbar item: %s\n",
+                    item.itemIdentifier.UTF8String);
+            exit(13);
+        }
+    self.creationTitle.stringValue = @"Creation flow smoke";
+    self.creationPreset = @"article";
+    [self createSelectedProject:nil];
+    if (![self.session.title isEqual:@"Creation flow smoke"] ||
+        ![self.session.preset[@"id"] isEqual:@"article"])
+        exit(13);
+    NSError* error = nil;
+    NeonDocumentSession* reopened = [self.library openURL:self.selectedURL error:&error];
+    if (!reopened || ![reopened.title isEqual:self.session.title])
+        exit(13);
+    if (NSProcessInfo.processInfo.environment[@"NEON_CREATION_ONLY"])
+        printf("Mac creation layout and project persistence passed\n");
+    else
+        printf("Shared Mac editor/navigation/reopen, commands, settings, history and presets "
+               "passed\n");
     [NSApp terminate:nil];
 }
 @end

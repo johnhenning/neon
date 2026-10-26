@@ -21,6 +21,15 @@ NeonColor* NeonDanger();
 NeonColor* NeonActionText();
 NeonFont* NeonSerif(CGFloat size);
 NeonFont* NeonUI(CGFloat size);
+NeonFont* NeonUISemibold(CGFloat size);
+BOOL NeonReduceMotion();
+BOOL NeonReduceTransparency();
+BOOL NeonGlassEnabled();
+#if TARGET_OS_IPHONE
+void NeonApplyGlassBackdrop(UIView* view, CGFloat radius);
+#else
+void NeonApplyGlassBackdrop(NSView* view, CGFloat radius);
+#endif
 CGFloat NeonTextSize();
 CGFloat NeonLineSpacing();
 NSInteger NeonAppearance();
