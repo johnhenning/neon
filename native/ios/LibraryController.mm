@@ -24,6 +24,26 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
     return result;
 }
 } // namespace
+// NeonButton rebuilds its configuration for selection/hover/focus. Preserve the
+// static navigation image through those updates without changing shared controls.
+@interface NeonLibraryFilterButton : NeonButton
+@property(nonatomic, strong) UIImage* navigationImage;
+@end
+@implementation NeonLibraryFilterButton
+- (void)setNavigationImage:(UIImage*)image {
+    _navigationImage = image;
+    [self setConfiguration:self.configuration];
+}
+- (void)setConfiguration:(UIButtonConfiguration*)configuration {
+    UIButtonConfiguration* value = [configuration copy];
+    if (self.navigationImage) {
+        value.image = self.navigationImage;
+        value.imagePadding = 8;
+        value.imagePlacement = NSDirectionalRectEdgeLeading;
+    }
+    [super setConfiguration:value];
+}
+@end
 @interface NeonLibraryController ()
 @property(nonatomic) NeonLibraryQuery* query;
 @property(nonatomic) NeonLibraryPresentation* presentation;
@@ -34,6 +54,33 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
 @property(nonatomic) CGFloat renderedWidth;
 @end
 @implementation NeonLibraryController
++ (UIImage*)navigationImageForFilter:(NeonLibraryFilter)filter {
+    NSArray* names = @[ @"library", @"recent", @"favorites", @"device", @"trash" ];
+    if (filter < NeonLibraryAll || filter > NeonLibraryTrash)
+        return nil;
+    NSString* path = [NSBundle.mainBundle pathForResource:names[filter]
+                                                   ofType:@"png"
+                                              inDirectory:@"icons"];
+    UIImage* pixels = [UIImage imageWithContentsOfFile:path];
+    NSAssert(pixels.CGImage, @"Missing bundled Library navigation artwork: %@", names[filter]);
+    if (!pixels.CGImage)
+        return nil;
+    UIImage* root = [UIImage imageWithCGImage:pixels.CGImage
+                                        scale:3
+                                  orientation:UIImageOrientationUp];
+    // Assets preserve their24pt SVG roots at3x. The native wrapper is20pt;
+    // changing point scale fits the untouched raster without altering proportions.
+    CGFloat pointScale = root.scale * root.size.width / 20;
+    return [[UIImage imageWithCGImage:root.CGImage
+                                scale:pointScale
+                          orientation:UIImageOrientationUp]
+        imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+}
++ (NeonButton*)navigationButtonForFilter:(NeonLibraryFilter)filter {
+    NeonLibraryFilterButton* button = [NeonLibraryFilterButton buttonWithType:UIButtonTypeSystem];
+    button.navigationImage = [self navigationImageForFilter:filter];
+    return button;
+}
 - (instancetype)init {
     if ((self = [super init])) {
         _query = [NeonLibraryQuery new];
@@ -115,13 +162,14 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
     __weak NeonLibraryController* weak = self;
     NSArray* titles = @[ @"All projects", @"Recent", @"Favorites", @"On this device", @"Trash" ];
     for (NSInteger i = 0; i < 5; i++) {
-        UIAction* a = [UIAction actionWithTitle:titles[i]
-                                          image:nil
-                                     identifier:nil
-                                        handler:^(__kindof UIAction* value) {
-                                          (void)value;
-                                          [weak selectFilter:(NeonLibraryFilter)i];
-                                        }];
+        UIAction* a = [UIAction
+            actionWithTitle:titles[i]
+                      image:[NeonLibraryController navigationImageForFilter:(NeonLibraryFilter)i]
+                 identifier:nil
+                    handler:^(__kindof UIAction* value) {
+                      (void)value;
+                      [weak selectFilter:(NeonLibraryFilter)i];
+                    }];
         a.state = self.query.filter == i ? UIMenuElementStateOn : UIMenuElementStateOff;
         [actions addObject:a];
     }

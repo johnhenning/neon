@@ -154,9 +154,11 @@ NSString* focusAncestry(UIView* target) {
     __weak NeonLibraryShell* weak = self;
     NSArray* titles = @[ @"All projects", @"Recent", @"Favorites", @"On this device", @"Trash" ];
     for (NSUInteger i = 0; i < titles.count; ++i) {
-        NeonButton* button = [NeonButton buttonWithType:UIButtonTypeSystem];
+        NeonButton* button = [NeonLibraryController navigationButtonForFilter:(NeonLibraryFilter)i];
         button.kind = NeonButtonSelection;
         [button setTitle:titles[i] forState:UIControlStateNormal];
+        button.accessibilityLabel = titles[i];
+        button.imageView.isAccessibilityElement = NO;
         button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
         [button.heightAnchor constraintGreaterThanOrEqualToConstant:NeonMinimumTouchTarget].active =
             YES;
