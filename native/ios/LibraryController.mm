@@ -15,7 +15,9 @@ UILabel* label(UIView* parent, NSString* value, UIFont* font, UIColor* color, CG
 }
 NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(void)) {
     NeonLibraryCommandButton* result = [[NeonLibraryCommandButton alloc] initWithFrame:frame];
-    result.kind = NeonButtonSecondary;
+    result.kind = ([title isEqual:@"List view"] || [title isEqual:@"Grid view"])
+                      ? NeonButtonQuiet
+                      : NeonButtonSecondary;
     [result addAction:[UIAction actionWithHandler:^(__kindof UIAction* action) {
               (void)action;
               block();

@@ -12,6 +12,14 @@
 #import <UIKit/UIKit.h>
 
 namespace {
+void quietNavigationActions(UINavigationItem* item) {
+    if (@available(iOS 26.0, *)) {
+        for (UIBarButtonItem* action in item.leftBarButtonItems)
+            action.hidesSharedBackground = YES;
+        for (UIBarButtonItem* action in item.rightBarButtonItems)
+            action.hidesSharedBackground = YES;
+    }
+}
 NSURL* focusDiagnosticURL() {
     NSURL* support = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
                                                             inDomains:NSUserDomainMask]
@@ -195,11 +203,13 @@ NSString* focusAncestry(UIView* target) {
         @[ [[UIBarButtonItem alloc] initWithTitle:@"•••"
                                              menu:[UIMenu menuWithChildren:@[ currentMenu ]]] ];
     self.bar.topItem.rightBarButtonItems.firstObject.accessibilityLabel = @"Library actions";
+    quietNavigationActions(self.bar.topItem);
     for (NSUInteger i = 0; i < self.filterButtons.count; ++i)
         self.filterButtons[i].chosen = self.library.query.filter == static_cast<NSInteger>(i);
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+    quietNavigationActions(self.navigationItem);
     UIEdgeInsets safe = self.view.safeAreaInsets;
     CGFloat width = self.view.bounds.size.width - safe.left - safe.right;
     CGFloat top = safe.top;
@@ -384,7 +394,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
       return [weakSelf.coordinator renameInline:title section:nil];
     };
     NeonButton* library = [NeonButton buttonWithType:UIButtonTypeSystem];
-    library.kind = NeonButtonSecondary;
+    library.kind = NeonButtonQuiet;
     [library setTitle:@"Library" forState:UIControlStateNormal];
     library.titleLabel.font = NeonUI(13);
     [library addTarget:self.coordinator
@@ -535,6 +545,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+    quietNavigationActions(self.navigationItem);
     CGSize viewport = self.view.window.bounds.size;
     BOOL wide = viewport.width >= 1000 && viewport.width > viewport.height;
     if (self.wideTypography != wide) {
@@ -1129,6 +1140,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+    quietNavigationActions(self.navigationItem);
     if (self.navigationHeader) {
         CGFloat width = self.tableView.bounds.size.width;
         CGSize size =
@@ -1418,6 +1430,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+    quietNavigationActions(self.navigationItem);
     if (self.libraryShell.parentViewController == self) {
         self.libraryShell.view.frame = self.view.bounds;
         [self.view bringSubviewToFront:self.libraryShell.view];

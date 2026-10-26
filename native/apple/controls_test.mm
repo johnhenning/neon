@@ -32,6 +32,29 @@ int main(int argc, const char* argv[]) {
         column.spacing = 12;
         column.frame = NSMakeRect(20, 20, 960, 800);
         [window.contentView addSubview:column];
+        NeonButton* quiet = [NeonButton new];
+        quiet.title = @"Library";
+        quiet.kind = NeonButtonQuiet;
+        quiet.compact = YES;
+        quiet.target = counter;
+        quiet.action = @selector(activate:);
+        require(quiet.intrinsicContentSize.height == NeonCompactControlHeight,
+                "quiet desktop action uses compact height");
+        [quiet.heightAnchor constraintEqualToConstant:28].active = YES;
+        [quiet.widthAnchor constraintEqualToConstant:100].active = YES;
+        [column addArrangedSubview:quiet];
+        [column layoutSubtreeIfNeeded];
+        require(quiet.frame.size.height == 28, "compact action has no conflicting 44pt minimum");
+        NSInteger clicks = counter.count;
+        [quiet performClick:nil];
+        require(counter.count == clicks + 1, "quiet action activates");
+        quiet.loading = YES;
+        [quiet performClick:nil];
+        require(counter.count == clicks + 1, "loading quiet action suppresses activation");
+        quiet.loading = NO;
+        quiet.enabled = NO;
+        require(!quiet.acceptsFirstResponder, "disabled quiet action cannot receive focus");
+        [quiet removeFromSuperview];
         for (NSString* appearance in @[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]) {
             NSStackView* states = [NSStackView new];
             states.spacing = 8;

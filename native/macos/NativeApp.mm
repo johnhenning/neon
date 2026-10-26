@@ -31,34 +31,16 @@
     return nil;
 }
 @end
-// Paper commands compose the shared interaction states while suppressing its
-// selection border for the design's ghost command surface.
+// Quiet commands share hover, keyboard focus and disabled states with NeonButton.
 @interface NeonPaperCommand : NeonButton
-@property(nonatomic) BOOL compactSurface;
 @end
 @implementation NeonPaperCommand
 - (instancetype)initWithFrame:(NSRect)frame {
-    self = [super initWithFrame:frame];
-    if (self)
-        self.kind = NeonButtonSelection;
+    if ((self = [super initWithFrame:frame])) {
+        self.kind = NeonButtonQuiet;
+        self.compact = YES;
+    }
     return self;
-}
-- (void)drawRect:(NSRect)rect {
-    if (!self.compactSurface) {
-        [NeonPaper() setFill];
-        [[NSBezierPath bezierPathWithRoundedRect:self.bounds
-                                         xRadius:NeonControlRadius
-                                         yRadius:NeonControlRadius] fill];
-    }
-    [super drawRect:rect];
-    if (self.window.firstResponder != self) {
-        [NeonPaper() setStroke];
-        NSBezierPath* edge = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 2, 2)
-                                                             xRadius:NeonControlRadius
-                                                             yRadius:NeonControlRadius];
-        edge.lineWidth = 2;
-        [edge stroke];
-    }
 }
 @end
 @interface NeonChapterRow : NSStackView
@@ -555,7 +537,7 @@ NSUInteger words(NSString* text) {
         search.title = @"Search";
         search.enabled = NO;
         search.toolTip = @"Search is not available yet";
-        [search.widthAnchor constraintEqualToConstant:68].active = YES;
+        [search.widthAnchor constraintEqualToConstant:66].active = YES;
         item.view = search;
         item.label = @"Search";
         return item;
@@ -579,14 +561,13 @@ NSUInteger words(NSString* text) {
     result.bordered = NO;
     if ([identifier isEqual:@"type"] || [identifier isEqual:@"more"]) {
         NeonPaperCommand* control = [NeonPaperCommand new];
-        control.compactSurface = YES;
         control.title = [identifier isEqual:@"type"] ? @"Aa" : @"•••";
         control.target = self;
         control.action = NSSelectorFromString(item[2]);
         control.accessibilityLabel = item[0];
         control.toolTip = item[0];
-        [control.widthAnchor constraintEqualToConstant:44].active = YES;
-        [control.heightAnchor constraintEqualToConstant:44].active = YES;
+        [control.widthAnchor constraintEqualToConstant:36].active = YES;
+        [control.heightAnchor constraintEqualToConstant:NeonCompactControlHeight].active = YES;
         result.view = control;
         return result;
     }
@@ -713,13 +694,13 @@ NSUInteger words(NSString* text) {
         [project.heightAnchor constraintGreaterThanOrEqualToConstant:138].active = YES;
         NeonButton* library = [NeonPaperCommand new];
         library.title = @"‹  Library";
+        library.alignment = NSTextAlignmentLeft;
 
         library.target = self;
         library.action = @selector(showLibrary:);
         NSStackView* breadcrumb = column(@[ library ], 0);
-        breadcrumb.edgeInsets = NSEdgeInsetsMake(6, 16, 6, 16);
-        [library.widthAnchor constraintEqualToAnchor:breadcrumb.widthAnchor constant:-32].active =
-            YES;
+        breadcrumb.edgeInsets = NSEdgeInsetsMake(14, 16, 14, 16);
+        [library.widthAnchor constraintEqualToConstant:100].active = YES;
         [rows addObject:breadcrumb];
         [rows addObject:project];
         NSInteger index = 0;
@@ -807,6 +788,7 @@ NSUInteger words(NSString* text) {
             NSButton* original = actions[index];
             NeonButton* command = [NeonPaperCommand new];
             command.title = original.title;
+            command.alignment = NSTextAlignmentLeft;
             command.image = original.image;
             command.imagePosition = original.imagePosition;
             command.target = original.target;
@@ -822,7 +804,7 @@ NSUInteger words(NSString* text) {
     scroll.autohidesScrollers = YES;
     scroll.scrollerStyle = NSScrollerStyleOverlay;
     NSStackView* footer = column(actions, 8);
-    footer.edgeInsets = NSEdgeInsetsMake(6, 16, 6, 16);
+    footer.edgeInsets = NSEdgeInsetsMake(self.session ? 14 : 6, 16, self.session ? 14 : 6, 16);
     footer.translatesAutoresizingMaskIntoConstraints = NO;
     scroll.translatesAutoresizingMaskIntoConstraints = NO;
     [self.sidebarBody addSubview:scroll];
@@ -834,8 +816,16 @@ NSUInteger words(NSString* text) {
         }
         action.font = NeonUI(14);
         action.contentTintColor = NeonInk();
-        [action.heightAnchor constraintEqualToConstant:NeonMinimumTouchTarget].active = YES;
-        [action.widthAnchor constraintEqualToAnchor:footer.widthAnchor constant:-32].active = YES;
+        [action.heightAnchor constraintEqualToConstant:self.session ? NeonCompactControlHeight
+                                                                    : NeonMinimumTouchTarget]
+            .active = YES;
+        if (self.session)
+            [action.widthAnchor
+                constraintEqualToConstant:MAX(140, action.intrinsicContentSize.width)]
+                .active = YES;
+        else
+            [action.widthAnchor constraintEqualToAnchor:footer.widthAnchor constant:-32].active =
+                YES;
     }
     NSArray<NSView*>* arranged = rows;
     NSLayoutYAxisAnchor* top = self.sidebarBody.topAnchor;
@@ -932,12 +922,6 @@ NSUInteger words(NSString* text) {
         breadcrumb.arrangedSubviews[1].hidden = library;
     }
     NSToolbar* toolbar = self.window.toolbar;
-    for (NSToolbarItem* item in toolbar.items)
-        if ([item.itemIdentifier isEqual:@"search"] &&
-            [item.view isKindOfClass:NeonPaperCommand.class]) {
-            ((NeonPaperCommand*)item.view).compactSurface = !library;
-            item.view.needsDisplay = YES;
-        }
     if (library) {
         for (NSInteger index = (NSInteger)toolbar.items.count - 1; index >= 0; --index)
             if ([@[ @"workspace", @"type", @"focus" ]

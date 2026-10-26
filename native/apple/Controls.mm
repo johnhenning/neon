@@ -19,6 +19,8 @@
 @implementation NeonButton {
 #if !TARGET_OS_IPHONE
     NSTrackingArea* _tracking;
+    NSLayoutConstraint* _minimumHeight;
+    NSLayoutConstraint* _minimumWidth;
 #endif
     BOOL _hovered;
 }
@@ -59,27 +61,32 @@
     config.attributedTitle =
         [[NSAttributedString alloc] initWithString:config.title ?: @""
                                         attributes:@{NSFontAttributeName : NeonUI(14)}];
-    config.baseBackgroundColor = !self.enabled                    ? NeonPanel()
-                                 : self.errorMessage.length       ? NeonDanger()
-                                 : self.kind == NeonButtonPrimary ? NeonAccent()
-                                 : self.kind == NeonButtonSelection
-                                     ? (self.chosen ? NeonSelection() : NeonPaper())
-                                     : NeonPanel();
+    BOOL quiet = self.kind == NeonButtonQuiet;
+    config.baseBackgroundColor =
+        quiet && !self.errorMessage.length ? ((_hovered || self.highlighted) && self.enabled
+                                                  ? [NeonInk() colorWithAlphaComponent:.05]
+                                                  : UIColor.clearColor)
+        : !self.enabled                    ? NeonPanel()
+        : self.errorMessage.length         ? NeonDanger()
+        : self.kind == NeonButtonPrimary   ? NeonAccent()
+        : self.kind == NeonButtonSelection ? (self.chosen ? NeonSelection() : NeonPaper())
+                                           : NeonPanel();
     config.baseForegroundColor = !self.enabled ? NeonMuted()
                                  : (self.kind == NeonButtonPrimary || self.errorMessage.length)
                                      ? NeonActionText()
                                      : NeonInk();
-    config.background.cornerRadius = NeonControlRadius;
+    config.background.cornerRadius = quiet ? NeonQuietControlRadius : NeonControlRadius;
     config.background.strokeColor = self.kind == NeonButtonSelection
                                         ? (self.chosen ? NeonAccent() : NeonLine())
                                         : UIColor.clearColor;
     config.background.strokeWidth = self.kind == NeonButtonSelection ? 1 : 0;
-    config.contentInsets = NSDirectionalEdgeInsetsMake(12, 12, 12, 12);
+    config.contentInsets = quiet ? NSDirectionalEdgeInsetsMake(4, 8, 4, 8)
+                                 : NSDirectionalEdgeInsetsMake(12, 12, 12, 12);
     config.showsActivityIndicator = self.loading;
     self.configuration = config;
     if (self.focused) {
-        config.background.strokeColor = NeonInk();
-        config.background.strokeWidth = 3;
+        config.background.strokeColor = quiet ? NeonAccent() : NeonInk();
+        config.background.strokeWidth = quiet ? 2 : 3;
         self.configuration = config;
     }
     self.alpha = !self.enabled ? .65 : self.highlighted ? .75 : _hovered ? .90 : 1;
@@ -109,17 +116,21 @@
     if ((self = [super initWithFrame:frame])) {
         self.bordered = NO;
         self.focusRingType = NSFocusRingTypeExterior;
-        [self.heightAnchor constraintGreaterThanOrEqualToConstant:NeonMinimumTouchTarget].active =
-            YES;
-        [self.widthAnchor constraintGreaterThanOrEqualToConstant:NeonMinimumTouchTarget].active =
-            YES;
+        _minimumHeight =
+            [self.heightAnchor constraintGreaterThanOrEqualToConstant:NeonMinimumTouchTarget];
+        _minimumWidth =
+            [self.widthAnchor constraintGreaterThanOrEqualToConstant:NeonMinimumTouchTarget];
+        _minimumHeight.active = YES;
+        _minimumWidth.active = YES;
     }
     return self;
 }
 - (NSSize)intrinsicContentSize {
     return NSMakeSize(
-        MAX(44, [self.title sizeWithAttributes:@{NSFontAttributeName : NeonUI(14)}].width + 24),
-        44);
+        MAX(self.compact ? 28 : 44,
+            [self.title sizeWithAttributes:@{NSFontAttributeName : NeonUI(14)}].width +
+                (self.compact ? 16 : 24)),
+        self.compact ? NeonCompactControlHeight : NeonMinimumTouchTarget);
 }
 - (void)updateTrackingAreas {
     [super updateTrackingAreas];
@@ -166,17 +177,23 @@
 }
 - (void)drawRect:(NSRect)rect {
     (void)rect;
-    NSColor* fill = !self.enabled                    ? NeonPanel()
-                    : self.errorMessage.length       ? NeonDanger()
-                    : self.kind == NeonButtonPrimary ? NeonAccent()
-                    : self.kind == NeonButtonSelection
-                        ? (self.chosen ? NeonSelection() : NeonPaper())
-                        : NeonPanel();
+    BOOL quiet = self.kind == NeonButtonQuiet;
+    NSColor* fill =
+        quiet && !self.errorMessage.length ? ((_hovered || self.highlighted) && self.enabled
+                                                  ? [NeonInk() colorWithAlphaComponent:.05]
+                                                  : NSColor.clearColor)
+        : !self.enabled                    ? NeonPanel()
+        : self.errorMessage.length         ? NeonDanger()
+        : self.kind == NeonButtonPrimary   ? NeonAccent()
+        : self.kind == NeonButtonSelection ? (self.chosen ? NeonSelection() : NeonPaper())
+                                           : NeonPanel();
     CGFloat opacity = !self.enabled ? .65 : self.highlighted ? .75 : _hovered ? .90 : 1;
     self.alphaValue = opacity;
-    NSBezierPath* path = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 2, 2)
-                                                         xRadius:NeonControlRadius
-                                                         yRadius:NeonControlRadius];
+    NSBezierPath* path = [NSBezierPath
+        bezierPathWithRoundedRect:NSInsetRect(self.bounds, self.compact ? 0 : 2,
+                                              self.compact ? 0 : 2)
+                          xRadius:self.compact ? NeonQuietControlRadius : NeonControlRadius
+                          yRadius:self.compact ? NeonQuietControlRadius : NeonControlRadius];
     [fill setFill];
     [path fill];
     if (self.kind == NeonButtonSelection) {
@@ -184,9 +201,14 @@
         [path stroke];
     }
     if (self.window.firstResponder == self) {
-        [NeonInk() setStroke];
-        path.lineWidth = 3;
-        [path stroke];
+        [(quiet ? NeonAccent() : NeonInk()) setStroke];
+        NSBezierPath* focus =
+            self.compact ? [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 1, 1)
+                                                           xRadius:NeonQuietControlRadius
+                                                           yRadius:NeonQuietControlRadius]
+                         : path;
+        focus.lineWidth = quiet ? 2 : 3;
+        [focus stroke];
     }
     NSString* text = self.loading               ? @"Loading…"
                      : self.errorMessage.length ? self.errorMessage
@@ -198,7 +220,9 @@
                                                                        : NeonInk()
     };
     NSSize size = [text sizeWithAttributes:attributes];
-    [text drawAtPoint:NSMakePoint((self.bounds.size.width - size.width) / 2,
+    [text drawAtPoint:NSMakePoint(self.alignment == NSTextAlignmentLeft
+                                      ? 8
+                                      : (self.bounds.size.width - size.width) / 2,
                                   (self.bounds.size.height - size.height) / 2)
         withAttributes:attributes];
 }
@@ -207,6 +231,15 @@
     [self refresh];
 }
 #endif
+- (void)setCompact:(BOOL)value {
+    _compact = value;
+#if !TARGET_OS_IPHONE
+    _minimumHeight.constant = value ? NeonCompactControlHeight : NeonMinimumTouchTarget;
+    _minimumWidth.constant = value ? 28 : NeonMinimumTouchTarget;
+    [self invalidateIntrinsicContentSize];
+#endif
+    [self refresh];
+}
 - (void)setKind:(NeonButtonKind)value {
     _kind = value;
     [self refresh];

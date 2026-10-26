@@ -42,7 +42,6 @@
 @property(nonatomic) BOOL plain;
 @property(nonatomic) BOOL navigationRow;
 @property(nonatomic) BOOL paperCommand;
-@property(nonatomic) BOOL quietCommand;
 @end
 @implementation NeonLibraryButton
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -53,7 +52,7 @@
     return self;
 }
 - (void)drawRect:(NSRect)rect {
-    if (self.paperCommand || self.quietCommand) {
+    if (self.paperCommand) {
         NSBezierPath* path = [NSBezierPath bezierPathWithRoundedRect:self.bounds
                                                              xRadius:NeonControlRadius
                                                              yRadius:NeonControlRadius];
@@ -170,6 +169,7 @@ NeonLibraryButton* button(NSView* parent, NSString* title, NSRect frame, void (^
     NeonLibraryButton* b = [[NeonLibraryButton alloc] initWithFrame:frame];
     b.title = title;
     b.kind = NeonButtonSecondary;
+    b.compact = frame.size.height == NeonCompactControlHeight;
     b.clicked = block;
     [parent addSubview:b];
     return b;
@@ -290,15 +290,18 @@ NeonLibraryButton* button(NSView* parent, NSString* title, NSRect frame, void (^
           NSMakeRect(x, 86, m, 28));
     __weak NeonLibraryController* weak = self;
     button(self.content, self.query.view == NeonLibraryGrid ? @"List view" : @"Grid view",
-           NSMakeRect(x + m - 240, 130, 100, 44),
+           NSMakeRect(x + m - 196, 138, 87, 28),
            ^{
              [weak setLibraryView:weak.query.view == NeonLibraryGrid ? NeonLibraryList
                                                                      : NeonLibraryGrid];
            })
-        .quietCommand = YES;
-    button(self.content, @"New project", NSMakeRect(x + m - 132, 130, 132, 44), ^{
-      [weak send:@"new" record:nil];
-    }).kind = NeonButtonPrimary;
+        .kind = NeonButtonQuiet;
+    NeonLibraryButton* create =
+        button(self.content, @"New project", NSMakeRect(x + m - 101, 138, 101, 28), ^{
+          [weak send:@"new" record:nil];
+        });
+    create.kind = NeonButtonPrimary;
+    create.compact = YES;
     CGFloat y = 190;
     if (self.presentation.error) {
         label(self.content, @"Unable to load projects", NeonSerif(24), NeonInk(),

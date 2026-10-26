@@ -5,6 +5,7 @@
 typedef NS_ENUM(NSInteger, NeonButtonKind) {
     NeonButtonPrimary,
     NeonButtonSecondary,
+    NeonButtonQuiet,
     NeonButtonSelection
 };
 #if TARGET_OS_IPHONE
@@ -13,6 +14,8 @@ typedef NS_ENUM(NSInteger, NeonButtonKind) {
 @interface NeonButton : NSButton
 #endif
 @property(nonatomic) NeonButtonKind kind;
+// Compact desktop actions retain the standard 44pt target on touch platforms.
+@property(nonatomic) BOOL compact;
 @property(nonatomic) BOOL loading;
 @property(nonatomic, copy) NSString* errorMessage;
 @property(nonatomic) BOOL chosen;
