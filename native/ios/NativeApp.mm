@@ -11,6 +11,26 @@
 #import "WorkspaceController.h"
 #import <UIKit/UIKit.h>
 
+// A navigation link must keep its Figma typography through UIButton state updates.
+@interface NeonBreadcrumbButton : NeonButton
+@end
+@implementation NeonBreadcrumbButton
+- (void)setConfiguration:(UIButtonConfiguration*)configuration {
+    UIButtonConfiguration* value = [configuration copy];
+    value.titleLineBreakMode = NSLineBreakByClipping;
+    value.contentInsets = NSDirectionalEdgeInsetsZero;
+    value.baseForegroundColor = NeonAccent();
+    value.titleTextAttributesTransformer = ^NSDictionary*(NSDictionary* incoming) {
+      NSMutableDictionary* attributes = [incoming mutableCopy];
+      attributes[NSFontAttributeName] = NeonUI(13);
+      attributes[NSForegroundColorAttributeName] = NeonAccent();
+      return attributes;
+    };
+    [super setConfiguration:value];
+    self.titleLabel.numberOfLines = 1;
+}
+@end
+
 namespace {
 void quietNavigationActions(UINavigationItem* item) {
     if (@available(iOS 26.0, *)) {
@@ -373,6 +393,17 @@ UIImage* cover(NSString* title) {
           }];
     }];
 }
+BOOL breadcrumbFits(UIViewController* editor) {
+    [editor.navigationController.view layoutIfNeeded];
+    UIStackView* stack = (UIStackView*)editor.navigationItem.titleView;
+    UIButton* library = (UIButton*)stack.arrangedSubviews.firstObject;
+    CGFloat textWidth = [@"Library" sizeWithAttributes:@{NSFontAttributeName : NeonUI(13)}].width;
+    return library.titleLabel.numberOfLines == 1 &&
+           library.titleLabel.bounds.size.width >= textWidth - 1 &&
+           library.bounds.size.height >= NeonMinimumTouchTarget &&
+           fabs(library.titleLabel.font.pointSize - 13) < .1 &&
+           CGRectGetMaxX(library.frame) <= CGRectGetMinX(stack.arrangedSubviews[1].frame);
+}
 void marker(NSURL* directory, NSString* name, BOOL pass) {
     [(pass ? @"PASS" : @"FAIL") writeToURL:[directory URLByAppendingPathComponent:name]
                                 atomically:YES
@@ -393,16 +424,23 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.bookTitle.commitTitle = ^BOOL(NSString* title) {
       return [weakSelf.coordinator renameInline:title section:nil];
     };
-    NeonButton* library = [NeonButton buttonWithType:UIButtonTypeSystem];
+    NeonButton* library = [NeonBreadcrumbButton buttonWithType:UIButtonTypeSystem];
     library.kind = NeonButtonQuiet;
     [library setTitle:@"Library" forState:UIControlStateNormal];
-    library.titleLabel.font = NeonUI(13);
+    library.accessibilityIdentifier = @"editor-library-breadcrumb";
+    [library setContentCompressionResistancePriority:UILayoutPriorityRequired
+                                             forAxis:UILayoutConstraintAxisHorizontal];
+    [library setContentHuggingPriority:UILayoutPriorityRequired
+                               forAxis:UILayoutConstraintAxisHorizontal];
     [library addTarget:self.coordinator
                   action:@selector(showLibrary)
         forControlEvents:UIControlEventTouchUpInside];
     [library.widthAnchor constraintGreaterThanOrEqualToConstant:NeonMinimumTouchTarget].active =
         YES;
     UILabel* separator = label(@"›", NeonUI(13), NeonMuted());
+    separator.numberOfLines = 1;
+    [separator setContentCompressionResistancePriority:UILayoutPriorityRequired
+                                               forAxis:UILayoutConstraintAxisHorizontal];
     UIStackView* breadcrumb =
         [[UIStackView alloc] initWithArrangedSubviews:@[ library, separator, self.bookTitle ]];
     breadcrumb.spacing = NeonBreadcrumbGap;
@@ -2374,6 +2412,13 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         valid = [self renameInline:chapterTitle section:self.session.selectedSectionID] && valid;
         [self.editor.view layoutIfNeeded];
         valid = NeonWorkspaceSmoke(self.editor.heading, self.editor.editor) && valid;
+        valid = breadcrumbFits(self.editor) && valid;
+        self.editor.bookTitle.text = @"A very long project title that must yield to Library";
+        [self.editor.bookTitle invalidateIntrinsicContentSize];
+        [self.editor.navigationController.view setNeedsLayout];
+        valid = breadcrumbFits(self.editor) && valid;
+        self.editor.bookTitle.text = projectTitle;
+        [self.editor.bookTitle invalidateIntrinsicContentSize];
         [self.editor applyTypography];
         marker(support, @"smoke-result.txt", valid);
     } else if ([args containsObject:@"--smoke-history"]) {
