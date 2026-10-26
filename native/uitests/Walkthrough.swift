@@ -206,6 +206,9 @@ final class Walkthrough: XCTestCase {
         // Create an undo operation in this editor instance, after section changes.
         // Section navigation intentionally gives each section its own undo scope.
         activate(element("manuscript"))
+        // Clicking the resized viewport can land inside the earlier persistence
+        // marker. Append at the native document end so this edit cannot bisect it.
+        app.typeKey(XCUIKeyboardKey.downArrow, modifierFlags: .command)
         element("manuscript").typeText("\nHistory undo scope marker.")
         XCTAssertTrue((element("manuscript").value as? String ?? "").contains("History undo scope marker."))
         #else
