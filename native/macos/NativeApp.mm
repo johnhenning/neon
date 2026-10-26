@@ -714,16 +714,6 @@ NSUInteger words(NSString* text) {
         [book setContentCompressionResistancePriority:200
                                        forOrientation:NSLayoutConstraintOrientationHorizontal];
         [project.heightAnchor constraintGreaterThanOrEqualToConstant:138].active = YES;
-        NeonButton* library = [NeonPaperCommand new];
-        library.title = @"‹  Library";
-        library.alignment = NSTextAlignmentLeft;
-
-        library.target = self;
-        library.action = @selector(showLibrary:);
-        NSStackView* breadcrumb = column(@[ library ], 0);
-        breadcrumb.edgeInsets = NSEdgeInsetsMake(14, 16, 14, 16);
-        [library.widthAnchor constraintEqualToConstant:100].active = YES;
-        [rows addObject:breadcrumb];
         [rows addObject:project];
         NSInteger index = 0;
         for (NSDictionary* section in self.session.sections) {
