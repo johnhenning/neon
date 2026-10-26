@@ -35,8 +35,9 @@ final class Walkthrough: XCTestCase {
         Thread.sleep(forTimeInterval: 0.7)
     }
 
-    func capture(_ name: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+    func capture(_ name: String, wholeScreen: Bool = false) {
+        let screenshot = wholeScreen ? XCUIScreen.main.screenshot() : app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
@@ -139,13 +140,13 @@ final class Walkthrough: XCTestCase {
             XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 10), .completed)
         }
         assertSidebar(false)
-        capture("adaptive-13-portrait-default")
+        capture("adaptive-13-portrait-default", wholeScreen: true)
         XCUIDevice.shared.orientation = .landscapeRight
         waitForOrientation(true)
         assertSidebar(true)
         selectChapter(1, expectedText: "By noon the water had drawn back from the old stone steps.")
         selectChapter(0, expectedText: draft)
-        capture("adaptive-13-landscape-default")
+        capture("adaptive-13-landscape-default", wholeScreen: true)
         XCUIDevice.shared.orientation = .portrait
         waitForOrientation(false)
         assertSidebar(false)
@@ -157,7 +158,7 @@ final class Walkthrough: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         waitForOrientation(false)
         assertSidebar(true) // Explicit writer choice survives later rotations.
-        capture("adaptive-13-portrait-manual-sidebar")
+        capture("adaptive-13-portrait-manual-sidebar", wholeScreen: true)
         activate(element("navigation-toggle"))
         assertSidebar(false)
         #endif
@@ -288,9 +289,9 @@ final class Walkthrough: XCTestCase {
         app.typeKey(XCUIKeyboardKey.downArrow, modifierFlags: .command)
         element("manuscript").typeText("\nHistory undo scope marker.")
         XCTAssertTrue((element("manuscript").value as? String ?? "").contains("History undo scope marker."))
-        #else
-        chapters()
         #endif
+        // History belongs to the editor toolbar. On compact UIKit layouts,
+        // navigating back to chapters removes that toolbar from the screen.
         activate(app.buttons["Version history"].firstMatch)
         XCTAssertTrue(app.buttons["Back to editor"].waitForExistence(timeout: 10))
         XCTAssertFalse(element("manuscript").exists)
