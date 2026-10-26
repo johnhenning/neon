@@ -41,7 +41,31 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     MACOSX_BUNDLE_GUI_IDENTIFIER com.johnhenning.neon.applepreview
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/ios/Info.plist"
     XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
+    XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
     XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO")
+  target_sources(NeonMobile PRIVATE resources/ios-icons.xcassets)
+  set_source_files_properties(resources/ios-icons.xcassets PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+endif()
+
+# Makefile builds need an explicit asset catalog compiler step on macOS.
+if(TARGET NeonNative)
+  set(NEON_ICON_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/app-icons")
+  set(NEON_ICON_ORIGINALS resources/app-icons/macos-light.png resources/app-icons/macos-dark.png)
+  set_source_files_properties(${NEON_ICON_ORIGINALS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/app-icons)
+  target_sources(NeonNative PRIVATE ${NEON_ICON_ORIGINALS})
+  file(GLOB_RECURSE NEON_ICON_INPUTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/resources/macos-icons.xcassets/*")
+  add_custom_command(
+    OUTPUT "${NEON_ICON_OUTPUT}/Assets.car" "${NEON_ICON_OUTPUT}/AppIcon.icns"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${NEON_ICON_OUTPUT}"
+    COMMAND xcrun actool "${CMAKE_CURRENT_SOURCE_DIR}/resources/macos-icons.xcassets"
+      --compile "${NEON_ICON_OUTPUT}" --platform macosx
+      --minimum-deployment-target 14.0 --app-icon AppIcon
+      --output-partial-info-plist "${NEON_ICON_OUTPUT}/partial.plist"
+    DEPENDS ${NEON_ICON_INPUTS}
+    VERBATIM)
+  set_source_files_properties("${NEON_ICON_OUTPUT}/Assets.car" "${NEON_ICON_OUTPUT}/AppIcon.icns"
+    PROPERTIES GENERATED TRUE MACOSX_PACKAGE_LOCATION Resources)
+  target_sources(NeonNative PRIVATE "${NEON_ICON_OUTPUT}/Assets.car" "${NEON_ICON_OUTPUT}/AppIcon.icns")
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   add_executable(apple_library_controller_test macos/library_controller_test.mm macos/LibraryController.mm)

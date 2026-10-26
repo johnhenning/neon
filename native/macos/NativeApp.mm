@@ -287,9 +287,38 @@ NSUInteger words(NSString* text) {
 - (BOOL)flush;
 @end
 @implementation NeonApp
+- (void)updateAppIcon {
+    NSAppearance* appearance = self.window.effectiveAppearance ?: NSApp.effectiveAppearance;
+    NSString* match = [appearance
+        bestMatchFromAppearancesWithNames:@[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]];
+    NSString* name =
+        [match isEqualToString:NSAppearanceNameDarkAqua] ? @"macos-dark" : @"macos-light";
+    NSURL* url = [NSBundle.mainBundle URLForResource:name
+                                       withExtension:@"png"
+                                        subdirectory:@"app-icons"];
+    NSImage* icon = url ? [[NSImage alloc] initWithContentsOfURL:url] : nil;
+    if (icon)
+        NSApp.applicationIconImage = icon;
+}
+- (void)observeValueForKeyPath:(NSString*)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary*)change
+                       context:(void*)context {
+    if (object == NSApp && [keyPath isEqualToString:@"effectiveAppearance"]) {
+        [self updateAppIcon];
+        return;
+    }
+    [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+}
+- (void)applicationWillTerminate:(NSNotification*)note {
+    (void)note;
+    [NSApp removeObserver:self forKeyPath:@"effectiveAppearance"];
+}
 - (void)applicationDidFinishLaunching:(NSNotification*)note {
     (void)note;
     NeonRegisterFonts();
+    [NSApp addObserver:self forKeyPath:@"effectiveAppearance" options:0 context:nil];
+    [self updateAppIcon];
     if ([NSProcessInfo.processInfo.arguments containsObject:@"--control-states"]) {
         self.window = [[NSWindow alloc]
             initWithContentRect:NSMakeRect(0, 0, 560, 940)
@@ -387,6 +416,7 @@ NSUInteger words(NSString* text) {
         NeonAppearance() == 1   ? [NSAppearance appearanceNamed:NSAppearanceNameAqua]
         : NeonAppearance() == 2 ? [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua]
                                 : nil;
+    [self updateAppIcon];
     self.window.backgroundColor = NeonPanel();
     [self.sidebarMaterial removeFromSuperview];
     NeonSurface* panel = [NeonSurface new];
