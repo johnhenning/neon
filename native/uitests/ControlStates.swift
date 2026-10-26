@@ -29,7 +29,11 @@ final class ControlStates: XCTestCase {
         primary.tap()
         #endif
         XCTAssertEqual(selection.value as? String, "Not selected")
-        XCTAssertEqual(primary.label, "Activations: 1")
+        // AppKit exposes an NSButton title through AXTitle, while UIKit uses
+        // the label. XCTest name matching handles both accessibility forms.
+        let activatedPrimary = app.buttons["Activations: 1"]
+        XCTAssertTrue(activatedPrimary.waitForExistence(timeout: 5))
+        XCTAssertEqual(activatedPrimary.identifier, primary.identifier)
         for theme in ["light", "dark"] {
             for state in ["default", "error", "disabled"] {
                 let fields = XCTAttachment(screenshot: app.screenshot())
