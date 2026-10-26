@@ -131,9 +131,14 @@ def main():
             'bundle_id': app_info['CFBundleIdentifier'],
             'executable': app_info['CFBundleExecutable']}, indent=2))
         try:
+            component_tests = ['-only-testing:Walkthrough/ControlStates']
+            if args.platform == 'iPad' and args.fixture == '3':
+                # Keep adaptive checks in the component result bundle. The
+                # separately recorded baseline journey and its video stay unchanged.
+                component_tests.append('-only-testing:Walkthrough/Walkthrough/testIPadAdaptiveEditorOrientation')
             run('xcodebuild', 'test-without-building', '-xctestrun', str(test_run),
                 '-destination', destination, '-parallel-testing-enabled', 'NO',
-                '-only-testing:Walkthrough/ControlStates',
+                *component_tests,
                 '-resultBundlePath', str(output / 'controls.xcresult'))
             result['controls_status'] = 'passed'
         except subprocess.SubprocessError as error:

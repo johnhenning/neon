@@ -86,6 +86,83 @@ final class Walkthrough: XCTestCase {
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "section-1").count, 1)
     }
 
+    func testIPadAdaptiveEditorOrientation() throws {
+        #if os(macOS)
+        throw XCTSkip("UIKit orientation coverage")
+        #else
+        guard UIDevice.current.userInterfaceIdiom == .pad else {
+            throw XCTSkip("Requires an iPad")
+        }
+        XCUIDevice.shared.orientation = .portrait
+        app.terminate()
+        app.launch()
+        let window = app.windows.firstMatch
+        let project = app.buttons["The Quiet Sea"]
+        activate(project)
+        let manuscript = element("manuscript")
+        XCTAssertTrue(manuscript.waitForExistence(timeout: 15))
+        guard window.frame.width >= 1000 && window.frame.height > window.frame.width else {
+            throw XCTSkip("Requires the 13-inch portrait regression viewport")
+        }
+        let draft = manuscript.value as? String
+        func waitForOrientation(_ landscape: Bool) {
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                landscape ? window.frame.width > window.frame.height
+                          : window.frame.height > window.frame.width
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed)
+        }
+        func assertSidebar(_ visible: Bool) {
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                let width = manuscript.frame.width
+                return visible ? width < window.frame.width - 200
+                               : width > window.frame.width - 48
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+            if visible {
+                assertUniqueChapterRows()
+                XCTAssertTrue(window.frame.contains(element("section-0").frame))
+            }
+            XCTAssertEqual(manuscript.value as? String, draft)
+            XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "manuscript").count, 1)
+        }
+        func selectChapter(_ index: Int, expectedText: String?) {
+            let row = element("section-\(index)")
+            XCTAssertTrue(row.waitForExistence(timeout: 10))
+            // XCTest can report a visible iPad row as non-hittable after rotation.
+            // Exercise a real touch at its current frame and verify the document
+            // changes; no app-side selector or synthetic session switch is used.
+            row.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)).tap()
+            let selected = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                manuscript.value as? String == expectedText
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 10), .completed)
+        }
+        assertSidebar(false)
+        capture("adaptive-13-portrait-default")
+        XCUIDevice.shared.orientation = .landscapeRight
+        waitForOrientation(true)
+        assertSidebar(true)
+        selectChapter(1, expectedText: "By noon the water had drawn back from the old stone steps.")
+        selectChapter(0, expectedText: draft)
+        capture("adaptive-13-landscape-default")
+        XCUIDevice.shared.orientation = .portrait
+        waitForOrientation(false)
+        assertSidebar(false)
+        activate(element("navigation-toggle"))
+        assertSidebar(true)
+        XCUIDevice.shared.orientation = .landscapeRight
+        waitForOrientation(true)
+        assertSidebar(true)
+        XCUIDevice.shared.orientation = .portrait
+        waitForOrientation(false)
+        assertSidebar(true) // Explicit writer choice survives later rotations.
+        capture("adaptive-13-portrait-manual-sidebar")
+        activate(element("navigation-toggle"))
+        assertSidebar(false)
+        #endif
+    }
+
     func testRecordedEditorJourney() {
         let variant = ProcessInfo.processInfo.environment["NEON_UI_FIXTURE"] ?? "3"
         if variant == "0" {

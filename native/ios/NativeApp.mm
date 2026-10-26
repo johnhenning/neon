@@ -222,6 +222,7 @@ NSString* focusAncestry(UIView* target) {
 @property(nonatomic, strong) UIStackView* chapterHeader;
 @property(nonatomic, strong) UILabel* chapterKicker;
 @property(nonatomic) BOOL wideTypography;
+@property(nonatomic, copy) NSString* lastLayoutDiagnostic;
 @property(nonatomic) BOOL typographyPending;
 @property(nonatomic) BOOL typographyRetryScheduled;
 @property(nonatomic, strong) NSLayoutConstraint* headingHeight;
@@ -265,6 +266,7 @@ NSString* focusAncestry(UIView* target) {
 @property(nonatomic, strong) UINavigationController* navigation;
 @property(nonatomic) BOOL sidebarHidden;
 @property(nonatomic) BOOL sidebarLayoutInitialized;
+@property(nonatomic) BOOL sidebarChoiceExplicit;
 @property(nonatomic) BOOL narrowSidebarLayout;
 @property(nonatomic, strong) UIView* navigationSnapshot;
 @property(nonatomic) BOOL renderingNavigation;
@@ -294,6 +296,7 @@ NSString* focusAncestry(UIView* target) {
 - (void)newProject;
 - (void)newSection;
 - (void)toggleChapters;
+- (void)toggleSidebarVisibility;
 - (void)updateNavigationControls;
 - (void)showProblem:(NSError*)error;
 - (void)applyAppearance;
@@ -555,6 +558,20 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.editor.textContainerInset =
         UIEdgeInsetsMake(top + headerSize.height + self.chapterHeader.spacing, margin,
                          NeonScrollBottomClearance, margin);
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"]) {
+        NSParagraphStyle* style = self.editor.typingAttributes[NSParagraphStyleAttributeName];
+        NSString* diagnostic = [NSString
+            stringWithFormat:@"layout viewport=%@ category=%@ bodyFont=%.2f leading=%.2f "
+                             @"measure=%.2f headingFont=%.2f editorWidth=%.2f margin=%.2f",
+                             NSStringFromCGSize(viewport),
+                             self.wideTypography ? @"wide" : @"portrait-or-compact",
+                             self.editor.font.pointSize, style.minimumLineHeight, measure,
+                             self.heading.font.pointSize, self.editor.bounds.size.width, margin];
+        if (![diagnostic isEqual:self.lastLayoutDiagnostic]) {
+            recordFocusDiagnostic(diagnostic);
+            self.lastLayoutDiagnostic = diagnostic;
+        }
+    }
 }
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
@@ -760,7 +777,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         self.returnToManuscript = self.editor.isFirstResponder;
         self.sidebarBeforeFocus = !self.coordinator.collapsed && !self.coordinator.sidebarHidden;
         if (self.sidebarBeforeFocus)
-            [self.coordinator toggleChapters];
+            [self.coordinator toggleSidebarVisibility];
     } else if (self.returnToManuscript) {
         [self.editor becomeFirstResponder];
     }
@@ -773,7 +790,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     } else {
         [self updateWritingToolbar];
         if (self.sidebarBeforeFocus && self.coordinator.sidebarHidden)
-            [self.coordinator toggleChapters];
+            [self.coordinator toggleSidebarVisibility];
     }
     [self.view setNeedsLayout];
 }
@@ -1660,7 +1677,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     [self hideLibraryShell];
     self.session = session;
     if (!self.sidebarLayoutInitialized) {
-        self.narrowSidebarLayout = self.view.bounds.size.width < 1000;
+        self.narrowSidebarLayout = self.view.bounds.size.width < 1000 ||
+                                   self.view.bounds.size.width <= self.view.bounds.size.height;
         self.sidebarHidden = self.narrowSidebarLayout;
         self.sidebarLayoutInitialized = YES;
     }
@@ -1724,6 +1742,10 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [self.navigation popToViewController:self.chapterList animated:YES];
         return;
     }
+    self.sidebarChoiceExplicit = YES;
+    [self toggleSidebarVisibility];
+}
+- (void)toggleSidebarVisibility {
     self.sidebarHidden = !self.sidebarHidden;
     if (self.sidebarHidden)
         [self hideColumn:UISplitViewControllerColumnPrimary];
@@ -1773,10 +1795,11 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 - (void)viewWillTransitionToSize:(CGSize)size
        withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)transition {
     [super viewWillTransitionToSize:size withTransitionCoordinator:transition];
-    BOOL narrow = size.width < 1000;
+    BOOL narrow = size.width < 1000 || size.width <= size.height;
     if (!self.sidebarLayoutInitialized || narrow != self.narrowSidebarLayout) {
         self.narrowSidebarLayout = narrow;
-        self.sidebarHidden = narrow;
+        if (!self.sidebarChoiceExplicit)
+            self.sidebarHidden = narrow;
         self.sidebarLayoutInitialized = YES;
     }
     [transition
