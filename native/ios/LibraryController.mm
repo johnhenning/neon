@@ -346,7 +346,12 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
                   stringWithFormat:@"%lu %@ · On this device",
                                    (unsigned long)self.presentation.records.count,
                                    self.presentation.records.count == 1 ? @"project" : @"projects"];
-    label(self.footer, count, NeonUI(13), NeonMuted(), CGRectMake(12, 12, MAX(0, w - 130), 18));
+    UILabel* countLabel =
+        label(self.footer, count, NeonUI(13), NeonMuted(), CGRectMake(12, 12, MAX(0, w - 130), 18));
+    countLabel.accessibilityIdentifier =
+        self.presentation.error ? @"library-projects-unavailable"
+                                : [NSString stringWithFormat:@"library-project-count-%lu",
+                                                             self.presentation.records.count];
     label(self.footer, @"Local first", NeonUI(13), NeonMuted(), CGRectMake(w - 100, 12, 88, 18));
 }
 @end

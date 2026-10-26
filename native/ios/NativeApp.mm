@@ -3,6 +3,7 @@
 #import "EditorialTheme.h"
 #import "History.h"
 #import "InlineTitle.h"
+#import "LibraryController.h"
 #import "LibraryStore.h"
 #import "Preferences.h"
 #import "Settings.h"
@@ -122,6 +123,96 @@ NSString* focusAncestry(UIView* target) {
     return hit;
 }
 @end
+// Library is a contained full-workspace destination; the editor's split stack
+// stays intact until a successful document open or an explicit Library return.
+@interface NeonLibraryShell : UIViewController
+@property(nonatomic, strong) NeonLibraryController* library;
+@property(nonatomic, strong) UINavigationBar* bar;
+@property(nonatomic, strong) UIStackView* filters;
+@property(nonatomic, strong) NSMutableArray<NeonButton*>* filterButtons;
+- (void)refreshNavigation;
+@end
+@implementation NeonLibraryShell
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.view.backgroundColor = NeonPaper();
+    self.view.accessibilityViewIsModal = YES;
+    self.bar = [UINavigationBar new];
+    UINavigationItem* item = [[UINavigationItem alloc] initWithTitle:@"Neon"];
+    item.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+    [self.bar setItems:@[ item ]];
+    [self.view addSubview:self.bar];
+    [self addChildViewController:self.library];
+    [self.view addSubview:self.library.view];
+    [self.library didMoveToParentViewController:self];
+    self.filters = [UIStackView new];
+    self.filters.axis = UILayoutConstraintAxisVertical;
+    self.filters.spacing = 8;
+    self.filters.layoutMarginsRelativeArrangement = YES;
+    self.filters.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(24, 16, 24, 16);
+    self.filterButtons = [NSMutableArray array];
+    __weak NeonLibraryShell* weak = self;
+    NSArray* titles = @[ @"All projects", @"Recent", @"Favorites", @"On this device", @"Trash" ];
+    for (NSUInteger i = 0; i < titles.count; ++i) {
+        NeonButton* button = [NeonButton buttonWithType:UIButtonTypeSystem];
+        button.kind = NeonButtonSelection;
+        [button setTitle:titles[i] forState:UIControlStateNormal];
+        button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+        [button.heightAnchor constraintGreaterThanOrEqualToConstant:NeonMinimumTouchTarget].active =
+            YES;
+        [button addAction:[UIAction actionWithHandler:^(__kindof UIAction* action) {
+                  (void)action;
+                  [weak.library selectFilter:(NeonLibraryFilter)i];
+                }]
+            forControlEvents:UIControlEventTouchUpInside];
+        [self.filters addArrangedSubview:button];
+        [self.filterButtons addObject:button];
+    }
+    [self.filters addArrangedSubview:[UIView new]];
+    [self.view addSubview:self.filters];
+    [self refreshNavigation];
+}
+- (void)refreshNavigation {
+    if (!self.isViewLoaded)
+        return;
+    UINavigationBarAppearance* appearance = [UINavigationBarAppearance new];
+    [appearance configureWithOpaqueBackground];
+    appearance.backgroundColor = NeonPanel();
+    appearance.titleTextAttributes =
+        @{NSFontAttributeName : NeonUI(13), NSForegroundColorAttributeName : NeonInk()};
+    self.bar.standardAppearance = appearance;
+    self.bar.scrollEdgeAppearance = appearance;
+    self.bar.tintColor = NeonMuted();
+    self.filters.backgroundColor = NeonPanel();
+    __weak NeonLibraryShell* weak = self;
+    UIDeferredMenuElement* currentMenu = [UIDeferredMenuElement
+        elementWithUncachedProvider:^(void (^completion)(NSArray<UIMenuElement*>*)) {
+          completion([weak.library navigationMenu].children ?: @[]);
+        }];
+    self.bar.topItem.rightBarButtonItems =
+        @[ [[UIBarButtonItem alloc] initWithTitle:@"•••"
+                                            image:nil
+                                    primaryAction:nil
+                                             menu:[UIMenu menuWithChildren:@[ currentMenu ]]] ];
+    self.bar.topItem.rightBarButtonItems.firstObject.accessibilityLabel = @"Library actions";
+    for (NSUInteger i = 0; i < self.filterButtons.count; ++i)
+        self.filterButtons[i].chosen = self.library.query.filter == static_cast<NSInteger>(i);
+}
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    UIEdgeInsets safe = self.view.safeAreaInsets;
+    CGFloat width = self.view.bounds.size.width - safe.left - safe.right;
+    CGFloat top = safe.top;
+    CGFloat height = MAX(0, self.view.bounds.size.height - top - safe.bottom - 56);
+    BOOL wide = width >= 1000 && width > self.view.bounds.size.height;
+    CGFloat sidebar = wide ? 248 : 0;
+    self.bar.frame = CGRectMake(safe.left, top, width, 56);
+    self.filters.hidden = !wide;
+    self.filters.frame = CGRectMake(safe.left, top + 56, sidebar, height);
+    self.library.usesSidebarNavigation = wide;
+    self.library.view.frame = CGRectMake(safe.left + sidebar, top + 56, width - sidebar, height);
+}
+@end
 @class NeonCoordinator;
 @interface NeonEditor : NeonWorkspaceController <UITextViewDelegate>
 @property(nonatomic, strong) UITextView* editor;
@@ -168,6 +259,8 @@ NSString* focusAncestry(UIView* target) {
 @property(nonatomic, strong) NeonDocumentSession* historySession;
 @property(nonatomic, copy) NSString* historySection;
 @property(nonatomic, strong) NeonList* libraryList;
+@property(nonatomic, strong) NeonLibraryController* libraryController;
+@property(nonatomic, strong) NeonLibraryShell* libraryShell;
 @property(nonatomic, strong) NeonList* chapterList;
 @property(nonatomic, strong) UINavigationController* navigation;
 @property(nonatomic) BOOL sidebarHidden;
@@ -193,6 +286,9 @@ NSString* focusAncestry(UIView* target) {
 - (void)showSectionTrash:(UIViewController*)host anchor:(UIView*)anchor;
 
 - (void)reloadLibrary;
+- (void)showLibraryShell;
+- (void)hideLibraryShell;
+- (void)libraryAction:(NSString*)action record:(NSDictionary*)record;
 - (void)openProject:(NSInteger)index;
 - (void)openSection:(NSInteger)index;
 - (void)newProject;
@@ -964,10 +1060,19 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                                                           action:nil],
             trash
         ];
-        self.navigationItem.rightBarButtonItems =
-            @[ [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose
-                                                             target:self.coordinator
-                                                             action:@selector(showCurrentEditor)] ];
+        UIBarButtonItem* settings =
+            [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"gearshape"]
+                                             style:UIBarButtonItemStylePlain
+                                            target:self
+                                            action:@selector(settings)];
+        settings.title = @"Settings";
+        settings.accessibilityLabel = @"Settings";
+        self.navigationItem.rightBarButtonItems = @[
+            [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose
+                                                          target:self.coordinator
+                                                          action:@selector(showCurrentEditor)],
+            settings
+        ];
         UILabel* project = label(self.coordinator.session.title, scaledSerif(24), NeonInk());
         UILabel* count = label(
             [NSString stringWithFormat:@"%@ · %lu %@ · %lu words",
@@ -1028,6 +1133,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self.navigationController setToolbarHidden:!self.chapters animated:animated];
+    if (self.chapters)
+        self.navigationController.interactivePopGestureRecognizer.enabled = NO;
     if (self.chapters) {
         self.navigationProjectTitle.text = self.coordinator.session.title;
         self.navigationProjectCount.text = [NSString
@@ -1253,6 +1360,16 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     }
     self.libraryList = [[NeonList alloc] initWithStyle:UITableViewStyleInsetGrouped];
     self.libraryList.coordinator = self;
+    self.libraryController = [NeonLibraryController new];
+    self.libraryController.fixtureIDs = NeonUITestFixtureIDs();
+    __weak NeonCoordinator* weakSelf = self;
+    self.libraryController.onFilterChanged = ^(NeonLibraryFilter filter) {
+      weakSelf.trashMode = filter == NeonLibraryTrash;
+      [weakSelf reloadLibrary];
+    };
+    self.libraryController.onAction = ^(NSString* action, NSDictionary* record) {
+      [weakSelf libraryAction:action record:record];
+    };
     self.navigation = [[UINavigationController alloc] initWithRootViewController:self.libraryList];
     self.navigation.navigationBar.prefersLargeTitles = YES;
     [self setViewController:self.navigation forColumn:UISplitViewControllerColumnPrimary];
@@ -1276,10 +1393,18 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
              object:nil];
     [self reloadLibrary];
     [self applyAppearance];
+    [self showLibraryShell];
     if (self.smoke || reopen)
         dispatch_async(dispatch_get_main_queue(), ^{
           [self runSmoke:args support:support];
         });
+}
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    if (self.libraryShell.parentViewController == self) {
+        self.libraryShell.view.frame = self.view.bounds;
+        [self.view bringSubviewToFront:self.libraryShell.view];
+    }
 }
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
@@ -1337,6 +1462,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         detail.navigationBar.scrollEdgeAppearance = appearance;
         detail.navigationBar.tintColor = NeonAccent();
     }
+    [self.libraryShell refreshNavigation];
+    [self reloadLibrary];
     [self updateNavigationControls];
 }
 - (BOOL)renameInline:(NSString*)title section:(NSString*)identifier {
@@ -1377,17 +1504,79 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     nav.modalPresentationStyle = UIModalPresentationPageSheet;
     [self presentViewController:nav animated:YES completion:nil];
 }
+- (void)showLibraryShell {
+    if (self.session)
+        return;
+    if (!self.libraryShell) {
+        self.libraryShell = [NeonLibraryShell new];
+        self.libraryShell.library = self.libraryController;
+    }
+    if (!self.libraryShell.parentViewController) {
+        [self addChildViewController:self.libraryShell];
+        self.libraryShell.view.frame = self.view.bounds;
+        self.libraryShell.view.autoresizingMask =
+            UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [self.view addSubview:self.libraryShell.view];
+        [self.libraryShell didMoveToParentViewController:self];
+    }
+    [self.view bringSubviewToFront:self.libraryShell.view];
+    for (UIViewController* child in self.childViewControllers)
+        if (child != self.libraryShell)
+            child.view.accessibilityElementsHidden = YES;
+    [self.libraryShell refreshNavigation];
+}
+- (void)hideLibraryShell {
+    [self.libraryShell willMoveToParentViewController:nil];
+    [self.libraryShell.view removeFromSuperview];
+    [self.libraryShell removeFromParentViewController];
+    for (UIViewController* child in self.childViewControllers)
+        child.view.accessibilityElementsHidden = NO;
+}
+- (void)libraryAction:(NSString*)action record:(NSDictionary*)record {
+    if ([action isEqual:@"new"]) {
+        [self newProject];
+        return;
+    }
+    if ([action isEqual:@"settings"]) {
+        [self showSettings];
+        return;
+    }
+    if (!record[@"projectID"] || !record[@"url"])
+        return;
+    if ([action isEqual:@"favorite"]) {
+        [self.library setFavorite:![record[@"favorite"] boolValue] projectID:record[@"projectID"]];
+        [self reloadLibrary];
+        return;
+    }
+    if ([action isEqual:@"open"]) {
+        NSUInteger index = [self.projects
+            indexOfObjectPassingTest:^BOOL(NSDictionary* candidate, NSUInteger i, BOOL* stop) {
+              (void)i;
+              (void)stop;
+              return [candidate[@"projectID"] isEqual:record[@"projectID"]];
+            }];
+        if (index != NSNotFound)
+            [self openProject:index];
+        return;
+    }
+    NSDictionary* commands = @{
+        @"rename" : @"Rename…",
+        @"duplicate" : @"Duplicate",
+        @"trash" : @"Move to Trash…",
+        @"restore" : @"Restore",
+        @"delete" : @"Delete Permanently…"
+    };
+    NSString* command = commands[action];
+    if (command)
+        [self projectCommand:command url:record[@"url"] title:record[@"title"]];
+}
 - (void)reloadLibrary {
     NSError* error = nil;
     NSArray* projects =
         self.trashMode ? [self.library trashedProjects:&error] : [self.library projects:&error];
-    if (!projects) {
-        [self showProblem:error];
-        return;
-    }
-    self.projects = projects;
-    self.libraryList.tableView.accessibilityIdentifier =
-        [NSString stringWithFormat:@"library-project-count-%@", @(projects.count)];
+    self.projects = projects ?: @[];
+    [self.libraryController updateWithRecords:projects error:error];
+    [self.libraryShell refreshNavigation];
     self.libraryList.title = self.trashMode ? @"Trash" : @"Library";
     self.libraryList.navigationItem.leftBarButtonItem =
         self.trashMode ? [[UIBarButtonItem alloc] initWithTitle:@"Library"
@@ -1462,11 +1651,13 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         return;
     NSError* error = nil;
     NSURL* url = self.projects[index][@"url"];
-    NeonDocumentSession* session = [self.library openURL:url error:&error];
+    NeonDocumentSession* session = [self.library openProjectURL:url error:&error];
     if (!session) {
         [self showProblem:error];
         return;
     }
+    self.libraryController.selectedProjectID = session.projectID;
+    [self hideLibraryShell];
     self.session = session;
     if (!self.sidebarLayoutInitialized) {
         self.narrowSidebarLayout = self.view.bounds.size.width < 1000;
@@ -1816,7 +2007,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.editor = nil;
     self.session = nil;
     self.selectedURL = nil;
-    self.trashMode = NO;
+    self.trashMode = self.libraryController.query.filter == NeonLibraryTrash;
     [self.navigation setViewControllers:@[ self.libraryList ] animated:NO];
     UIViewController* blank = [UIViewController new];
     blank.view.backgroundColor = NeonPaper();
@@ -1826,13 +2017,13 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     [self showColumn:UISplitViewControllerColumnPrimary];
     [self reloadLibrary];
     [self applyAppearance];
+    [self showLibraryShell];
 }
 - (void)showTrash {
     [self showLibrary];
     if (self.session)
         return;
-    self.trashMode = YES;
-    [self reloadLibrary];
+    [self.libraryController selectFilter:NeonLibraryTrash];
 }
 - (void)projectMenu:(NSInteger)index
                host:(UIViewController*)host
@@ -2037,9 +2228,49 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     }
     [self refreshAfterStructure];
 }
+- (BOOL)libraryHostSmoke {
+    NeonLibraryFilter filter = self.libraryController.query.filter;
+    NeonLibraryView view = self.libraryController.query.view;
+    [self.libraryController selectFilter:NeonLibraryAll];
+    NSDictionary* record = self.projects.firstObject;
+    if (!record)
+        return NO;
+    BOOL favorite = [record[@"favorite"] boolValue];
+    NSString* openedKey = [@"library.opened." stringByAppendingString:record[@"projectID"]];
+    id before = [NeonPreferences() objectForKey:openedKey];
+    [self reloadLibrary];
+    id after = [NeonPreferences() objectForKey:openedKey];
+    BOOL valid = self.projects.count == 3 && !self.libraryController.presentation.error &&
+                 self.libraryController.presentation.records.count == 3 &&
+                 self.libraryShell.parentViewController == self &&
+                 [self.libraryController.fixtureIDs isEqualToDictionary:NeonUITestFixtureIDs()] &&
+                 (before == after || [before isEqual:after]);
+    [self libraryAction:@"favorite" record:record];
+    [self.libraryController selectFilter:NeonLibraryFavorites];
+    BOOL contains =
+        [self.libraryController.presentation.records
+            indexOfObjectPassingTest:^BOOL(NSDictionary* item, NSUInteger i, BOOL* stop) {
+              (void)i;
+              (void)stop;
+              return [item[@"projectID"] isEqual:record[@"projectID"]];
+            }] != NSNotFound;
+    valid = valid && contains == !favorite;
+    [self.library setFavorite:favorite projectID:record[@"projectID"]];
+    [self.libraryController selectFilter:NeonLibraryAll];
+    [self.libraryController setLibraryView:NeonLibraryList];
+    valid = valid && self.libraryController.query.view == NeonLibraryList;
+    [self.libraryController setLibraryView:view];
+    [self libraryAction:@"open" record:record];
+    NSDate* opened = [NeonPreferences() objectForKey:openedKey];
+    valid = valid && [self.session.projectID isEqual:record[@"projectID"]] &&
+            self.libraryShell.parentViewController == nil && [opened isKindOfClass:NSDate.class];
+    [self showLibrary];
+    [self.libraryController selectFilter:filter];
+    return valid && self.libraryShell.parentViewController == self;
+}
 - (void)runSmoke:(NSArray*)args support:(NSURL*)support {
     if ([args containsObject:@"--smoke-library"]) {
-        marker(support, @"smoke-library.txt", self.projects.count == 3);
+        marker(support, @"smoke-library.txt", [self libraryHostSmoke]);
         return;
     }
     NSInteger index = [self.projects
