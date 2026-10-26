@@ -1,6 +1,8 @@
 #include "LibraryController.h"
 #import "Controls.h"
 #import <QuartzCore/QuartzCore.h>
+@interface NeonLibraryCommandButton : NeonButton
+@end
 namespace {
 UILabel* label(UIView* parent, NSString* value, UIFont* font, UIColor* color, CGRect frame) {
     UILabel* result = [[UILabel alloc] initWithFrame:frame];
@@ -12,18 +14,34 @@ UILabel* label(UIView* parent, NSString* value, UIFont* font, UIColor* color, CG
     return result;
 }
 NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(void)) {
-    NeonButton* result = [[NeonButton alloc] initWithFrame:frame];
-    [result setTitle:title forState:UIControlStateNormal];
+    NeonLibraryCommandButton* result = [[NeonLibraryCommandButton alloc] initWithFrame:frame];
     result.kind = NeonButtonSecondary;
     [result addAction:[UIAction actionWithHandler:^(__kindof UIAction* action) {
               (void)action;
               block();
             }]
         forControlEvents:UIControlEventTouchUpInside];
+    // Registering a UIAction can replace UIButton's cold title attributes.
+    [result setTitle:title forState:UIControlStateNormal];
     [parent addSubview:result];
     return result;
 }
 } // namespace
+@implementation NeonLibraryCommandButton
+- (void)setConfiguration:(UIButtonConfiguration*)configuration {
+    UIButtonConfiguration* value = [configuration copy];
+    value.titleLineBreakMode = NSLineBreakByTruncatingTail;
+    value.titleTextAttributesTransformer = ^NSDictionary*(NSDictionary* incoming) {
+      NSMutableDictionary* attributes = [incoming mutableCopy];
+      attributes[NSFontAttributeName] = NeonUI(14);
+      return attributes;
+    };
+    if ([[self titleForState:UIControlStateNormal] isEqual:@"•••"])
+        value.contentInsets = NSDirectionalEdgeInsetsZero;
+    [super setConfiguration:value];
+    self.titleLabel.numberOfLines = 1;
+}
+@end
 // NeonButton rebuilds its configuration for selection/hover/focus. Preserve the
 // static navigation image through those updates without changing shared controls.
 @interface NeonLibraryFilterButton : NeonButton
@@ -62,6 +80,15 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
                 NSFontAttributeName : self.editorialFont ?: NeonUI(16),
                 NSForegroundColorAttributeName : self.enabled ? NeonInk() : NeonMuted()
             }];
+    UIColor* foreground = self.enabled ? NeonInk() : NeonMuted();
+    UIFont* font = self.editorialFont ?: NeonUI(16);
+    value.baseForegroundColor = foreground;
+    value.titleTextAttributesTransformer = ^NSDictionary*(NSDictionary* incoming) {
+      NSMutableDictionary* attributes = [incoming mutableCopy];
+      attributes[NSFontAttributeName] = font;
+      attributes[NSForegroundColorAttributeName] = foreground;
+      return attributes;
+    };
     value.contentInsets = NSDirectionalEdgeInsetsZero;
     value.titleLineBreakMode = NSLineBreakByTruncatingTail;
     value.background.backgroundColor = UIColor.clearColor;
@@ -265,11 +292,13 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
         NeonButton* all = button(self.scroll, @"All projects", CGRectMake(x, 138, 116, 44), ^{
           [weak selectFilter:NeonLibraryAll];
         });
+        all.accessibilityIdentifier = @"library-filter-all";
         all.kind = NeonButtonSelection;
         all.chosen = self.query.filter == NeonLibraryAll;
         NeonButton* recent = button(self.scroll, @"Recent", CGRectMake(x + 124, 138, 72, 44), ^{
           [weak selectFilter:NeonLibraryRecent];
         });
+        recent.accessibilityIdentifier = @"library-filter-recent";
         recent.kind = NeonButtonSelection;
         recent.chosen = self.query.filter == NeonLibraryRecent;
     } else
@@ -369,12 +398,12 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
             NeonLibraryTitleButton* title = [[NeonLibraryTitleButton alloc]
                 initWithFrame:CGRectMake(tx, ty, list ? tw : MAX(0, tw - 52), 34)];
             title.editorialFont = list ? NeonSerif(24) : NeonUI(16);
-            [title setTitle:r[@"title"] ?: @"Untitled" forState:UIControlStateNormal];
             [title addAction:[UIAction actionWithHandler:^(__kindof UIAction* action) {
                      (void)action;
                      [weak send:@"open" record:r];
                    }]
                 forControlEvents:UIControlEventTouchUpInside];
+            [title setTitle:r[@"title"] ?: @"Untitled" forState:UIControlStateNormal];
             [self.scroll addSubview:title];
             title.accessibilityIdentifier =
                 [@"library-title-" stringByAppendingString:r[@"projectID"]];

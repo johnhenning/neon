@@ -2229,6 +2229,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     [self refreshAfterStructure];
 }
 - (BOOL)libraryHostSmoke {
+    NeonLibrarySmokeRecord(@"begin", YES, @"Library host assertions");
     NeonLibraryFilter filter = self.libraryController.query.filter;
     NeonLibraryView view = self.libraryController.query.view;
     [self.libraryController selectFilter:NeonLibraryAll];
@@ -2241,12 +2242,24 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     id before = [NeonPreferences() objectForKey:openedKey];
     [self reloadLibrary];
     id after = [NeonPreferences() objectForKey:openedKey];
-    BOOL valid = titleStyle && self.projects.count == 3 &&
-                 !self.libraryController.presentation.error &&
-                 self.libraryController.presentation.records.count == 3 &&
-                 self.libraryShell.parentViewController == self &&
-                 [self.libraryController.fixtureIDs isEqualToDictionary:NeonUITestFixtureIDs()] &&
-                 (before == after || [before isEqual:after]);
+    __block BOOL valid = YES;
+    void (^check)(NSString*, BOOL, NSString*) = ^(NSString* name, BOOL pass, NSString* detail) {
+      NeonLibrarySmokeRecord(name, pass, detail);
+      valid = pass && valid;
+    };
+    check(@"title-style", titleStyle, @"see individual title states");
+    check(@"source-count", self.projects.count == 3, @(self.projects.count).stringValue);
+    check(@"presentation-error", !self.libraryController.presentation.error,
+          self.libraryController.presentation.error.localizedDescription);
+    check(@"visible-count", self.libraryController.presentation.records.count == 3,
+          @(self.libraryController.presentation.records.count).stringValue);
+    check(@"shell-mounted", self.libraryShell.parentViewController == self,
+          NSStringFromClass(self.libraryShell.parentViewController.class));
+    check(@"fixture-identities",
+          [self.libraryController.fixtureIDs isEqualToDictionary:NeonUITestFixtureIDs()],
+          self.libraryController.fixtureIDs.description);
+    check(@"enumeration-no-open", before == after || [before isEqual:after],
+          [NSString stringWithFormat:@"before=%@ after=%@", before, after]);
     [self libraryAction:@"favorite" record:record];
     [self.libraryController selectFilter:NeonLibraryFavorites];
     BOOL contains =
@@ -2256,19 +2269,24 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
               (void)stop;
               return [item[@"projectID"] isEqual:record[@"projectID"]];
             }] != NSNotFound;
-    valid = valid && contains == !favorite;
+    check(@"favorite-filter", contains == !favorite,
+          [NSString stringWithFormat:@"before=%d contains=%d", favorite, contains]);
     [self.library setFavorite:favorite projectID:record[@"projectID"]];
     [self.libraryController selectFilter:NeonLibraryAll];
     [self.libraryController setLibraryView:NeonLibraryList];
-    valid = valid && self.libraryController.query.view == NeonLibraryList;
+    check(@"list-view", self.libraryController.query.view == NeonLibraryList, @"requested List");
     [self.libraryController setLibraryView:view];
     [self libraryAction:@"open" record:record];
     NSDate* opened = [NeonPreferences() objectForKey:openedKey];
-    valid = valid && [self.session.projectID isEqual:record[@"projectID"]] &&
-            self.libraryShell.parentViewController == nil && [opened isKindOfClass:NSDate.class];
+    check(@"opened-stable-id", [self.session.projectID isEqual:record[@"projectID"]],
+          self.session.projectID);
+    check(@"open-dismisses-library", self.libraryShell.parentViewController == nil,
+          @"shell parent");
+    check(@"successful-open-tracked", [opened isKindOfClass:NSDate.class], opened.description);
     [self showLibrary];
     [self.libraryController selectFilter:filter];
-    return valid && self.libraryShell.parentViewController == self;
+    check(@"library-return", self.libraryShell.parentViewController == self, @"shell mounted");
+    return valid;
 }
 - (void)runSmoke:(NSArray*)args support:(NSURL*)support {
     if ([args containsObject:@"--smoke-library"]) {

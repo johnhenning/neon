@@ -99,6 +99,23 @@ void NeonWorkspaceCompositionSmoke(UITextView* (^current)(void), void (^request)
     });
 }
 
+void NeonLibrarySmokeRecord(NSString* assertion, BOOL pass, NSString* detail) {
+    NSURL* support = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
+                                                            inDomains:NSUserDomainMask]
+                         .firstObject;
+    NSURL* path = [support URLByAppendingPathComponent:@"smoke-library-details.txt"];
+    NSString* line = [NSString
+        stringWithFormat:@"%@ %@: %@\n", pass ? @"PASS" : @"FAIL", assertion, detail ?: @""];
+    if ([assertion isEqual:@"begin"])
+        [line writeToURL:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    else {
+        NSFileHandle* file = [NSFileHandle fileHandleForWritingAtPath:path.path];
+        [file seekToEndOfFile];
+        [file writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+        [file closeFile];
+    }
+    NSLog(@"%@", line);
+}
 namespace {
 UIButton* libraryTitle(UIView* view) {
     if ([view isKindOfClass:UIButton.class] &&
@@ -111,17 +128,63 @@ UIButton* libraryTitle(UIView* view) {
     }
     return nil;
 }
-BOOL titleConfiguration(UIButton* title, UIFont* expected) {
+BOOL libraryCommandsFit(UIView* view) {
+    BOOL valid = YES;
+    if ([view isKindOfClass:UIButton.class]) {
+        UIButton* button = (UIButton*)view;
+        NSString* title = [button titleForState:UIControlStateNormal];
+        if ([title isEqual:@"Recent"] || [title isEqual:@"New project"] || [title isEqual:@"•••"]) {
+            [button setNeedsLayout];
+            [button layoutIfNeeded];
+            CGSize full = [button.titleLabel sizeThatFits:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX)];
+            BOOL fits = button.titleLabel.numberOfLines == 1 &&
+                        full.width <= button.titleLabel.bounds.size.width + 1;
+            NeonLibrarySmokeRecord(
+                [@"command-fit-" stringByAppendingString:title], fits,
+                [NSString
+                    stringWithFormat:@"textWidth=%.2f labelWidth=%.2f font=%.1f lines=%ld frame=%@",
+                                     full.width, button.titleLabel.bounds.size.width,
+                                     button.titleLabel.font.pointSize,
+                                     static_cast<long>(button.titleLabel.numberOfLines),
+                                     NSStringFromCGRect(button.frame)]);
+            valid = fits;
+        }
+    }
+    for (UIView* child in view.subviews)
+        valid = libraryCommandsFit(child) && valid;
+    return valid;
+}
+BOOL titleConfiguration(UIButton* title, UIFont* expected, NSString* stage) {
+    [title setNeedsLayout];
+    [title layoutIfNeeded];
     UIButtonConfiguration* config = title.configuration;
-    UIFont* font = config.attributedTitle.length
-                       ? [config.attributedTitle attribute:NSFontAttributeName
-                                                   atIndex:0
-                                            effectiveRange:nil]
-                       : nil;
+    UIFont* storedFont = config.attributedTitle.length
+                             ? [config.attributedTitle attribute:NSFontAttributeName
+                                                         atIndex:0
+                                                  effectiveRange:nil]
+                             : nil;
+    UIFont* font = title.titleLabel.font;
+    UIColor* expectedColor = [title.enabled ? NeonInk() : NeonMuted()
+        resolvedColorWithTraitCollection:title.traitCollection];
+    UIColor* renderedColor =
+        [title.titleLabel.textColor resolvedColorWithTraitCollection:title.traitCollection];
     NSDirectionalEdgeInsets inset = config.contentInsets;
-    return [font.fontName isEqual:expected.fontName] && font.pointSize == expected.pointSize &&
-           inset.top == 0 && inset.leading == 0 && inset.bottom == 0 && inset.trailing == 0 &&
-           [config.background.backgroundColor isEqual:UIColor.clearColor];
+    BOOL valid = [font.fontName isEqual:expected.fontName] &&
+                 font.pointSize == expected.pointSize && inset.top == 0 && inset.leading == 0 &&
+                 inset.bottom == 0 && inset.trailing == 0 &&
+                 [config.background.backgroundColor isEqual:UIColor.clearColor] &&
+                 [renderedColor isEqual:expectedColor];
+    NeonLibrarySmokeRecord(
+        stage, valid,
+        [NSString stringWithFormat:
+                      @"font=%@ %.2f expected=%@ %.2f insets=%.1f/%.1f/%.1f/%.1f "
+                      @"background=%@ foreground=%@ labelColor=%@ storedFont=%@ %.2f title=%@",
+                      font.fontName, font.pointSize, expected.fontName, expected.pointSize,
+                      inset.top, inset.leading, inset.bottom, inset.trailing,
+                      config.background.backgroundColor, config.baseForegroundColor,
+                      title.titleLabel.textColor, storedFont.fontName, storedFont.pointSize,
+                      config.title]);
+    return valid;
 }
 } // namespace
 BOOL NeonLibraryTitleStyleSmoke(NeonLibraryController* library) {
@@ -129,28 +192,54 @@ BOOL NeonLibraryTitleStyleSmoke(NeonLibraryController* library) {
     BOOL valid = YES;
     for (NeonLibraryView view : {NeonLibraryGrid, NeonLibraryList}) {
         [library setLibraryView:view];
+        valid = libraryCommandsFit(library.view) && valid;
         NeonButton* title = (NeonButton*)libraryTitle(library.view);
         UIFont* font = view == NeonLibraryList ? NeonSerif(24) : NeonUI(16);
         NSString* accessibility = title.accessibilityLabel;
-        valid = valid && title && titleConfiguration(title, font);
+        NSString* mode = view == NeonLibraryList ? @"list" : @"grid";
+        valid = titleConfiguration(title, font, [mode stringByAppendingString:@"-normal"]) && valid;
         title.chosen = YES;
-        valid = valid && titleConfiguration(title, font);
+        valid = titleConfiguration(title, font, [mode stringByAppendingString:@"-chosen"]) && valid;
         title.enabled = NO;
-        valid = valid && titleConfiguration(title, font);
+        valid =
+            titleConfiguration(title, font, [mode stringByAppendingString:@"-disabled"]) && valid;
         title.enabled = YES;
         title.highlighted = YES;
-        valid = valid && titleConfiguration(title, font);
+        valid = titleConfiguration(title, font, [mode stringByAppendingString:@"-highlighted"]) &&
+                valid;
         title.highlighted = NO;
         // The shared control supplies this outline on keyboard/Focus Engine focus.
         UIButtonConfiguration* focused = UIButtonConfiguration.filledButtonConfiguration;
         focused.background.strokeColor = NeonInk();
         focused.background.strokeWidth = 3;
         title.configuration = focused;
-        valid = valid && titleConfiguration(title, font) &&
-                title.configuration.background.strokeWidth == 3 &&
-                [title.accessibilityLabel isEqual:accessibility] &&
-                (title.accessibilityTraits & UIAccessibilityTraitButton);
+        BOOL focusedStyle =
+            titleConfiguration(title, font, [mode stringByAppendingString:@"-focus"]);
+        BOOL focusAX = title.configuration.background.strokeWidth == 3 &&
+                       [title.accessibilityLabel isEqual:accessibility] &&
+                       (title.accessibilityTraits & UIAccessibilityTraitButton);
+        NeonLibrarySmokeRecord(
+            [mode stringByAppendingString:@"-focus-AX"], focusAX,
+            [NSString stringWithFormat:@"stroke=%.1f label=%@ traits=%llu",
+                                       title.configuration.background.strokeWidth,
+                                       title.accessibilityLabel,
+                                       static_cast<unsigned long long>(title.accessibilityTraits)]);
+        valid = focusedStyle && focusAX && valid;
         title.chosen = NO;
+        void (^originalAction)(NSString*, NSDictionary*) = library.onAction;
+        NSString* selected = library.selectedProjectID;
+        __block BOOL activated = NO;
+        NSString* projectID =
+            [title.accessibilityIdentifier substringFromIndex:@"library-title-".length];
+        library.onAction = ^(NSString* action, NSDictionary* record) {
+          activated = [action isEqual:@"open"] && [record[@"projectID"] isEqual:projectID];
+        };
+        [title sendActionsForControlEvents:UIControlEventTouchUpInside];
+        library.onAction = originalAction;
+        library.selectedProjectID = selected;
+        NeonLibrarySmokeRecord([mode stringByAppendingString:@"-native-activation"], activated,
+                               projectID);
+        valid = activated && valid;
     }
     [library setLibraryView:original];
     return valid;

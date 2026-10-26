@@ -26,3 +26,5 @@ void NeonWorkspaceCompositionSmoke(UITextView* (^manuscript)(void),
 
 @class NeonLibraryController;
 BOOL NeonLibraryTitleStyleSmoke(NeonLibraryController* library);
+
+void NeonLibrarySmokeRecord(NSString* assertion, BOOL pass, NSString* detail);
