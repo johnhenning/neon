@@ -7,8 +7,11 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: native-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # PR workflows must stay independent so an iOS-only push cannot cancel or
+  # queue an earlier Mac job. Platform job groups handle affected-job replacement.
+  # Pushes/dispatches retain branch serialization for main release validation.
+  group: native-${{ github.event_name == 'pull_request' && github.run_id || github.ref }}
+  cancel-in-progress: false
 jobs:
   changes:
     runs-on: ubuntu-24.04
