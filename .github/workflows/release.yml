@@ -1,0 +1,60 @@
+name: Draft preview release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Preview tag, for example v0.3.0-preview.1'
+        required: true
+        type: string
+      run_id:
+        description: 'Successful Native Apple foundation push-to-main run ID'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: neon-preview-release
+  cancel-in-progress: false
+jobs:
+  draft:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.version }}
+      SOURCE_RUN: ${{ inputs.run_id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify source build
+        id: source
+        run: python3 .github/scripts/prepare_release.py verify --run-id "$SOURCE_RUN" --tag "$RELEASE_TAG"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: Neon-Native-macOS
+          path: release-assets
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: Neon-Native-iOS-Simulator
+          path: release-assets
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Validate packages and write provenance
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: python3 .github/scripts/prepare_release.py package --run-id "$SOURCE_RUN" --tag "$RELEASE_TAG" --sha "$SOURCE_SHA" --assets release-assets
+      - name: Create unpublished preview
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          gh release create "$RELEASE_TAG" release-assets/Neon.zip release-assets/Neon-Simulator.zip release-assets/SHA256SUMS release-assets/provenance.json \
+            --target "$SOURCE_SHA" --title "Neon $RELEASE_TAG" --draft --prerelease \
+            --generate-notes --notes-file .github/preview-release-notes.md
