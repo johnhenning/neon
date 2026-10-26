@@ -193,8 +193,6 @@ NSString* focusAncestry(UIView* target) {
         }];
     self.bar.topItem.rightBarButtonItems =
         @[ [[UIBarButtonItem alloc] initWithTitle:@"•••"
-                                            image:nil
-                                    primaryAction:nil
                                              menu:[UIMenu menuWithChildren:@[ currentMenu ]]] ];
     self.bar.topItem.rightBarButtonItems.firstObject.accessibilityLabel = @"Library actions";
     for (NSUInteger i = 0; i < self.filterButtons.count; ++i)
@@ -2237,12 +2235,14 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     NSDictionary* record = self.projects.firstObject;
     if (!record)
         return NO;
+    BOOL titleStyle = NeonLibraryTitleStyleSmoke(self.libraryController);
     BOOL favorite = [record[@"favorite"] boolValue];
     NSString* openedKey = [@"library.opened." stringByAppendingString:record[@"projectID"]];
     id before = [NeonPreferences() objectForKey:openedKey];
     [self reloadLibrary];
     id after = [NeonPreferences() objectForKey:openedKey];
-    BOOL valid = self.projects.count == 3 && !self.libraryController.presentation.error &&
+    BOOL valid = titleStyle && self.projects.count == 3 &&
+                 !self.libraryController.presentation.error &&
                  self.libraryController.presentation.records.count == 3 &&
                  self.libraryShell.parentViewController == self &&
                  [self.libraryController.fixtureIDs isEqualToDictionary:NeonUITestFixtureIDs()] &&

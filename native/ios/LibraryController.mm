@@ -44,6 +44,35 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
     [super setConfiguration:value];
 }
 @end
+// Keep project titles editorial through every shared control state refresh.
+@interface NeonLibraryTitleButton : NeonButton
+@property(nonatomic, strong) UIFont* editorialFont;
+@end
+@implementation NeonLibraryTitleButton
+- (void)setEditorialFont:(UIFont*)font {
+    _editorialFont = font;
+    [self setConfiguration:self.configuration];
+}
+- (void)setConfiguration:(UIButtonConfiguration*)configuration {
+    UIButtonConfiguration* value = UIButtonConfiguration.plainButtonConfiguration;
+    NSString* title = [self titleForState:UIControlStateNormal] ?: @"";
+    value.attributedTitle = [[NSAttributedString alloc]
+        initWithString:title
+            attributes:@{
+                NSFontAttributeName : self.editorialFont ?: NeonUI(16),
+                NSForegroundColorAttributeName : self.enabled ? NeonInk() : NeonMuted()
+            }];
+    value.contentInsets = NSDirectionalEdgeInsetsZero;
+    value.titleLineBreakMode = NSLineBreakByTruncatingTail;
+    value.background.backgroundColor = UIColor.clearColor;
+    // NeonButton supplies the native keyboard/Focus Engine outline. Carry it
+    // through while discarding its filled secondary background and title font.
+    value.background.strokeColor = configuration.background.strokeColor;
+    value.background.strokeWidth = configuration.background.strokeWidth;
+    value.background.cornerRadius = configuration.background.cornerRadius;
+    [super setConfiguration:value];
+}
+@end
 @interface NeonLibraryController ()
 @property(nonatomic) NeonLibraryQuery* query;
 @property(nonatomic) NeonLibraryPresentation* presentation;
@@ -337,19 +366,18 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
             [self.scroll addSubview:open];
             CGFloat tx = list ? rx + 86 : rx, ty = list ? ry : ry + ch + 8,
                     tw = list ? m - 110 : tile;
-            NeonButton* title = button(self.scroll, r[@"title"] ?: @"Untitled",
-                                       CGRectMake(tx, ty, list ? tw : MAX(0, tw - 52), 34), ^{
-                                         [weak send:@"open" record:r];
-                                       });
-            UIButtonConfiguration* config = UIButtonConfiguration.plainButtonConfiguration;
-            config.attributedTitle = [[NSAttributedString alloc]
-                initWithString:r[@"title"] ?: @"Untitled"
-                    attributes:@{
-                        NSFontAttributeName : list ? NeonSerif(24) : NeonUI(16),
-                        NSForegroundColorAttributeName : NeonInk()
-                    }];
-            config.contentInsets = NSDirectionalEdgeInsetsZero;
-            title.configuration = config;
+            NeonLibraryTitleButton* title = [[NeonLibraryTitleButton alloc]
+                initWithFrame:CGRectMake(tx, ty, list ? tw : MAX(0, tw - 52), 34)];
+            title.editorialFont = list ? NeonSerif(24) : NeonUI(16);
+            [title setTitle:r[@"title"] ?: @"Untitled" forState:UIControlStateNormal];
+            [title addAction:[UIAction actionWithHandler:^(__kindof UIAction* action) {
+                     (void)action;
+                     [weak send:@"open" record:r];
+                   }]
+                forControlEvents:UIControlEventTouchUpInside];
+            [self.scroll addSubview:title];
+            title.accessibilityIdentifier =
+                [@"library-title-" stringByAppendingString:r[@"projectID"]];
             title.isAccessibilityElement = YES;
             title.accessibilityLabel = r[@"title"] ?: @"Untitled";
             title.accessibilityTraits = UIAccessibilityTraitButton;

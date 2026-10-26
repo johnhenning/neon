@@ -1,8 +1,11 @@
 // UIKit smoke assertions run only against the isolated preview library.
+#import "Controls.h"
 #import "EditorialTheme.h"
+#import "LibraryController.h"
 #import "Preferences.h"
 #include "WorkspaceController.h"
 #include <cmath>
+#include <initializer_list>
 
 BOOL NeonWorkspaceSmoke(NeonChapterHeading* heading, UITextView* manuscript) {
     NSString* title = heading.text;
@@ -94,4 +97,61 @@ void NeonWorkspaceCompositionSmoke(UITextView* (^current)(void), void (^request)
                    NSEqualRanges(selection, manuscript.selectedRange));
       });
     });
+}
+
+namespace {
+UIButton* libraryTitle(UIView* view) {
+    if ([view isKindOfClass:UIButton.class] &&
+        [view.accessibilityIdentifier hasPrefix:@"library-title-"])
+        return (UIButton*)view;
+    for (UIView* child in view.subviews) {
+        UIButton* found = libraryTitle(child);
+        if (found)
+            return found;
+    }
+    return nil;
+}
+BOOL titleConfiguration(UIButton* title, UIFont* expected) {
+    UIButtonConfiguration* config = title.configuration;
+    UIFont* font = config.attributedTitle.length
+                       ? [config.attributedTitle attribute:NSFontAttributeName
+                                                   atIndex:0
+                                            effectiveRange:nil]
+                       : nil;
+    NSDirectionalEdgeInsets inset = config.contentInsets;
+    return [font.fontName isEqual:expected.fontName] && font.pointSize == expected.pointSize &&
+           inset.top == 0 && inset.leading == 0 && inset.bottom == 0 && inset.trailing == 0 &&
+           [config.background.backgroundColor isEqual:UIColor.clearColor];
+}
+} // namespace
+BOOL NeonLibraryTitleStyleSmoke(NeonLibraryController* library) {
+    NeonLibraryView original = library.query.view;
+    BOOL valid = YES;
+    for (NeonLibraryView view : {NeonLibraryGrid, NeonLibraryList}) {
+        [library setLibraryView:view];
+        NeonButton* title = (NeonButton*)libraryTitle(library.view);
+        UIFont* font = view == NeonLibraryList ? NeonSerif(24) : NeonUI(16);
+        NSString* accessibility = title.accessibilityLabel;
+        valid = valid && title && titleConfiguration(title, font);
+        title.chosen = YES;
+        valid = valid && titleConfiguration(title, font);
+        title.enabled = NO;
+        valid = valid && titleConfiguration(title, font);
+        title.enabled = YES;
+        title.highlighted = YES;
+        valid = valid && titleConfiguration(title, font);
+        title.highlighted = NO;
+        // The shared control supplies this outline on keyboard/Focus Engine focus.
+        UIButtonConfiguration* focused = UIButtonConfiguration.filledButtonConfiguration;
+        focused.background.strokeColor = NeonInk();
+        focused.background.strokeWidth = 3;
+        title.configuration = focused;
+        valid = valid && titleConfiguration(title, font) &&
+                title.configuration.background.strokeWidth == 3 &&
+                [title.accessibilityLabel isEqual:accessibility] &&
+                (title.accessibilityTraits & UIAccessibilityTraitButton);
+        title.chosen = NO;
+    }
+    [library setLibraryView:original];
+    return valid;
 }
