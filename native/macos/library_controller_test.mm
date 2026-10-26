@@ -21,6 +21,14 @@ static NSButton* findButton(NSView* root, NSString* title) {
             return (NSButton*)view;
     return nil;
 }
+static BOOL hasCount(NSView* root, NSString* identifier, NSString* value) {
+    for (NSView* view in descendants(root))
+        if ([view isKindOfClass:NSTextField.class] &&
+            [view.accessibilityIdentifier isEqual:identifier] &&
+            [((NSTextField*)view).stringValue containsString:value] && !view.hidden)
+            return YES;
+    return NO;
+}
 static BOOL contains(NSView* root, NSString* string) {
     for (NSView* view in descendants(root))
         if ([view isKindOfClass:NSTextField.class] &&
@@ -67,6 +75,10 @@ int main(int argc, const char* argv[]) {
         [c updateWithRecords:@[] error:nil];
         require(contains(c.view, @"Begin anywhere."), "true empty welcome missing");
         require(contains(c.view, @"0 projects"), "empty count incorrect");
+        require(hasCount(c.view, @"library-project-count-0", @"0 projects"),
+                "empty walkthrough gate must identify the actual visible footer count");
+        require([findButton(c.sidebarView, @"Recent").accessibilityLabel isEqual:@"Recent"],
+                "filter accessibility must name its destination");
         require(!findButton(c.view, @"Import a document").enabled, "unavailable import enabled");
         require(c.sidebarView.frame.size.width == 248, "library sidebar measure incorrect");
         require(c.view.wantsDefaultClipping && c.view.layer.masksToBounds &&
@@ -83,6 +95,8 @@ int main(int argc, const char* argv[]) {
         };
         c.selectedProjectID = @"stable-a";
         [c updateWithRecords:@[ record ] error:nil];
+        require(hasCount(c.view, @"library-project-count-1", @"1 project"),
+                "populated footer count must retain walkthrough identity");
         require(!contains(c.view, @"Unable to read project"),
                 "empty provider error string must be healthy metadata");
         __block NSString* action;

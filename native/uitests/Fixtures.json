@@ -493,6 +493,80 @@
           "fixtureID": "neon.fixture.quiet-sea"
         }
       ]
+    },
+    "canonical-editor": {
+      "projects": [
+        {
+          "title": "The Quiet Sea",
+          "preset": "book",
+          "artwork": "quiet-sea-hires",
+          "sections": [
+            {
+              "title": "The departure",
+              "text": ""
+            },
+            {
+              "title": "A map of silence",
+              "text": "By morning, the rain had drawn a new coastline on the window. Mara watched the last drops gather at the edge of the glass, each one holding a smaller version of the room.\nShe unfolded the map on the kitchen table. There were no roads where she was going, only a pale line that followed the river north. Her father had marked the crossing in pencil.\nOutside, the town was beginning to wake. Somewhere a gate closed, and the sound carried farther than it should have.\nShe packed the map last. Some journeys began with a destination. This one began with a question."
+            },
+            {
+              "title": "At the water’s edge",
+              "text": ""
+            },
+            {
+              "title": "The long way home",
+              "text": ""
+            },
+            {
+              "title": "What we carry",
+              "text": ""
+            },
+            {
+              "title": "A light in the window",
+              "text": ""
+            },
+            {
+              "title": "The crossing",
+              "text": ""
+            },
+            {
+              "title": "The return",
+              "text": ""
+            }
+          ],
+          "fixtureID": "neon.fixture.quiet-sea"
+        },
+        {
+          "title": "Stone Paths",
+          "preset": "book",
+          "artwork": "stone-paths-hires",
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": ""
+            }
+          ],
+          "fixtureID": "neon.fixture.stone-paths"
+        },
+        {
+          "title": "The Glass Field",
+          "preset": "book",
+          "artwork": "glass-field-hires",
+          "sections": [
+            {
+              "title": "Chapter 1",
+              "text": ""
+            }
+          ],
+          "fixtureID": "neon.fixture.glass-field"
+        }
+      ],
+      "captureSelection": {
+        "projectFixtureID": "neon.fixture.quiet-sea",
+        "sectionIndex": 1,
+        "figmaNode": "34:72",
+        "paragraphSeparator": "single newline"
+      }
     }
   }
 }

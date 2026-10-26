@@ -178,6 +178,10 @@
     (void)notification;
     [self refreshLayout];
 }
+- (void)setBodyBaselineAdjustment:(CGFloat)value {
+    _bodyBaselineAdjustment = value;
+    [self refreshLayout];
+}
 - (void)setTextMeasure:(CGFloat)measure {
     _textMeasure = measure;
     [self refreshLayout];
@@ -197,10 +201,10 @@
     CGFloat x = floor((viewport - measure) / 2), y = 48;
     _kicker.frame = NSMakeRect(x - 2, y, measure + 4, 18);
     y += 42;
-    _heading.frame = NSMakeRect(x - 2, y, measure + 4, 44);
+    _heading.frame = NSMakeRect(x - 2, y + 2, measure + 4, 44);
     CGFloat headingHeight = _heading.intrinsicContentSize.height;
-    _heading.frame = NSMakeRect(x - 2, y, measure + 4, headingHeight);
-    y += headingHeight + 24;
+    _heading.frame = NSMakeRect(x - 2, y + 2, measure + 4, headingHeight);
+    y += headingHeight + 24 + self.bodyBaselineAdjustment;
     if (!_guidance.hidden && _guidance.stringValue.length) {
         _guidance.frame = NSMakeRect(x, y, measure, 100);
         CGFloat guidanceHeight =

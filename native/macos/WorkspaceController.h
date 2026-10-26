@@ -15,6 +15,7 @@
 @property(nonatomic, readonly) NSTextField* status;
 @property(nonatomic, readonly) NSView* sessionSlot;
 @property(nonatomic) CGFloat textMeasure;
+@property(nonatomic) CGFloat bodyBaselineAdjustment;
 - (instancetype)initWithEditor:(NSTextView*)editor;
 - (void)refreshLayout;
 @end

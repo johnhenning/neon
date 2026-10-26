@@ -41,6 +41,8 @@
 @property(nonatomic, copy) void (^clicked)(void);
 @property(nonatomic) BOOL plain;
 @property(nonatomic) BOOL navigationRow;
+@property(nonatomic) BOOL paperCommand;
+@property(nonatomic) BOOL quietCommand;
 @end
 @implementation NeonLibraryButton
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -51,6 +53,30 @@
     return self;
 }
 - (void)drawRect:(NSRect)rect {
+    if (self.paperCommand || self.quietCommand) {
+        NSBezierPath* path = [NSBezierPath bezierPathWithRoundedRect:self.bounds
+                                                             xRadius:NeonControlRadius
+                                                             yRadius:NeonControlRadius];
+        if (self.paperCommand) {
+            [NeonPaper() setFill];
+            [path fill];
+        }
+        if (self.window.firstResponder == self) {
+            [NeonInk() setStroke];
+            path.lineWidth = 2;
+            [path stroke];
+        }
+        self.alphaValue = !self.enabled ? .65 : self.highlighted ? .75 : 1;
+        NSDictionary* attributes = @{
+            NSFontAttributeName : NeonUI(14),
+            NSForegroundColorAttributeName : self.enabled ? NeonInk() : NeonMuted()
+        };
+        NSSize size = [self.title sizeWithAttributes:attributes];
+        [self.title drawAtPoint:NSMakePoint((self.bounds.size.width - size.width) / 2,
+                                            (self.bounds.size.height - size.height) / 2)
+                 withAttributes:attributes];
+        return;
+    }
     if (self.navigationRow) {
         [(self.chosen ? NeonSelection() : NeonPanel()) setFill];
         NSRectFill(self.bounds);
@@ -58,7 +84,16 @@
             [NeonAccent() setStroke];
             [[NSBezierPath bezierPathWithRect:NSInsetRect(self.bounds, .5, .5)] stroke];
         }
-        [self.image drawInRect:NSMakeRect(16, 14, 20, 20)];
+        NSImage* original = self.image;
+        NSImage* tinted = [NSImage imageWithSize:NSMakeSize(20, 20)
+                                         flipped:NO
+                                  drawingHandler:^BOOL(NSRect dst) {
+                                    [original drawInRect:dst];
+                                    [NeonMuted() setFill];
+                                    NSRectFillUsingOperation(dst, NSCompositingOperationSourceIn);
+                                    return YES;
+                                  }];
+        [tinted drawInRect:NSMakeRect(16, 14, 20, 20)];
         [self.title drawInRect:NSMakeRect(44, 14, self.bounds.size.width - 60, 24)
                 withAttributes:@{
                     NSFontAttributeName : NeonUI(14),
@@ -125,6 +160,8 @@ NSTextField* label(NSView* parent, NSString* value, NSFont* font, NSColor* color
     NSTextField* f = [NSTextField wrappingLabelWithString:value ?: @""];
     f.font = font;
     f.textColor = color;
+    frame.origin.x -= 2;
+    frame.size.width += 4;
     f.frame = frame;
     [parent addSubview:f];
     return f;
@@ -253,10 +290,12 @@ NeonLibraryButton* button(NSView* parent, NSString* title, NSRect frame, void (^
           NSMakeRect(x, 86, m, 28));
     __weak NeonLibraryController* weak = self;
     button(self.content, self.query.view == NeonLibraryGrid ? @"List view" : @"Grid view",
-           NSMakeRect(x + m - 240, 130, 100, 44), ^{
+           NSMakeRect(x + m - 240, 130, 100, 44),
+           ^{
              [weak setLibraryView:weak.query.view == NeonLibraryGrid ? NeonLibraryList
                                                                      : NeonLibraryGrid];
-           });
+           })
+        .quietCommand = YES;
     button(self.content, @"New project", NSMakeRect(x + m - 132, 130, 132, 44), ^{
       [weak send:@"new" record:nil];
     }).kind = NeonButtonPrimary;
@@ -374,7 +413,10 @@ NeonLibraryButton* button(NSView* parent, NSString* title, NSRect frame, void (^
             : [NSString
                   stringWithFormat:@"%@ %@ · On this device", @(self.presentation.records.count),
                                    self.presentation.records.count == 1 ? @"project" : @"projects"];
-    label(self.footer, count, NeonUI(13), NeonMuted(), NSMakeRect(12, 12, MAX(0, w - 130), 18));
+    NSTextField* countLabel =
+        label(self.footer, count, NeonUI(13), NeonMuted(), NSMakeRect(12, 12, MAX(0, w - 130), 18));
+    countLabel.accessibilityIdentifier =
+        [NSString stringWithFormat:@"library-project-count-%lu", self.presentation.records.count];
     label(self.footer, @"Local first", NeonUI(13), NeonMuted(), NSMakeRect(w - 100, 12, 88, 18));
     [self renderSidebar];
 }
@@ -430,25 +472,29 @@ NeonLibraryButton* button(NSView* parent, NSString* title, NSRect frame, void (^
     return menu;
 }
 - (void)renderSidebar {
+    CGFloat width = self.sidebarView.bounds.size.width;
     for (NSView* v in self.sidebarView.subviews.copy)
         [v removeFromSuperview];
-    label(self.sidebarView, @"Neon", NeonSerif(24), NeonInk(), NSMakeRect(20, 20, 208, 34));
+    label(self.sidebarView, @"Neon", NeonSerif(24), NeonInk(),
+          NSMakeRect(20, 20, MAX(0, width - 40), 34));
     label(self.sidebarView, @"Your writing, in one place", NeonUI(13), NeonMuted(),
-          NSMakeRect(20, 58, 208, 18));
+          NSMakeRect(20, 58, MAX(0, width - 40), 18));
     NSArray* names =
         @[ @"All projects", @"Recent", @"Favorites", @"On this device", @"iCloud Drive", @"Trash" ];
     __weak NeonLibraryController* weak = self;
     for (NSInteger i = 0; i < 6; i++) {
         NSInteger filter = i == 5 ? NeonLibraryTrash : i;
         NeonLibraryButton* row =
-            button(self.sidebarView, names[i], NSMakeRect(0, 98 + i * 48, 248, 48), ^{
+            button(self.sidebarView, names[i], NSMakeRect(0, 98 + i * 48, width, 48), ^{
               [weak selectFilter:(NeonLibraryFilter)filter];
             });
         row.navigationRow = YES;
-        row.image = [NSImage imageWithSystemSymbolName:@[
-            @"books.vertical", @"clock", @"star", @"iphone", @"icloud", @"trash"
-        ][i]
-                              accessibilityDescription:nil];
+        NSString* icon = @[ @"library", @"recent", @"favorites", @"device", @"cloud", @"trash" ][i];
+        NSURL* url = [NSBundle.mainBundle URLForResource:icon
+                                           withExtension:@"png"
+                                            subdirectory:@"icons"];
+        row.image = url ? [[NSImage alloc] initWithContentsOfURL:url] : nil;
+        row.accessibilityLabel = names[i];
         row.chosen = i != 4 && self.query.filter == filter;
         row.enabled = i != 4;
         if (i == 4)
@@ -456,9 +502,12 @@ NeonLibraryButton* button(NSView* parent, NSString* title, NSRect frame, void (^
         row.kind = NeonButtonSelection;
         row.alignment = NSTextAlignmentLeft;
     }
-    button(self.sidebarView, @"Settings",
-           NSMakeRect(16, MAX(450, self.sidebarView.bounds.size.height - 60), 216, 44), ^{
-             [weak send:@"settings" record:nil];
-           });
+    button(
+        self.sidebarView, @"Settings",
+        NSMakeRect(16, MAX(402, self.sidebarView.bounds.size.height - 60), MAX(0, width - 32), 44),
+        ^{
+          [weak send:@"settings" record:nil];
+        })
+        .paperCommand = YES;
 }
 @end

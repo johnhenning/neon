@@ -4,7 +4,8 @@
   "nodes": [
     "34:81",
     "144:16148",
-    "34:75"
+    "34:75",
+    "34:8"
   ],
   "rendering": "Unmodified SVG rasterized at 3x; native template tint uses shared muted ink in light/dark themes. Exact 20pt wrapper; original SVG root proportions preserved.",
   "assets": [
@@ -25,6 +26,54 @@
       "width": 20.0,
       "height": 20.0,
       "pngScale": 3
+    },
+    {
+      "file": "library.svg",
+      "width": 24.0,
+      "height": 24.0,
+      "pngScale": 3,
+      "sourceNode": "34:8",
+      "slot": "Library sidebar navigation20pt"
+    },
+    {
+      "file": "recent.svg",
+      "width": 24.0,
+      "height": 24.0,
+      "pngScale": 3,
+      "sourceNode": "34:8",
+      "slot": "Library sidebar navigation20pt"
+    },
+    {
+      "file": "favorites.svg",
+      "width": 24.0,
+      "height": 24.0,
+      "pngScale": 3,
+      "sourceNode": "34:8",
+      "slot": "Library sidebar navigation20pt"
+    },
+    {
+      "file": "device.svg",
+      "width": 24.0,
+      "height": 24.0,
+      "pngScale": 3,
+      "sourceNode": "34:8",
+      "slot": "Library sidebar navigation20pt"
+    },
+    {
+      "file": "cloud.svg",
+      "width": 24.0,
+      "height": 24.0,
+      "pngScale": 3,
+      "sourceNode": "34:8",
+      "slot": "Library sidebar navigation20pt"
+    },
+    {
+      "file": "trash.svg",
+      "width": 24.0,
+      "height": 24.0,
+      "pngScale": 3,
+      "sourceNode": "34:8",
+      "slot": "Library sidebar navigation20pt"
     }
   ]
 }

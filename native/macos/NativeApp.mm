@@ -3,6 +3,7 @@
 #import "EditorialTheme.h"
 #import "History.h"
 #import "InlineTitle.h"
+#import "LibraryController.h"
 #import "LibraryStore.h"
 #import "Preferences.h"
 #import "Settings.h"
@@ -28,6 +29,36 @@
 - (NSView*)hitTest:(NSPoint)point {
     (void)point;
     return nil;
+}
+@end
+// Paper commands compose the shared interaction states while suppressing its
+// selection border for the design's ghost command surface.
+@interface NeonPaperCommand : NeonButton
+@property(nonatomic) BOOL compactSurface;
+@end
+@implementation NeonPaperCommand
+- (instancetype)initWithFrame:(NSRect)frame {
+    self = [super initWithFrame:frame];
+    if (self)
+        self.kind = NeonButtonSelection;
+    return self;
+}
+- (void)drawRect:(NSRect)rect {
+    if (!self.compactSurface) {
+        [NeonPaper() setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:self.bounds
+                                         xRadius:NeonControlRadius
+                                         yRadius:NeonControlRadius] fill];
+    }
+    [super drawRect:rect];
+    if (self.window.firstResponder != self) {
+        [NeonPaper() setStroke];
+        NSBezierPath* edge = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 2, 2)
+                                                             xRadius:NeonControlRadius
+                                                             yRadius:NeonControlRadius];
+        edge.lineWidth = 2;
+        [edge stroke];
+    }
 }
 @end
 @interface NeonChapterRow : NSStackView
@@ -150,8 +181,14 @@ NSUInteger words(NSString* text) {
 }
 @end
 @interface NeonTextView : NSTextView
+@property(nonatomic, copy) void (^compositionDidEnd)(void);
 @end
 @implementation NeonTextView
+- (void)unmarkText {
+    [super unmarkText];
+    if (!self.hasMarkedText && self.compositionDidEnd)
+        self.compositionDidEnd();
+}
 - (NSMenu*)menuForEvent:(NSEvent*)event {
     (void)event;
     return nil;
@@ -241,7 +278,11 @@ NSUInteger words(NSString* text) {
 @property(nonatomic, strong) NSLayoutConstraint* toolbarTitleWidth;
 @property(nonatomic, strong) NeonInlineTitle* chapterTitle;
 @property(nonatomic, strong) NeonWorkspaceController* workspaceController;
+@property(nonatomic, strong) NeonLibraryController* libraryController;
+@property(nonatomic, strong) NSTitlebarAccessoryViewController* chromeSpacer;
 @property(nonatomic) BOOL focusMode;
+@property(nonatomic) BOOL pendingTypography;
+@property(nonatomic) BOOL immediateSidebarTransition;
 @property(nonatomic) BOOL focusSidebarWasCollapsed;
 @property(nonatomic, strong) NSView* sidebarBody;
 @property(nonatomic, strong) NSTextField* sidebarSummary;
@@ -326,6 +367,15 @@ NSUInteger words(NSString* text) {
     [self.split addSplitViewItem:[NSSplitViewItem splitViewItemWithViewController:self.content]];
     self.window.contentViewController = self.split;
     self.window.toolbar = toolbar;
+    self.chromeSpacer = [NSTitlebarAccessoryViewController new];
+    NeonSurface* spacer = [[NeonSurface alloc] initWithFrame:NSMakeRect(0, 0, 100, 16)];
+    spacer.panel = YES;
+    spacer.wantsLayer = YES;
+    spacer.clipsToBounds = YES;
+
+    self.chromeSpacer.view = spacer;
+    self.chromeSpacer.layoutAttribute = NSLayoutAttributeBottom;
+    [self.window addTitlebarAccessoryViewController:self.chromeSpacer];
     [NSWorkspace.sharedWorkspace.notificationCenter
         addObserver:self
            selector:@selector(accessibilityChanged:)
@@ -335,10 +385,10 @@ NSUInteger words(NSString* text) {
     [self installMenu];
     [self showLibrary:nil];
     [self.window setFrame:NSInsetRect(NSScreen.mainScreen.visibleFrame, 24, 24) display:YES];
-    [self.split.splitView setPosition:264 ofDividerAtIndex:0];
+    [self.split.splitView setPosition:self.session ? 264 : 248 ofDividerAtIndex:0];
     if (self.smoke || uiTesting) {
         [self.window setFrame:NSMakeRect(80, 80, 1200, 860) display:YES];
-        [self.split.splitView setPosition:264 ofDividerAtIndex:0];
+        [self.split.splitView setPosition:self.session ? 264 : 248 ofDividerAtIndex:0];
     }
     [self.window center];
     [self.window makeKeyAndOrderFront:nil];
@@ -396,6 +446,14 @@ NSUInteger words(NSString* text) {
                      keyEquivalent:@"n"];
     [file.submenu addItemWithTitle:@"History…" action:@selector(showHistory:) keyEquivalent:@"H"];
     [file.submenu addItemWithTitle:@"Save" action:@selector(saveAction:) keyEquivalent:@"s"];
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"--ui-testing"]) {
+        [file.submenu addItemWithTitle:@"Capture fixture"
+                                action:@selector(captureFixture:)
+                         keyEquivalent:@"p"];
+        [file.submenu addItemWithTitle:@"Resize fixture"
+                                action:@selector(resizeFixture:)
+                         keyEquivalent:@"r"];
+    }
     [menu addItem:file];
     NSMenuItem* edit = [NSMenuItem new];
     edit.submenu = [[NSMenu alloc] initWithTitle:@"Edit"];
@@ -493,7 +551,7 @@ NSUInteger words(NSString* text) {
     }
     if ([identifier isEqual:@"search"]) {
         NSToolbarItem* item = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
-        NeonButton* search = [NeonButton new];
+        NeonButton* search = [NeonPaperCommand new];
         search.title = @"Search";
         search.enabled = NO;
         search.toolTip = @"Search is not available yet";
@@ -519,6 +577,19 @@ NSUInteger words(NSString* text) {
     result.target = self;
     result.action = NSSelectorFromString(item[2]);
     result.bordered = NO;
+    if ([identifier isEqual:@"type"] || [identifier isEqual:@"more"]) {
+        NeonPaperCommand* control = [NeonPaperCommand new];
+        control.compactSurface = YES;
+        control.title = [identifier isEqual:@"type"] ? @"Aa" : @"•••";
+        control.target = self;
+        control.action = NSSelectorFromString(item[2]);
+        control.accessibilityLabel = item[0];
+        control.toolTip = item[0];
+        [control.widthAnchor constraintEqualToConstant:44].active = YES;
+        [control.heightAnchor constraintEqualToConstant:44].active = YES;
+        result.view = control;
+        return result;
+    }
     result.image = [identifier isEqual:@"sidebar"] ? workspaceIcon(@"sidebar")
                                                    : [NSImage imageWithSystemSymbolName:item[1]
                                                                accessibilityDescription:item[0]];
@@ -589,7 +660,8 @@ NSUInteger words(NSString* text) {
         if (toggle != NSNotFound)
             [self.window.toolbar insertItemWithItemIdentifier:@"sidebarDivider" atIndex:toggle + 1];
     }
-    if (NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) {
+    if (self.immediateSidebarTransition ||
+        NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) {
         sidebar.collapsed = collapsed;
         return;
     }
@@ -639,9 +711,9 @@ NSUInteger words(NSString* text) {
         [book setContentCompressionResistancePriority:200
                                        forOrientation:NSLayoutConstraintOrientationHorizontal];
         [project.heightAnchor constraintGreaterThanOrEqualToConstant:138].active = YES;
-        NeonButton* library = [NeonButton new];
+        NeonButton* library = [NeonPaperCommand new];
         library.title = @"‹  Library";
-        library.kind = NeonButtonSecondary;
+
         library.target = self;
         library.action = @selector(showLibrary:);
         NSStackView* breadcrumb = column(@[ library ], 0);
@@ -716,9 +788,10 @@ NSUInteger words(NSString* text) {
                     : self.session.preset[@"sectionLabel"];
             [rows addObject:chapter];
         }
-        [actions
-            addObject:button([@"Add " stringByAppendingString:self.session.preset[@"sectionLabel"]],
-                             @"plus", self, @selector(newSection:))];
+        [actions addObject:button([@"+  Add "
+                                      stringByAppendingString:[self.session.preset[@"sectionLabel"]
+                                                                  lowercaseString]],
+                                  @"plus", self, @selector(newSection:))];
         if (self.session.trashedSections.count)
             [actions
                 addObject:button([@"Deleted "
@@ -732,8 +805,7 @@ NSUInteger words(NSString* text) {
     if (self.session) {
         for (NSUInteger index = 0; index < actions.count; ++index) {
             NSButton* original = actions[index];
-            NeonButton* command = [NeonButton new];
-            command.kind = NeonButtonSecondary;
+            NeonButton* command = [NeonPaperCommand new];
             command.title = original.title;
             command.image = original.image;
             command.imagePosition = original.imagePosition;
@@ -750,7 +822,7 @@ NSUInteger words(NSString* text) {
     scroll.autohidesScrollers = YES;
     scroll.scrollerStyle = NSScrollerStyleOverlay;
     NSStackView* footer = column(actions, 8);
-    footer.edgeInsets = NSEdgeInsetsMake(16, 16, 16, 16);
+    footer.edgeInsets = NSEdgeInsetsMake(6, 16, 6, 16);
     footer.translatesAutoresizingMaskIntoConstraints = NO;
     scroll.translatesAutoresizingMaskIntoConstraints = NO;
     [self.sidebarBody addSubview:scroll];
@@ -765,16 +837,38 @@ NSUInteger words(NSString* text) {
         [action.heightAnchor constraintEqualToConstant:NeonMinimumTouchTarget].active = YES;
         [action.widthAnchor constraintEqualToAnchor:footer.widthAnchor constant:-32].active = YES;
     }
+    NSArray<NSView*>* arranged = rows;
+    NSLayoutYAxisAnchor* top = self.sidebarBody.topAnchor;
+    if (self.session && rows.count >= 2) {
+        NSStackView* identity = column([rows subarrayWithRange:NSMakeRange(0, 2)], 0);
+        identity.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.sidebarBody addSubview:identity];
+        [NSLayoutConstraint activateConstraints:@[
+            [identity.topAnchor constraintEqualToAnchor:self.sidebarBody.topAnchor],
+            [identity.leadingAnchor constraintEqualToAnchor:self.sidebarBody.leadingAnchor],
+            [identity.trailingAnchor constraintEqualToAnchor:self.sidebarBody.trailingAnchor]
+        ]];
+        for (NSView* item in identity.arrangedSubviews)
+            [item.widthAnchor constraintEqualToAnchor:identity.widthAnchor].active = YES;
+        top = identity.bottomAnchor;
+        arranged = [rows subarrayWithRange:NSMakeRange(2, rows.count - 2)];
+        [scroll.heightAnchor constraintLessThanOrEqualToConstant:312].active = YES;
+        NSLayoutConstraint* preferred =
+            [scroll.heightAnchor constraintEqualToConstant:MIN(312, arranged.count * 52)];
+        preferred.priority = NSLayoutPriorityDefaultLow;
+        preferred.active = YES;
+        [scroll setContentCompressionResistancePriority:1
+                                         forOrientation:NSLayoutConstraintOrientationVertical];
+    }
     [NSLayoutConstraint activateConstraints:@[
-        [scroll.topAnchor constraintEqualToAnchor:self.sidebarBody.topAnchor],
+        [scroll.topAnchor constraintEqualToAnchor:top],
         [scroll.leadingAnchor constraintEqualToAnchor:self.sidebarBody.leadingAnchor],
         [scroll.trailingAnchor constraintEqualToAnchor:self.sidebarBody.trailingAnchor],
         [scroll.bottomAnchor constraintEqualToAnchor:footer.topAnchor],
         [footer.leadingAnchor constraintEqualToAnchor:self.sidebarBody.leadingAnchor],
         [footer.trailingAnchor constraintEqualToAnchor:self.sidebarBody.trailingAnchor],
-        [footer.bottomAnchor constraintEqualToAnchor:self.sidebarBody.bottomAnchor]
+        [footer.bottomAnchor constraintLessThanOrEqualToAnchor:self.sidebarBody.bottomAnchor]
     ]];
-    NSArray<NSView*>* arranged = rows;
     NSStackView* stack = column(arranged, 0);
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     scroll.documentView = stack;
@@ -831,92 +925,168 @@ NSUInteger words(NSString* text) {
       [self renderLibrary:sender];
     }];
 }
+- (void)configureToolbarForLibrary:(BOOL)library {
+    NSStackView* breadcrumb = (NSStackView*)self.windowTitle.superview;
+    if (breadcrumb.arrangedSubviews.count >= 3) {
+        breadcrumb.arrangedSubviews[0].hidden = library;
+        breadcrumb.arrangedSubviews[1].hidden = library;
+    }
+    NSToolbar* toolbar = self.window.toolbar;
+    for (NSToolbarItem* item in toolbar.items)
+        if ([item.itemIdentifier isEqual:@"search"] &&
+            [item.view isKindOfClass:NeonPaperCommand.class]) {
+            ((NeonPaperCommand*)item.view).compactSurface = !library;
+            item.view.needsDisplay = YES;
+        }
+    if (library) {
+        for (NSInteger index = (NSInteger)toolbar.items.count - 1; index >= 0; --index)
+            if ([@[ @"workspace", @"type", @"focus" ]
+                    containsObject:toolbar.items[index].itemIdentifier])
+                [toolbar removeItemAtIndex:index];
+    } else {
+        for (NSString* name in @[ @"workspace", @"type" ]) {
+            BOOL found = NO;
+            for (NSToolbarItem* item in toolbar.items)
+                found = found || [item.itemIdentifier isEqual:name];
+            if (!found) {
+                NSString* before = [name isEqual:@"workspace"] ? @"search" : @"more";
+                NSUInteger index = [toolbar.items
+                    indexOfObjectPassingTest:^BOOL(NSToolbarItem* item, NSUInteger, BOOL*) {
+                      return [item.itemIdentifier isEqual:before];
+                    }];
+                [toolbar
+                    insertItemWithItemIdentifier:name
+                                         atIndex:index == NSNotFound ? toolbar.items.count : index];
+            }
+        }
+    }
+}
+- (void)setChromeHeight:(CGFloat)height {
+    NSRect frame = self.chromeSpacer.view.frame;
+    frame.size.height = height - 52;
+    self.chromeSpacer.view.frame = frame;
+    self.chromeSpacer.view.needsDisplay = YES;
+}
+- (void)resizeFixture:(id)sender {
+    (void)sender;
+    NSRect frame = self.window.frame;
+    frame.size = frame.size.width > 800 ? NSMakeSize(760, 560) : NSMakeSize(1200, 860);
+    [self.window setFrame:frame display:YES];
+}
+- (void)captureFixture:(id)sender {
+    (void)sender;
+    NSString* file = NSProcessInfo.processInfo.environment[@"NEON_CAPTURE_FILE"];
+    if (file.length)
+        [self capture:file];
+}
+- (void)reloadLibraryRecords {
+    NSError* error = nil;
+    self.trashMode = self.libraryController.query.filter == NeonLibraryTrash;
+    self.projects =
+        self.trashMode ? [self.library trashedProjects:&error] : [self.library projects:&error];
+    [self.libraryController updateWithRecords:self.projects error:error];
+}
+- (void)openProjectRecord:(NSDictionary*)record {
+    if (![self flush] || [record[@"trashed"] boolValue])
+        return;
+    NSError* error = nil;
+    NSURL* url = record[@"url"];
+    NeonDocumentSession* session = [self.library openProjectURL:url error:&error];
+    if (!session) {
+        [self showError:error];
+        return;
+    }
+    self.libraryController.selectedProjectID = record[@"projectID"];
+    self.session = session;
+    self.selectedURL = url;
+    self.trashMode = NO;
+    [self showEditor];
+}
+- (void)libraryAction:(NSString*)action record:(NSDictionary*)record {
+    if ([action isEqual:@"open"]) {
+        [self openProjectRecord:record];
+        return;
+    }
+    if ([action isEqual:@"new"]) {
+        [self newProject:nil];
+        return;
+    }
+    if ([action isEqual:@"settings"]) {
+        [self showSettings:nil];
+        return;
+    }
+    if ([action isEqual:@"favorite"]) {
+        [self.library setFavorite:![record[@"favorite"] boolValue] projectID:record[@"projectID"]];
+        [self reloadLibraryRecords];
+        return;
+    }
+    if ([action isEqual:@"reveal"]) {
+        NSURL* url = record[@"url"];
+        if (url)
+            [NSWorkspace.sharedWorkspace activateFileViewerSelectingURLs:@[ url ]];
+        return;
+    }
+    NSDictionary* commands = @{
+        @"rename" : @"Rename…",
+        @"duplicate" : @"Duplicate",
+        @"trash" : @"Move to Trash…",
+        @"restore" : @"Restore",
+        @"delete" : @"Delete Permanently…"
+    };
+    NSString* command = commands[action];
+    if (command && record) {
+        self.trashMode = [record[@"trashed"] boolValue];
+        [self projectCommand:command url:record[@"url"] title:record[@"title"]];
+    }
+}
 - (void)renderLibrary:(id)sender {
+    (void)sender;
     [self.historyController removeFromParentViewController];
     self.historyController = nil;
-    if (sender != self)
-        self.trashMode = NO;
-    if (![self flush])
-        return;
+    if (self.focusMode) {
+        self.immediateSidebarTransition = YES;
+        [self toggleFocus:nil];
+        self.immediateSidebarTransition = NO;
+    }
+    [self.workspaceController removeFromParentViewController];
+    self.workspaceController = nil;
     self.editor = nil;
     self.session = nil;
-    [self updateHistoryCommand];
-    self.selectedURL = nil;
     self.status = nil;
+    self.selectedURL = nil;
+    self.chapterTitle = nil;
+    self.guidance = nil;
+    [self setChromeHeight:64];
+    [self configureToolbarForLibrary:YES];
     self.window.title = @"Neon";
     self.window.subtitle = @"";
     self.windowTitle.stringValue = @"Neon";
     self.windowTitle.enabled = NO;
-    self.chapterTitle = nil;
-    self.guidance = nil;
-    [self buildSidebar];
-    [self clear:self.content.view];
-    NSError* error = nil;
-    self.projects =
-        self.trashMode ? [self.library trashedProjects:&error] : [self.library projects:&error];
-    if (!self.projects) {
-        [self showError:error];
-        return;
-    }
-    NSScrollView* scroll = [NSScrollView new];
-    [scroll setAccessibilityIdentifier:[NSString stringWithFormat:@"library-project-count-%@",
-                                                                  @(self.projects.count)]];
-    scroll.drawsBackground = NO;
-    scroll.hasVerticalScroller = YES;
-    scroll.autohidesScrollers = YES;
-    scroll.scrollerStyle = NSScrollerStyleOverlay;
-    pin(scroll, self.content.view);
-    NSStackView* stack = column(
-        @[
-            label(self.trashMode ? @"Trash" : @"Library", NeonSerif(38), NeonInk()),
-            label(self.trashMode ? @"Restore a project or delete it permanently."
-                                 : @"Your projects, saved on this Mac.",
-                  NeonUI(15), NeonMuted())
-        ],
-        14);
-    stack.edgeInsets = NSEdgeInsetsMake(36, 40, 36, 40);
-    stack.translatesAutoresizingMaskIntoConstraints = NO;
-    scroll.documentView = stack;
-    [stack.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor].active = YES;
-    NSInteger index = 0;
-    for (NSDictionary* project in self.projects) {
-        NeonBookCover* cover = [[NeonBookCover alloc] initWithFrame:NSMakeRect(0, 0, 110, 150)];
+    [self updateHistoryCommand];
+    if (!self.libraryController) {
+        self.libraryController = [NeonLibraryController new];
+        NSInteger filter = [NeonPreferences() integerForKey:@"library.filter"];
+        self.libraryController.query.filter = filter >= NeonLibraryAll && filter <= NeonLibraryTrash
+                                                  ? (NeonLibraryFilter)filter
+                                                  : NeonLibraryAll;
         __weak NeonApp* weakSelf = self;
-        NSURL* projectURL = project[@"url"];
-        NSString* projectTitle = project[@"title"];
-        cover.contextAction = ^(NSView* anchor, NSRect rect) {
-          [weakSelf projectMenu:projectURL title:projectTitle anchor:anchor rect:rect];
+        self.libraryController.onAction = ^(NSString* action, NSDictionary* record) {
+          [weakSelf libraryAction:action record:record];
         };
-        cover.titleText = project[@"title"];
-        cover.tag = index;
-        cover.target = self;
-        cover.action = @selector(openProject:);
-        cover.accessibilityLabel = [@"Open " stringByAppendingString:project[@"title"]];
-        [cover.widthAnchor constraintEqualToConstant:110].active = YES;
-        [cover.heightAnchor constraintEqualToConstant:150].active = YES;
-        NSButton* title = button(project[@"title"], nil, self, @selector(openProject:));
-        title.font = NeonSerif(25);
-        title.accessibilityIdentifier = [NSString stringWithFormat:@"project-%ld", index];
-        title.tag = index++;
-        NSString* detail =
-            [project[@"error"] length]
-                ? project[@"error"]
-                : [NSString stringWithFormat:@"%@ · %@ %@ · On this Mac", project[@"preset"],
-                                             project[@"sections"],
-                                             [project[@"sectionLabel"] lowercaseString]];
-        NSButton* more = button(@"Actions", @"ellipsis", self, @selector(projectActions:));
-        more.tag = index - 1;
-        NSStackView* row = [NSStackView stackViewWithViews:@[
-            cover, column(@[ title, label(detail, NeonUI(14), NeonMuted()), more ], 10)
-        ]];
-        row.spacing = 24;
-        [stack addArrangedSubview:row];
-        [stack setCustomSpacing:26 afterView:row];
+        self.libraryController.onFilterChanged = ^(NeonLibraryFilter value) {
+          [NeonPreferences() setInteger:value forKey:@"library.filter"];
+          [weakSelf reloadLibraryRecords];
+        };
     }
-    if (!self.projects.count)
-        [stack addArrangedSubview:label(@"Begin with a working title. The rest can follow.",
-                                        NeonSerif(22), NeonMuted())];
-    [stack addArrangedSubview:button(@"New Project", @"plus", self, @selector(newProject:))];
+    self.libraryController.fixtureIDs = NeonUITestFixtureIDs();
+    [self clear:self.sidebarBody];
+    [self clear:self.content.view];
+    if (!self.libraryController.parentViewController)
+        [self.content addChildViewController:self.libraryController];
+    pin(self.libraryController.view, self.content.view);
+    pin(self.libraryController.sidebarView, self.sidebarBody);
+    [self.split.splitView setPosition:248 ofDividerAtIndex:0];
+    [self reloadLibraryRecords];
 }
 - (void)openProject:(NSControl*)sender {
     if (self.trashMode) {
@@ -928,7 +1098,7 @@ NSUInteger words(NSString* text) {
         return;
     NSError* error = nil;
     NSURL* url = self.projects[sender.tag][@"url"];
-    NeonDocumentSession* session = [self.library openURL:url error:&error];
+    NeonDocumentSession* session = [self.library openProjectURL:url error:&error];
     if (!session) {
         [self showError:error];
         return;
@@ -974,6 +1144,12 @@ NSUInteger words(NSString* text) {
     }];
 }
 - (void)renderEditor {
+    [self setChromeHeight:68];
+    [self configureToolbarForLibrary:NO];
+    if (self.libraryController.parentViewController) {
+        [self.libraryController removeFromParentViewController];
+        [self.split.splitView setPosition:264 ofDividerAtIndex:0];
+    }
     [self.historyController removeFromParentViewController];
     self.historyController = nil;
     [self updateHistoryCommand];
@@ -1032,6 +1208,14 @@ NSUInteger words(NSString* text) {
     if (!resume)
         self.editor.string = self.session.text;
     self.editor.delegate = self;
+    if ([self.editor isKindOfClass:NeonTextView.class]) {
+        __weak NeonApp* app = self;
+        __weak NSTextView* current = self.editor;
+        ((NeonTextView*)self.editor).compositionDidEnd = ^{
+          if (app.editor == current && app.pendingTypography)
+              [app styleEditor];
+        };
+    }
     self.editor.backgroundColor = NeonPaper();
     self.editor.textColor = NeonInk();
     [self styleEditor];
@@ -1040,6 +1224,8 @@ NSUInteger words(NSString* text) {
     [self.content addChildViewController:self.workspaceController];
     pin(self.workspaceController.view, self.content.view);
     self.workspaceController.textMeasure = NeonTextMeasure();
+    self.workspaceController.bodyBaselineAdjustment =
+        [self.session.preset[@"id"] isEqual:@"book"] ? 4 : 0;
     NeonChapterHeading* heading = self.workspaceController.heading;
     heading.stringValue = self.session.sectionTitle;
     heading.accessibilityLabel =
@@ -1056,6 +1242,14 @@ NSUInteger words(NSString* text) {
     self.workspaceController.kicker.alignment = heading.alignment;
     self.workspaceController.kicker.stringValue =
         [[self.session sectionLabelAtIndex:number - 1] uppercaseString];
+    if (bookPreset) {
+        NSNumberFormatter* ordinal = [NSNumberFormatter new];
+        ordinal.numberStyle = NSNumberFormatterSpellOutStyle;
+        ordinal.locale = [NSLocale localeWithLocaleIdentifier:@"en_US"];
+        self.workspaceController.kicker.stringValue =
+            [[NSString stringWithFormat:@"%@ %@", self.session.preset[@"sectionLabel"],
+                                        [ordinal stringFromNumber:@(number)]] uppercaseString];
+    }
     self.guidance = self.workspaceController.guidance;
     self.guidance.stringValue = self.session.sectionGuidance ?: @"";
     self.guidance.hidden = self.session.text.length > 0 || !self.session.sectionGuidance.length;
@@ -1090,8 +1284,13 @@ NSUInteger words(NSString* text) {
     return YES;
 }
 - (void)styleEditor {
-    if (!self.editor || self.editor.hasMarkedText)
+    if (!self.editor)
         return;
+    if (self.editor.hasMarkedText) {
+        self.pendingTypography = YES;
+        return;
+    }
+    self.pendingTypography = NO;
     NSRange selection = self.editor.selectedRange;
     self.editor.font = ([NeonPreferences() objectForKey:@"manuscriptFont"]
                             ? NeonManuscriptFont(NeonTextSize())
@@ -1113,7 +1312,9 @@ NSUInteger words(NSString* text) {
     if ([self.session.preset[@"id"] isEqual:@"book"]) {
         paragraph.firstLineHeadIndent = 0;
         if (![NeonPreferences() objectForKey:@"paragraphSpacing"])
-            paragraph.paragraphSpacing = 24;
+            // Figma's paragraph boxes include 2pt beyond their 34pt line grid.
+            // Compensate in AppKit presentation without changing stored preferences.
+            paragraph.paragraphSpacing = 26;
     }
     if ([self.session.sections count]) {
         for (NSDictionary* section in self.session.sections)
@@ -1125,6 +1326,8 @@ NSUInteger words(NSString* text) {
     }
     self.measureConstraint.constant = NeonTextMeasure();
     self.workspaceController.textMeasure = NeonTextMeasure();
+    self.workspaceController.bodyBaselineAdjustment =
+        [self.session.preset[@"id"] isEqual:@"book"] ? 4 : 0;
     self.editor.continuousSpellCheckingEnabled = NeonWritingPreference(@"spellcheck");
     self.editor.automaticQuoteSubstitutionEnabled = NeonWritingPreference(@"smartQuotes");
     self.editor.automaticDashSubstitutionEnabled = NeonWritingPreference(@"smartDashes");
@@ -1162,6 +1365,8 @@ NSUInteger words(NSString* text) {
     (void)notification;
     if (self.editor.hasMarkedText)
         return;
+    if (self.pendingTypography)
+        [self styleEditor];
     NSError* error = nil;
     if (![self.session replaceText:self.editor.string error:&error]) {
         [self showError:error];
@@ -1176,6 +1381,11 @@ NSUInteger words(NSString* text) {
                                                 selector:@selector(saveAction:)
                                                 userInfo:nil
                                                  repeats:NO];
+}
+- (void)textDidEndEditing:(NSNotification*)notification {
+    (void)notification;
+    if (self.pendingTypography && !self.editor.hasMarkedText)
+        [self styleEditor];
 }
 - (BOOL)flush {
     [self.timer invalidate];
@@ -1244,7 +1454,7 @@ NSUInteger words(NSString* text) {
         [self showError:error];
         return;
     }
-    NeonDocumentSession* session = [self.library openURL:url error:&error];
+    NeonDocumentSession* session = [self.library openProjectURL:url error:&error];
     if (!session) {
         [self showError:error];
         return;
@@ -1472,7 +1682,10 @@ NSUInteger words(NSString* text) {
 }
 - (void)showTrash:(id)sender {
     (void)sender;
-    self.trashMode = YES;
+    if (!self.libraryController)
+        [self renderLibrary:nil];
+    self.libraryController.query.filter = NeonLibraryTrash;
+    [NeonPreferences() setInteger:NeonLibraryTrash forKey:@"library.filter"];
     [self showLibrary:self];
 }
 - (void)projectActions:(NSControl*)sender {
@@ -1486,7 +1699,14 @@ NSUInteger words(NSString* text) {
     NSRect rect = [sender isKindOfClass:NSView.class] ? ((NSView*)sender).bounds : NSZeroRect;
     if (self.session)
         [self projectMenu:self.selectedURL title:self.session.title anchor:sender rect:rect];
-    else
+    else if (self.libraryController) {
+        NSMenu* menu = [self.libraryController navigationMenu];
+        [menu
+            popUpMenuPositioningItem:nil
+                          atLocation:NSMakePoint(MAX(24, self.content.view.bounds.size.width - 24),
+                                                 MAX(24, self.content.view.bounds.size.height - 24))
+                              inView:self.content.view];
+    } else
         NeonShowMenu(sender, rect, @[
             NeonAction(@"New Project…", @"plus", YES, NO,
                        ^{
@@ -1653,7 +1873,7 @@ NSUInteger words(NSString* text) {
     NSTask* task = [NSTask new];
     task.executableURL = [NSURL fileURLWithPath:@"/usr/sbin/screencapture"];
     // Capture this app window even when another app retains foreground focus.
-    task.arguments = @[ @"-x", @"-l", @(self.window.windowNumber).stringValue, file ];
+    task.arguments = @[ @"-x", @"-o", @"-l", @(self.window.windowNumber).stringValue, file ];
     NSError* error = nil;
     if (![task launchAndReturnError:&error])
         [self showError:error];
@@ -1679,7 +1899,34 @@ NSUInteger words(NSString* text) {
     }
     [self performSelector:@selector(captureEditor) withObject:nil afterDelay:1];
 }
+- (void)checkCompositionTypography {
+    NSTextView* original = self.editor;
+    NeonTextView* composition = [[NeonTextView alloc] initWithFrame:NSMakeRect(0, 0, 640, 300)];
+    composition.string = @"draft";
+    composition.font = NeonUI(12);
+    __weak NeonApp* app = self;
+    composition.compositionDidEnd = ^{
+      if (app.pendingTypography)
+          [app styleEditor];
+    };
+    self.editor = composition;
+    [composition setMarkedText:@"漢字"
+                 selectedRange:NSMakeRange(2, 0)
+              replacementRange:NSMakeRange(5, 0)];
+    NSRange selected = composition.selectedRange;
+    [self styleEditor];
+    if (!self.pendingTypography || composition.font.pointSize != 12)
+        exit(16);
+    [composition unmarkText];
+    if (self.pendingTypography || composition.font.pointSize != NeonTextSize() ||
+        ![composition.string isEqual:@"draft漢字"])
+        exit(17);
+    if (!NSEqualRanges(selected, composition.selectedRange))
+        exit(18);
+    self.editor = original;
+}
 - (void)captureEditor {
+    [self checkCompositionTypography];
     [self capture:@"native-editor.png"];
     [self.editor insertText:@"\n\nA new beginning."
            replacementRange:NSMakeRange(self.editor.string.length, 0)];
