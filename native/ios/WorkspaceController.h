@@ -21,10 +21,13 @@
 BOOL NeonWorkspaceSmoke(NeonChapterHeading* heading, UITextView* manuscript);
 
 void NeonWorkspaceCompositionSmoke(UITextView* (^manuscript)(void),
-                                   void (^requestTypography)(BOOL wide),
+                                   void (^requestTypography)(CGFloat pointSize),
+                                   CGFloat (^actualLineHeightRatio)(void),
                                    BOOL (^hasPendingTypography)(void), void (^completion)(BOOL));
 
 @class NeonLibraryController;
 BOOL NeonLibraryTitleStyleSmoke(NeonLibraryController* library);
 
 void NeonLibrarySmokeRecord(NSString* assertion, BOOL pass, NSString* detail);
+
+void NeonTypographySmokeRecord(NSString* assertion, BOOL pass, NSString* detail);

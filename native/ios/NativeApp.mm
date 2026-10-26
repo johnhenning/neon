@@ -2414,21 +2414,23 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         marker(support, @"smoke-settings.txt", valid);
     } else if ([args containsObject:@"--smoke-typography"]) {
         NeonEditor* editor = self.editor;
-        BOOL originalWide = editor.wideTypography;
         NeonWorkspaceCompositionSmoke(
             ^UITextView* {
               return editor.editor;
             },
-            ^(BOOL wide) {
-              editor.wideTypography = wide;
+            ^(CGFloat pointSize) {
+              [NeonPreferences() setDouble:pointSize forKey:@"manuscriptSize"];
               [editor applyTypography];
+            },
+            ^CGFloat {
+              return editor.wideTypography ? 34.0 / 20 : 30.0 / 18;
             },
             ^BOOL {
               return editor.typographyPending;
             },
             ^(BOOL valid) {
-              editor.wideTypography = originalWide;
               [editor applyTypography];
+              valid = [editor flush] && valid;
               [editor typography];
               marker(support, @"smoke-typography.txt", valid);
             });

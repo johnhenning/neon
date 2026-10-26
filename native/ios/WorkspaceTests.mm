@@ -36,18 +36,26 @@ BOOL NeonWorkspaceSmoke(NeonChapterHeading* heading, UITextView* manuscript) {
 }
 
 namespace {
-void compositionTransition(UITextView* (^current)(void), void (^request)(BOOL),
-                           BOOL (^pending)(void), BOOL wide, BOOL priorValid,
-                           void (^completion)(BOOL)) {
+void compositionTransition(UITextView* (^current)(void), void (^request)(CGFloat),
+                           CGFloat (^lineHeightRatio)(void), BOOL (^pending)(void),
+                           CGFloat pointSize, BOOL priorValid, void (^completion)(BOOL)) {
     UITextView* manuscript = current();
     UIFont* before = manuscript.font;
     [manuscript setMarkedText:@"日本語" selectedRange:NSMakeRange(3, 0)];
     NSRange composingSelection = manuscript.selectedRange;
-    request(wide);
+    request(pointSize);
     // Exercise the same notification path used for a Dynamic Type category change.
     [NSNotificationCenter.defaultCenter
         postNotificationName:UIContentSizeCategoryDidChangeNotification
                       object:nil];
+    NSString* mode = pointSize > 18 ? @"size20" : @"size18";
+    NeonTypographySmokeRecord(
+        [mode stringByAppendingString:@"-marked"], manuscript.markedTextRange != nil,
+        [NSString stringWithFormat:
+                      @"pending=%d beforeFont=%.2f currentFont=%.2f selection=%@ expected=%@",
+                      pending(), before.pointSize, manuscript.font.pointSize,
+                      NSStringFromRange(manuscript.selectedRange),
+                      NSStringFromRange(composingSelection)]);
     BOOL valid = priorValid && pending() && current() == manuscript &&
                  manuscript.markedTextRange != nil &&
                  manuscript.font.pointSize == before.pointSize &&
@@ -59,20 +67,32 @@ void compositionTransition(UITextView* (^current)(void), void (^request)(BOOL),
       UIFont* font = manuscript.font;
       NSParagraphStyle* style = manuscript.typingAttributes[NSParagraphStyleAttributeName];
       UIFont* expected = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
-          scaledFontForFont:NeonSerif(wide ? 20 : 18)];
-      CGFloat leading = font.pointSize * (wide ? 34.0 / 20 : 30.0 / 18);
+          scaledFontForFont:NeonSerif(pointSize)];
+      CGFloat leading = font.pointSize * lineHeightRatio();
       BOOL settled = valid && !pending() && current() == manuscript &&
                      !manuscript.markedTextRange &&
                      std::abs(font.pointSize - expected.pointSize) < 0.01 &&
                      std::abs(style.minimumLineHeight - leading) < 0.01 &&
                      NSEqualRanges(committedSelection, manuscript.selectedRange);
+      NeonTypographySmokeRecord(
+          [mode stringByAppendingString:@"-settled"], settled,
+          [NSString stringWithFormat:
+                        @"prior=%d pending=%d identity=%d marked=%d font=%.2f expected=%.2f "
+                        @"leading=%.2f expectedLeading=%.2f selection=%@ expectedSelection=%@",
+                        valid, pending(), current() == manuscript,
+                        manuscript.markedTextRange != nil, font.pointSize, expected.pointSize,
+                        style.minimumLineHeight, leading,
+                        NSStringFromRange(manuscript.selectedRange),
+                        NSStringFromRange(committedSelection)]);
       completion(settled);
     });
 }
 } // namespace
 
-void NeonWorkspaceCompositionSmoke(UITextView* (^current)(void), void (^request)(BOOL),
-                                   BOOL (^pending)(void), void (^completion)(BOOL)) {
+void NeonWorkspaceCompositionSmoke(UITextView* (^current)(void), void (^request)(CGFloat),
+                                   CGFloat (^lineHeightRatio)(void), BOOL (^pending)(void),
+                                   void (^completion)(BOOL)) {
+    NeonTypographySmokeRecord(@"begin", YES, @"Native marked-text typography");
     UITextView* manuscript = current();
     NSString* text = manuscript.text;
     NSRange selection = manuscript.selectedRange;
@@ -81,29 +101,31 @@ void NeonWorkspaceCompositionSmoke(UITextView* (^current)(void), void (^request)
         originals[key] = [NeonPreferences() objectForKey:key] ?: NSNull.null;
         [NeonPreferences() removeObjectForKey:key];
     }
-    request(NO);
-    compositionTransition(current, request, pending, YES, YES, ^(BOOL wideValid) {
-      compositionTransition(current, request, pending, NO, wideValid, ^(BOOL valid) {
-        for (NSString* key in originals) {
-            id value = originals[key];
-            if (value == NSNull.null)
-                [NeonPreferences() removeObjectForKey:key];
-            else
-                [NeonPreferences() setObject:value forKey:key];
-        }
-        manuscript.text = text;
-        manuscript.selectedRange = selection;
-        completion(valid && current() == manuscript &&
-                   NSEqualRanges(selection, manuscript.selectedRange));
-      });
+    request(18);
+    compositionTransition(current, request, lineHeightRatio, pending, 20, YES, ^(BOOL largerValid) {
+      compositionTransition(current, request, lineHeightRatio, pending, 18, largerValid,
+                            ^(BOOL valid) {
+                              for (NSString* key in originals) {
+                                  id value = originals[key];
+                                  if (value == NSNull.null)
+                                      [NeonPreferences() removeObjectForKey:key];
+                                  else
+                                      [NeonPreferences() setObject:value forKey:key];
+                              }
+                              manuscript.text = text;
+                              manuscript.selectedRange = selection;
+                              completion(valid && current() == manuscript &&
+                                         NSEqualRanges(selection, manuscript.selectedRange));
+                            });
     });
 }
 
-void NeonLibrarySmokeRecord(NSString* assertion, BOOL pass, NSString* detail) {
+namespace {
+void smokeRecord(NSString* fileName, NSString* assertion, BOOL pass, NSString* detail) {
     NSURL* support = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
                                                             inDomains:NSUserDomainMask]
                          .firstObject;
-    NSURL* path = [support URLByAppendingPathComponent:@"smoke-library-details.txt"];
+    NSURL* path = [support URLByAppendingPathComponent:fileName];
     NSString* line = [NSString
         stringWithFormat:@"%@ %@: %@\n", pass ? @"PASS" : @"FAIL", assertion, detail ?: @""];
     if ([assertion isEqual:@"begin"])
@@ -116,6 +138,14 @@ void NeonLibrarySmokeRecord(NSString* assertion, BOOL pass, NSString* detail) {
     }
     NSLog(@"%@", line);
 }
+} // namespace
+void NeonLibrarySmokeRecord(NSString* assertion, BOOL pass, NSString* detail) {
+    smokeRecord(@"smoke-library-details.txt", assertion, pass, detail);
+}
+void NeonTypographySmokeRecord(NSString* assertion, BOOL pass, NSString* detail) {
+    smokeRecord(@"smoke-typography-details.txt", assertion, pass, detail);
+}
+
 namespace {
 UIButton* libraryTitle(UIView* view) {
     if ([view isKindOfClass:UIButton.class] &&
