@@ -450,6 +450,9 @@ NSUInteger words(NSString* text) {
 @property(nonatomic, strong) NeonHistoryController* historyController;
 @property(nonatomic, strong) NSTextField* presetDescription;
 @property(nonatomic, strong) NSTextField* creationTitle;
+@property(nonatomic, strong) NSView* sectionCreationPage;
+@property(nonatomic, strong) NeonField* sectionCreationField;
+@property(nonatomic, weak) NSResponder* sectionCreationResponder;
 @property(nonatomic, copy) NSString* creationPreset;
 @property(nonatomic, strong) NSStackView* presetChoices;
 @property(nonatomic) BOOL creatingProject;
@@ -1420,6 +1423,7 @@ NSUInteger words(NSString* text) {
     }
 }
 - (void)renderLibrary:(id)sender {
+    [self cancelNewSection:nil];
     [self finishProjectCreation];
     [self dismissSettings:nil];
     (void)sender;
@@ -1540,6 +1544,7 @@ NSUInteger words(NSString* text) {
            manuscriptOnly:chapterChange];
 }
 - (void)renderEditor {
+    [self cancelNewSection:nil];
     [self finishProjectCreation];
     [self dismissSettings:nil];
     [self setChromeHeight:56];
@@ -2136,18 +2141,84 @@ NSUInteger words(NSString* text) {
 }
 - (void)newSection:(id)sender {
     (void)sender;
-    if (![self flush])
+    if (self.sectionCreationPage || !self.session || ![self flush])
         return;
-    NSString* title =
-        [self askTitle:[@"New " stringByAppendingString:self.session.preset[@"sectionLabel"]]];
-    if (!title)
+    self.sectionCreationResponder = self.window.firstResponder;
+    NeonDismissMenu();
+    [self.typography close];
+    NSString* unit = [self.session.preset[@"sectionLabel"] lowercaseString] ?: @"section";
+    NeonSurface* page = [[NeonSurface alloc] initWithFrame:self.content.view.bounds];
+    page.identifier = @"new-section-screen";
+    self.sectionCreationPage = page;
+    for (NSView* child in self.content.view.subviews)
+        child.hidden = YES;
+    [self.content.view addSubview:page];
+    pin(page, self.content.view);
+    NSTextField* heading = label([@"New " stringByAppendingString:unit], NeonSerif(30), NeonInk());
+    NSTextField* intro =
+        label(@"Give it a working title. You can change it later.", NeonUI(15), NeonMuted());
+    NeonField* field = [[NeonField alloc] initWithMultiline:NO label:@"Working title"];
+    self.sectionCreationField = field;
+    field.singleLine.accessibilityIdentifier = @"new-section-title";
+    field.singleLine.target = self;
+    field.singleLine.action = @selector(createNewSection:);
+    NeonPaperCommand* cancel = [NeonPaperCommand new];
+    cancel.title = @"Cancel";
+    cancel.target = self;
+    cancel.action = @selector(cancelNewSection:);
+    cancel.keyEquivalent = @"\e";
+    NeonButton* create = [NeonButton new];
+    create.kind = NeonButtonPrimary;
+    create.compact = YES;
+    create.title = [@"Create " stringByAppendingString:unit];
+    create.accessibilityIdentifier = @"create-section";
+    create.target = self;
+    create.action = @selector(createNewSection:);
+    NSStackView* actions = [NSStackView stackViewWithViews:@[ cancel, create ]];
+    actions.spacing = 16;
+    NSStackView* form = column(@[ heading, intro, field, actions ], 24);
+    form.translatesAutoresizingMaskIntoConstraints = NO;
+    [page addSubview:form];
+    [NSLayoutConstraint activateConstraints:@[
+        [form.leadingAnchor constraintEqualToAnchor:page.leadingAnchor constant:48],
+        [form.topAnchor constraintEqualToAnchor:page.topAnchor constant:48],
+        [form.trailingAnchor constraintLessThanOrEqualToAnchor:page.trailingAnchor constant:-32],
+        [form.widthAnchor constraintLessThanOrEqualToConstant:520],
+        [field.widthAnchor constraintEqualToAnchor:form.widthAnchor]
+    ]];
+    NSLayoutConstraint* width = [form.widthAnchor constraintEqualToConstant:520];
+    width.priority = NSLayoutPriorityDefaultHigh;
+    width.active = YES;
+    [self.window makeFirstResponder:field.singleLine];
+}
+- (void)cancelNewSection:(id)sender {
+    (void)sender;
+    if (!self.sectionCreationPage)
         return;
-    NSError* error = nil;
-    if (![self.session addSection:title error:&error]) {
-        [self showError:error];
+    [self.sectionCreationPage removeFromSuperview];
+    self.sectionCreationPage = nil;
+    self.sectionCreationField = nil;
+    for (NSView* child in self.content.view.subviews)
+        child.hidden = NO;
+    [self.window makeFirstResponder:self.sectionCreationResponder ?: self.editor];
+    self.sectionCreationResponder = nil;
+}
+- (void)createNewSection:(id)sender {
+    (void)sender;
+    if (!self.sectionCreationPage)
+        return;
+    NSString* title = [self.sectionCreationField.singleLine.stringValue
+        stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (!title.length) {
+        self.sectionCreationField.errorMessage = @"Enter a working title to continue.";
         return;
     }
-    // The selected section changed. Display its draft before any fallible save.
+    NSError* error = nil;
+    if (![self.session addSection:title error:&error]) {
+        self.sectionCreationField.errorMessage = error.localizedDescription;
+        return;
+    }
+    [self cancelNewSection:nil];
     [self showEditor];
     [self flush];
 }
@@ -2850,6 +2921,33 @@ NSUInteger words(NSString* text) {
     [self createSelectedProject:nil];
     if (![self.session.title isEqual:@"Creation flow smoke"] ||
         ![self.session.preset[@"id"] isEqual:@"article"])
+        exit(13);
+    if (![self respondsToSelector:NSSelectorFromString(@"createNewSection:")]) {
+        fprintf(stderr, "Missing workspace section creation screen\n");
+        exit(13);
+    }
+    [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.5]];
+    NSUInteger previousCount = self.session.sections.count;
+    NSTextView* previousEditor = self.editor;
+    NSString* previousSection = self.session.selectedSectionID;
+    [self newSection:nil];
+    if (!self.sectionCreationPage || !self.sectionCreationField || self.editor != previousEditor)
+        exit(13);
+    self.sectionCreationField.singleLine.stringValue = @"  ";
+    [self createNewSection:nil];
+    if (self.session.sections.count != previousCount ||
+        !self.sectionCreationField.errorMessage.length)
+        exit(13);
+    [self cancelNewSection:nil];
+    if (self.editor != previousEditor || ![self.session.selectedSectionID isEqual:previousSection])
+        exit(13);
+    [self newSection:nil];
+    [self.window.contentView layoutSubtreeIfNeeded];
+    [self capture:@"native-new-section.png"];
+    self.sectionCreationField.singleLine.stringValue = @"New section screen smoke";
+    [self createNewSection:nil];
+    if (self.sectionCreationPage || self.session.sections.count != previousCount + 1 ||
+        [self.session.selectedSectionID isEqual:previousSection])
         exit(13);
     NSError* error = nil;
     NeonDocumentSession* reopened = [self.library openURL:self.selectedURL error:&error];
