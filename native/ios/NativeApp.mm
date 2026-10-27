@@ -3939,6 +3939,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         NeonSettingsController* controller = (id)navigation.topViewController;
         [controller loadViewIfNeeded];
         BOOL valid = controller.visibleSettingCount == 14;
+        NSMutableString* diagnostics = [NSMutableString stringWithFormat:@"initial=%d\n", valid];
         id originalSize = [NeonPreferences() objectForKey:@"manuscriptSize"];
         [NeonPreferences() removeObjectForKey:@"manuscriptSize"];
         for (NSNumber* viewport in @[ @335, @600, @768 ]) {
@@ -3964,6 +3965,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                     [NeonPreferences() doubleForKey:@"manuscriptSize"] == 22;
             [NeonPreferences() removeObjectForKey:@"manuscriptSize"];
         }
+        [diagnostics appendFormat:@"size=%d\n", valid];
         NeonSettingsController* resizingProbe = [NeonSettingsController new];
         [resizingProbe loadViewIfNeeded];
         for (NSNumber* viewport in @[ @335, @1024, @335 ]) {
@@ -3996,6 +3998,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                     valid && host.subviews.count == 1 && host.subviews.firstObject == originalGlass;
             }
         }
+        [diagnostics appendFormat:@"layout-glass=%d\n", valid];
         UITextView* originalEditor = self.editor.editor;
         NSString* originalDraft = originalEditor.text;
         NSRange originalSelection = originalEditor.selectedRange;
@@ -4026,6 +4029,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         else
             [NeonPreferences() removeObjectForKey:@"reduceMotion"];
         [self applyAppearance];
+        [diagnostics appendFormat:@"appearance=%d\n", valid];
         [controller filterSettings:@"PARAGRAPH"];
         valid = valid && controller.visibleSettingCount == 1;
         UITableViewCell* cell = [controller tableView:controller.tableView
@@ -4042,10 +4046,20 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
             [self.editor textViewDidChangeSelection:self.editor.editor];
             UIFont* typingFont = self.editor.editor.typingAttributes[NSFontAttributeName];
             UIFont* bodyFont = self.editor.manuscriptTypingAttributes[NSFontAttributeName];
-            valid =
-                valid && [typingFont isEqual:bodyFont] && [self.editor.editor.text isEqual:draft];
+            [diagnostics appendFormat:@"fonts=%@ / %@ equal=%d\n", typingFont, bodyFont,
+                                      [typingFont isEqual:bodyFont]];
+            // RTF decoding and CoreText trait copies produce equivalent fonts
+            // with different descriptor objects. Check the rendered properties.
+            UIFontDescriptorSymbolicTraits inlineTraits =
+                UIFontDescriptorTraitBold | UIFontDescriptorTraitItalic;
+            BOOL sameBodyFont = [typingFont.familyName isEqual:bodyFont.familyName] &&
+                                fabs(typingFont.pointSize - bodyFont.pointSize) < .01 &&
+                                (typingFont.fontDescriptor.symbolicTraits & inlineTraits) ==
+                                    (bodyFont.fontDescriptor.symbolicTraits & inlineTraits);
+            valid = valid && sameBodyFont && [self.editor.editor.text isEqual:draft];
             self.editor.editor.selectedRange = selection;
         }
+        [diagnostics appendFormat:@"selection=%d\n", valid];
         id original = [NeonPreferences() objectForKey:@"paragraphSpacing"];
         stepper.value = 12;
         [stepper sendActionsForControlEvents:UIControlEventValueChanged];
@@ -4062,6 +4076,11 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [controller filterSettings:@"no matching setting"];
         valid = valid && controller.visibleSettingCount == 0;
         [controller filterSettings:@""];
+        [diagnostics appendFormat:@"final=%d\n", valid];
+        [diagnostics writeToURL:[support URLByAppendingPathComponent:@"smoke-settings-details.txt"]
+                     atomically:YES
+                       encoding:NSUTF8StringEncoding
+                          error:nil];
         marker(support, @"smoke-settings.txt", valid);
     } else if ([args containsObject:@"--smoke-typography"]) {
         NeonEditor* editor = self.editor;
