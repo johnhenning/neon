@@ -499,6 +499,13 @@ NSUInteger words(NSString* text) {
 - (void)applicationDidFinishLaunching:(NSNotification*)note {
     (void)note;
     NeonRegisterFonts();
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"--smoke-test"]) {
+        NSFont* interfaceFont = NeonUI(14);
+        fprintf(stdout, "Interface font: %s (%s)\n", interfaceFont.fontName.UTF8String,
+                interfaceFont.familyName.UTF8String);
+        if (![interfaceFont.familyName isEqual:@"Source Sans 3"])
+            exit(14);
+    }
     [NSApp addObserver:self forKeyPath:@"effectiveAppearance" options:0 context:nil];
     [self updateAppIcon];
     if ([NSProcessInfo.processInfo.arguments containsObject:@"--control-states"]) {
@@ -1228,6 +1235,7 @@ NSUInteger words(NSString* text) {
                 direction:(NSInteger)direction {
     [self.transitionOverlay removeFromSuperview];
     self.transitionOverlay = nil;
+    BOOL leavingHistory = self.historyController != nil;
     NSRect windowFrame = self.window.frame;
     NSView* host = manuscriptOnly ? self.content.view : self.window.contentViewController.view;
     NSRect region = manuscriptOnly && self.workspaceController
@@ -1262,6 +1270,7 @@ NSUInteger words(NSString* text) {
     [host cacheDisplayInRect:region toBitmapImageRep:incomingBitmap];
     NSImage* arrivingImage = [[NSImage alloc] initWithSize:region.size];
     [arrivingImage addRepresentation:incomingBitmap];
+    BOOL historyTransition = leavingHistory || self.historyController != nil;
     NeonTransitionStage* stage = [[NeonTransitionStage alloc] initWithFrame:region];
     stage.wantsLayer = YES;
     stage.layer.masksToBounds = YES;
@@ -1269,11 +1278,13 @@ NSUInteger words(NSString* text) {
     stage.accessibilityElement = NO;
     NeonTransitionOverlay* departing = [[NeonTransitionOverlay alloc] initWithFrame:stage.bounds];
     departing.image = departingImage;
-    departing.imageScaling = NSImageScaleAxesIndependently;
+    departing.imageScaling = historyTransition ? NSImageScaleNone : NSImageScaleAxesIndependently;
+    departing.imageAlignment = NSImageAlignTopLeft;
     NeonTransitionOverlay* arriving = [[NeonTransitionOverlay alloc] initWithFrame:stage.bounds];
     arriving.image = arrivingImage;
     arriving.imageScaling = NSImageScaleAxesIndependently;
-    CGFloat distance = (manuscriptOnly ? 26 : 75) * (direction < 0 ? -1 : 1);
+    CGFloat distance =
+        historyTransition ? 0 : (manuscriptOnly ? 26 : 75) * (direction < 0 ? -1 : 1);
     arriving.frame = NSOffsetRect(stage.bounds, distance, 0);
     arriving.alphaValue = 0;
     [stage addSubview:departing];
@@ -1282,7 +1293,7 @@ NSUInteger words(NSString* text) {
     self.transitionOverlay = stage;
     [NSAnimationContext
         runAnimationGroup:^(NSAnimationContext* context) {
-          context.duration = duration;
+          context.duration = historyTransition ? 0.18 : duration;
           context.timingFunction = [CAMediaTimingFunction functionWithControlPoints:
                                                                                0.22:0.61:0.36:1];
           departing.animator.alphaValue = 0;
