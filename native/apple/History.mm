@@ -74,17 +74,18 @@ NSAttributedString* rowText(NSDictionary* entry, BOOL narrow) {
 @interface NeonHistoryHeader : NSView
 @end
 @implementation NeonHistoryHeader
+- (BOOL)isFlipped {
+    return YES;
+}
+- (void)drawRect:(NSRect)rect {
+    [NeonPaper() setFill];
+    NSRectFill(NSIntersectionRect(rect, self.bounds));
+    [NeonLine() setFill];
+    NSRectFill(NSMakeRect(0, NSHeight(self.bounds) - 1, NSWidth(self.bounds), 1));
+}
 - (void)viewDidChangeEffectiveAppearance {
     [super viewDidChangeEffectiveAppearance];
-    [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
-      NeonApplyGlassBackdrop(self, 0);
-    }];
-}
-- (void)viewDidMoveToWindow {
-    [super viewDidMoveToWindow];
-    [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
-      NeonApplyGlassBackdrop(self, 0);
-    }];
+    self.needsDisplay = YES;
 }
 @end
 @interface NeonHistoryRow : NSTableRowView
@@ -115,6 +116,24 @@ NSAttributedString* rowText(NSDictionary* entry, BOOL narrow) {
 - (void)viewDidChangeEffectiveAppearance {
     [super viewDidChangeEffectiveAppearance];
     self.needsDisplay = YES;
+}
+@end
+#endif
+#if !TARGET_OS_OSX
+@interface NeonHistoryHeader : UIView
+@end
+@implementation NeonHistoryHeader
+- (instancetype)initWithFrame:(CGRect)frame {
+    if ((self = [super initWithFrame:frame])) {
+        self.backgroundColor = NeonPaper();
+        self.contentMode = UIViewContentModeRedraw;
+    }
+    return self;
+}
+- (void)drawRect:(CGRect)rect {
+    (void)rect;
+    [NeonLine() setFill];
+    UIRectFill(CGRectMake(0, CGRectGetHeight(self.bounds) - 1, CGRectGetWidth(self.bounds), 1));
 }
 @end
 #endif
@@ -307,7 +326,7 @@ NSAttributedString* rowText(NSDictionary* entry, BOOL narrow) {
     self.view.tintColor = NeonAccent();
     self.title = @"Version history";
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
-    _header = [UIView new];
+    _header = [NeonHistoryHeader new];
     _title = [UILabel new];
     _title.text = @"Version history";
     _detail = [UILabel new];
@@ -472,7 +491,6 @@ NSAttributedString* rowText(NSDictionary* entry, BOOL narrow) {
     _table.accessibilityLabel = @"Saved versions, newest first";
     _preview.accessibilityLabel = @"Read-only revision preview";
     _comparison.accessibilityLabel = @"Working copy comparison, read only";
-    NeonApplyGlassBackdrop(_header, 0);
     for (id child in @[
              _header, _timeline, _title,   _detail,       _back,     _checkpoint,     _versions,
              _footer, _scope,    _working, _searchToggle, _search,   _list,           _previewTitle,
@@ -505,10 +523,10 @@ NSAttributedString* rowText(NSDictionary* entry, BOOL narrow) {
             pad = narrow ? 16 : (medium ? 20 : 28);
     _header.frame = CGRectMake(0, 0, width, top + bar);
     _back.frame = CGRectMake(narrow ? 12 : 20, top + 12, narrow ? 65 : 66.1, 40);
-    _title.frame =
-        CGRectMake(narrow ? 87 : 106.1, top + 12, MAX(70, width - (narrow ? 240 : 320)), 20);
-    _detail.frame =
-        CGRectMake(narrow ? 87 : 106.1, top + 35, MAX(70, width - (narrow ? 240 : 320)), 18);
+    CGFloat headingX = narrow ? 87 : timeline + pad;
+    CGFloat headingWidth = MAX(0, width - (narrow ? 153 : 204) - headingX);
+    _title.frame = CGRectMake(headingX, top + 12, headingWidth, 20);
+    _detail.frame = CGRectMake(headingX, top + 35, headingWidth, 18);
     _title.font = NeonUISemibold(narrow ? 13 : 14);
     _checkpoint.frame = CGRectMake(width - (narrow ? 145 : 184), top + 12, narrow ? 133 : 164, 40);
     CGFloat start = top + bar;
