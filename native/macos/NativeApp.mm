@@ -46,6 +46,37 @@
     return self;
 }
 @end
+// Match the preview's 20-point vector inside a compact 28-point control.
+@interface NeonSidebarToggle : NeonPaperCommand
+@end
+@implementation NeonSidebarToggle
+- (void)drawRect:(NSRect)rect {
+    (void)rect;
+    NSRect bounds = self.bounds;
+    if (self.hovered || self.highlighted) {
+        [[NeonInk() colorWithAlphaComponent:0.06] setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:bounds xRadius:5 yRadius:5] fill];
+    }
+    CGFloat x = NSMidX(bounds) - 10;
+    CGFloat y = NSMidY(bounds) - 10;
+    [NeonInk() setStroke];
+    NSBezierPath* icon = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(x + 2, y + 3, 16, 14)
+                                                         xRadius:2
+                                                         yRadius:2];
+    icon.lineWidth = 1.4;
+    [icon stroke];
+    NSBezierPath* divider = [NSBezierPath bezierPath];
+    [divider moveToPoint:NSMakePoint(x + 8, y + 3)];
+    [divider lineToPoint:NSMakePoint(x + 8, y + 17)];
+    divider.lineWidth = 1.4;
+    [divider stroke];
+    if (self.window.firstResponder == self) {
+        [NeonAccent() setStroke];
+        [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(bounds, 1, 1) xRadius:5
+                                         yRadius:5] stroke];
+    }
+}
+@end
 @interface NeonPresetCard : NeonButton
 @property(nonatomic, copy) NSString* detail;
 @end
@@ -174,15 +205,6 @@ NSTextField* label(NSString* text, NSFont* font, NSColor* color) {
     label.font = font;
     label.textColor = color;
     return label;
-}
-NSImage* workspaceIcon(NSString* name) {
-    NSURL* url = [NSBundle.mainBundle URLForResource:name
-                                       withExtension:@"png"
-                                        subdirectory:@"icons"];
-    NSImage* image = url ? [[NSImage alloc] initWithContentsOfURL:url] : nil;
-    image.size = NSMakeSize(20, 20);
-    [image setTemplate:YES];
-    return image;
 }
 NSButton* button(NSString* title, NSString* symbol, id target, SEL action) {
     NSButton* button = [NSButton buttonWithTitle:title target:target action:action];
@@ -858,7 +880,7 @@ NSUInteger words(NSString* text) {
     NSToolbarItem* result = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
     result.label = item[0];
     // Navigation items can be reordered outside the declared toolbar sequence.
-    // Keep the toggle after flexible space, beside the tracking divider.
+    // Keep the toggle in the leading toolbar group in both sidebar states.
     result.navigational = NO;
     result.toolTip = item[0];
     result.target = self;
@@ -876,9 +898,19 @@ NSUInteger words(NSString* text) {
         result.view = control;
         return result;
     }
-    result.image = [identifier isEqual:@"sidebar"] ? workspaceIcon(@"sidebar")
-                                                   : [NSImage imageWithSystemSymbolName:item[1]
-                                                               accessibilityDescription:item[0]];
+    if ([identifier isEqual:@"sidebar"]) {
+        NeonSidebarToggle* control = [NeonSidebarToggle new];
+        control.title = @"";
+        control.target = self;
+        control.action = @selector(toggleSidebar:);
+        control.accessibilityLabel = @"Toggle sidebar";
+        control.toolTip = @"Toggle sidebar";
+        [control.widthAnchor constraintEqualToConstant:28].active = YES;
+        [control.heightAnchor constraintEqualToConstant:28].active = YES;
+        result.view = control;
+    } else {
+        result.image = [NSImage imageWithSystemSymbolName:item[1] accessibilityDescription:item[0]];
+    }
     return result;
 }
 - (void)toggleFocus:(id)sender {
