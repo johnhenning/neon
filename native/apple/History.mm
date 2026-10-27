@@ -1,9 +1,25 @@
 #include "History.h"
 #import "Controls.h"
 #include "EditorialTheme.h"
+#import "TextFormatting.h"
 #include <string>
 
 namespace {
+NSMutableAttributedString* sectionContent(NSDictionary* section, NeonFont* font,
+                                          NSParagraphStyle* paragraph) {
+    NSData* data = section[@"richTextData"];
+    NSMutableAttributedString* text =
+        data ? [[NSMutableAttributedString alloc]
+                         initWithData:data
+                              options:@{NSDocumentTypeDocumentAttribute : NSRTFTextDocumentType}
+                   documentAttributes:nil
+                                error:nil]
+             : nil;
+    if (!text || ![text.string isEqual:section[@"text"] ?: @""])
+        text = [[NSMutableAttributedString alloc] initWithString:section[@"text"] ?: @""];
+    NeonRestyleText(text, font, paragraph);
+    return text;
+}
 NSString* entryDetail(NSDictionary* entry) {
     NSDate* date = [NSDate dateWithTimeIntervalSince1970:[entry[@"createdAt"] doubleValue]];
     NSString* time = [NSDateFormatter localizedStringFromDate:date
@@ -890,14 +906,7 @@ NSAttributedString* rowText(NSDictionary* entry, BOOL narrow) {
         body.paragraphSpacing = 17;
         NSUInteger bodyStart = content.length;
         NSString* manuscript = saved[@"text"] ?: @"";
-        [content
-            appendAttributedString:[[NSAttributedString alloc]
-                                       initWithString:manuscript
-                                           attributes:@{
-                                               NSFontAttributeName : NeonSerif(narrow ? 16 : 17),
-                                               NSForegroundColorAttributeName : NeonInk(),
-                                               NSParagraphStyleAttributeName : body
-                                           }]];
+        [content appendAttributedString:sectionContent(saved, NeonSerif(narrow ? 16 : 17), body)];
         [manuscript
             enumerateSubstringsInRange:NSMakeRange(0, manuscript.length)
                                options:NSStringEnumerationByParagraphs
@@ -910,7 +919,7 @@ NSAttributedString* rowText(NSDictionary* entry, BOOL narrow) {
                               NSUInteger next = NSMaxRange(enclosing);
                               BOOL followed = next < manuscript.length &&
                                               [manuscript characterAtIndex:next] == '\n';
-                              if (blank || followed) {
+                              if ((blank || followed) && !saved[@"richTextData"]) {
                                   NSMutableParagraphStyle* separated = [body mutableCopy];
                                   separated.paragraphSpacing = 0;
                                   if (blank)
@@ -947,26 +956,37 @@ NSAttributedString* rowText(NSDictionary* entry, BOOL narrow) {
                         NSFontAttributeName : NeonUI(13),
                         NSForegroundColorAttributeName : NeonMuted()
                     }];
+            NSMutableParagraphStyle* style = [NSMutableParagraphStyle new];
+            style.minimumLineHeight = style.maximumLineHeight = 25.5;
+            style.paragraphSpacing = 12;
+            NSMutableAttributedString* manuscript =
+                sectionContent(side == 0 ? saved : current, NeonSerif(15), style);
+            NSUInteger offset = 0;
             for (NSUInteger index = 0; index < paragraphs.count; ++index) {
                 BOOL changed = index >= other.count || ![paragraphs[index] isEqual:other[index]];
-                NSString* paragraph = [NSString
-                    stringWithFormat:@"%@%@\n\n",
-                                     changed ? (side == 0 ? @"− Previous\n" : @"+ Current\n") : @"",
-                                     paragraphs[index]];
-                NSMutableParagraphStyle* style = [NSMutableParagraphStyle new];
-                style.minimumLineHeight = style.maximumLineHeight = 25.5;
-                style.paragraphSpacing = 12;
-                NSMutableDictionary* attributes = [@{
-                    NSFontAttributeName : NeonSerif(15),
-                    NSForegroundColorAttributeName : NeonInk(),
+                NSDictionary* attributes = @{
+                    NSFontAttributeName : NeonUI(12),
+                    NSForegroundColorAttributeName : NeonMuted(),
                     NSParagraphStyleAttributeName : style
-                } mutableCopy];
+                };
                 if (changed)
-                    attributes[NSBackgroundColorAttributeName] =
-                        [(side == 0 ? NeonDanger() : NeonAccent()) colorWithAlphaComponent:0.10];
+                    [content appendAttributedString:[[NSAttributedString alloc]
+                                                        initWithString:side == 0 ? @"− Previous\n"
+                                                                                 : @"+ Current\n"
+                                                            attributes:attributes]];
+                NSRange range = NSMakeRange(offset, [paragraphs[index] length]);
+                NSMutableAttributedString* paragraph =
+                    [[manuscript attributedSubstringFromRange:range] mutableCopy];
+                if (changed)
+                    [paragraph addAttribute:NSBackgroundColorAttributeName
+                                      value:[(side == 0 ? NeonDanger() : NeonAccent())
+                                                colorWithAlphaComponent:0.10]
+                                      range:NSMakeRange(0, paragraph.length)];
+                [content appendAttributedString:paragraph];
                 [content
-                    appendAttributedString:[[NSAttributedString alloc] initWithString:paragraph
+                    appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n\n"
                                                                            attributes:attributes]];
+                offset += range.length + 1;
             }
 #if TARGET_OS_OSX
             [(side == 0 ? _preview : _comparison).textStorage setAttributedString:content];

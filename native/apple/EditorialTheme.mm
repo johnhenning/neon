@@ -37,7 +37,8 @@ NeonFont* regular(NeonFont* font, CGFloat size) {
 }
 } // namespace
 void NeonRegisterFonts() {
-    for (NSString* name in @[ @"literata", @"sourcesans3" ]) {
+    for (NSString* name in
+         @[ @"literata", @"sourcesans3", @"literata-italic", @"sourcesans3-italic" ]) {
         NSURL* url = [NSBundle.mainBundle URLForResource:name withExtension:@"ttf"];
         if (url)
             CTFontManagerRegisterFontsForURL((__bridge CFURLRef)url, kCTFontManagerScopeProcess,

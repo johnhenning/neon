@@ -1,8 +1,10 @@
 #import "DocumentSession.h"
 #import "LibraryStore.h"
 #import "Preferences.h"
+#import <AppKit/AppKit.h>
 #include <cstdlib>
 #include <iostream>
+#include <string>
 
 void check(bool value, const char* message) {
     if (!value) {
@@ -135,6 +137,84 @@ int main() {
                   [[v2Session previewRevision:v2Session.history.firstObject[@"id"]
                                         error:&error] containsString:@"Opening"],
               "schema two migration preserves backup and original history");
+        // Formatting travels atomically with text, including duplicates and history.
+        NSURL* richURL = [directory URLByAppendingPathComponent:@"formatted.json"];
+        NeonDocumentSession* rich = [[NeonDocumentSession alloc] initWithURL:richURL
+                                                                       actor:@"author"
+                                                                       error:&error];
+        NSAttributedString* bold = [[NSAttributedString alloc]
+            initWithString:@"Formatted text"
+                attributes:@{NSFontAttributeName : [NSFont boldSystemFontOfSize:17]}];
+        NSData* boldData =
+            [bold dataFromRange:NSMakeRange(0, bold.length)
+                documentAttributes:@{NSDocumentTypeDocumentAttribute : NSRTFTextDocumentType}
+                             error:&error];
+        check([rich replaceRichTextData:boldData text:bold.string error:&error] &&
+                  [rich save:&error],
+              "formatted text saves atomically");
+        NSString* richSection = rich.selectedSectionID;
+        check([rich replaceText:rich.text error:&error] && [rich.richTextData isEqual:boldData],
+              "plain no-op does not erase formatting");
+        rich = [[NeonDocumentSession alloc] initWithURL:richURL actor:@"author" error:&error];
+        check([rich.richTextData isEqual:boldData], "formatting reopens");
+        check([rich createCheckpoint:@"Bold" error:&error], "formatting checkpoint");
+        NSString* richCheckpoint = rich.history.firstObject[@"id"];
+        NSAttributedString* underlined =
+            [[NSAttributedString alloc] initWithString:bold.string
+                                            attributes:@{
+                                                NSUnderlineStyleAttributeName : @1
+                                            }];
+        NSData* underlinedData =
+            [underlined dataFromRange:NSMakeRange(0, underlined.length)
+                   documentAttributes:@{NSDocumentTypeDocumentAttribute : NSRTFTextDocumentType}
+                                error:&error];
+        check([rich replaceRichTextData:underlinedData text:underlined.string error:&error] &&
+                  rich.dirty && [rich save:&error] &&
+                  [rich restoreRevision:richCheckpoint error:&error] &&
+                  [rich.richTextData isEqual:boldData],
+              "format-only edit and restore retain exact rich data");
+        check([rich duplicateSection:richSection error:&error] &&
+                  [rich selectSection:rich.sections.lastObject[@"id"] error:&error] &&
+                  [rich.richTextData isEqual:boldData],
+              "duplicated section retains formatting");
+        NSURL* richCopyURL = [directory URLByAppendingPathComponent:@"formatted-copy.json"];
+        check([rich duplicateToURL:richCopyURL error:&error], "duplicate formatted project");
+        NeonDocumentSession* richCopy = [[NeonDocumentSession alloc] initWithURL:richCopyURL
+                                                                           actor:@"author"
+                                                                           error:&error];
+        check([richCopy.richTextData isEqual:boldData],
+              "duplicated project retains formatting under new IDs");
+        NSData* invalidRTF = [@"not RTF" dataUsingEncoding:NSUTF8StringEncoding];
+        check(![rich replaceRichTextData:invalidRTF text:@"bad" error:&error] &&
+                  [rich.text isEqual:bold.string] && [rich.richTextData isEqual:boldData],
+              "invalid formatting cannot replace draft");
+        check(![rich replaceRichTextData:boldData text:@"different" error:&error],
+              "mismatched text cannot replace draft");
+        check([rich replaceText:@"Plain changed text" error:&error] && !rich.richTextData,
+              "changed plain text clears stale formatting only for edited section");
+        check([rich selectSection:richSection error:&error] && [rich.richTextData isEqual:boldData],
+              "other section formatting remains intact");
+        NeonDocumentSession* richStale = [[NeonDocumentSession alloc] initWithURL:richURL
+                                                                            actor:@"other"
+                                                                            error:&error];
+        check([rich save:&error], "persist rich section changes");
+        check([richStale replaceRichTextData:underlinedData text:underlined.string error:&error] &&
+                  ![richStale save:&error] && richStale.dirty &&
+                  [richStale.richTextData isEqual:underlinedData],
+              "format-only stale write retains draft");
+        NSMutableDictionary* damaged =
+            [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfURL:richCopyURL]
+                                            options:NSJSONReadingMutableContainers
+                                              error:&error];
+        NSString* damagedID = [damaged[@"richText"] allKeys].firstObject;
+        damaged[@"richText"][damagedID][@"rtf"] = [invalidRTF base64EncodedStringWithOptions:0];
+        NSData* damagedBytes = [NSJSONSerialization dataWithJSONObject:damaged
+                                                               options:0
+                                                                 error:&error];
+        [damagedBytes writeToURL:richCopyURL atomically:YES];
+        check(![[NeonDocumentSession alloc] initWithURL:richCopyURL actor:@"author" error:&error] &&
+                  [[NSData dataWithContentsOfURL:richCopyURL] isEqual:damagedBytes],
+              "corrupt formatted file fails closed without rewriting it");
         // Every preset survives reopening, renaming, duplication, and history restoration.
         for (NSDictionary* preset in NeonDocumentSession.writingPresets) {
             NSURL* presetURL = [store createProject:preset[@"title"]

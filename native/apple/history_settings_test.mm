@@ -185,6 +185,51 @@ int main() {
         check(settings.visibleSettingCount == 1, "case-insensitive preference search");
         [settings filterSettings:@"unmatched preference"];
         check(settings.visibleSettingCount == 0, "empty settings search");
+        NeonDocumentSession* formatted = [[NeonDocumentSession alloc]
+            initWithURL:[directory URLByAppendingPathComponent:@"formatted-history.json"]
+                  actor:@"review"
+                  error:&error];
+        NSAttributedString* rich =
+            [[NSAttributedString alloc] initWithString:@"Underlined revision"
+                                            attributes:@{
+                                                NSUnderlineStyleAttributeName : @1
+                                            }];
+        NSData* richData =
+            [rich dataFromRange:NSMakeRange(0, rich.length)
+                documentAttributes:@{NSDocumentTypeDocumentAttribute : NSRTFTextDocumentType}
+                             error:&error];
+        check([formatted replaceRichTextData:richData text:rich.string error:&error] &&
+                  [formatted createCheckpoint:@"Rich checkpoint" error:&error],
+              "save formatted revision");
+        NeonHistoryController* richHistory = [NeonHistoryController new];
+        richHistory.session = formatted;
+        window.contentViewController = richHistory;
+        settle(richHistory.view);
+        NSTextView* richPreview = (id)find(richHistory.view, ^BOOL(NSView* view) {
+          return [view.accessibilityLabel isEqual:@"Read-only revision preview"];
+        });
+        NSRange richRange = [richPreview.string rangeOfString:rich.string];
+        check(richRange.location != NSNotFound &&
+                  [[richPreview.textStorage attribute:NSUnderlineStyleAttributeName
+                                              atIndex:richRange.location
+                                       effectiveRange:nil] integerValue] == 1,
+              "read version preserves saved inline formatting");
+        NSButton* richCompare = (id)find(richHistory.view, ^BOOL(NSView* view) {
+          return
+              [view isKindOfClass:NSButton.class] && [((NSButton*)view).title isEqual:@"Compare"];
+        });
+        [richCompare performClick:nil];
+        NSTextView* richCurrent = (id)find(richHistory.view, ^BOOL(NSView* view) {
+          return [view.accessibilityLabel isEqual:@"Working copy comparison, read only"];
+        });
+        for (NSTextView* pane in @[ richPreview, richCurrent ]) {
+            NSRange range = [pane.string rangeOfString:rich.string];
+            check(range.location != NSNotFound &&
+                      [[pane.textStorage attribute:NSUnderlineStyleAttributeName
+                                           atIndex:range.location
+                                    effectiveRange:nil] integerValue] == 1,
+                  "comparison preserves formatting on both sides");
+        }
         check([NSFileManager.defaultManager removeItemAtURL:directory error:&error],
               "remove test manuscript");
         std::cout << "history and settings behavior passed\n";

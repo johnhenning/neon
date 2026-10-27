@@ -18,6 +18,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)createCheckpoint:(NSString*)name error:(NSError**)error;
 - (BOOL)restoreRevision:(NSString*)identifier error:(NSError**)error;
 @property(nonatomic, readonly) NSString* text;
+// Optional Apple-adapter RTF; semantic plain text remains available to the core.
+@property(nonatomic, readonly, nullable) NSData* richTextData;
+- (BOOL)replaceRichTextData:(NSData*)data text:(NSString*)text error:(NSError**)error;
 @property(nonatomic, readonly) BOOL dirty;
 @property(nonatomic, readonly) NSString* projectID;
 @property(nonatomic, readonly) NSUInteger projectWordCount;

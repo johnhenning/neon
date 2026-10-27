@@ -1,8 +1,16 @@
 #include "DocumentSession.h"
 #import "Preferences.h"
+#import <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+#import <UIKit/UIKit.h>
+#else
+#import <AppKit/AppKit.h>
+#endif
 #include "neon/document.h"
 #include "neon/presets.h"
 #include <cmath>
+#include <cstring>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -33,11 +41,37 @@ bool strings(NSDictionary* object, NSArray<NSString*>* fields) {
             return false;
     return true;
 }
-// This first editing slice deliberately refuses richer or unknown files instead
-// of opening a partial projection and silently discarding their contents.
-bool decode(id root, neon::core::Project* project) {
+bool validRichText(NSData* data, NSString* text) {
+    if (![data isKindOfClass:NSData.class] || data.length < 6)
+        return false;
+    const char* bytes = static_cast<const char*>(data.bytes);
+    if (memcmp(bytes, "{\\rtf", 5) != 0)
+        return false;
+    @try {
+        NSAttributedString* decoded = [[NSAttributedString alloc]
+                  initWithData:data
+                       options:@{NSDocumentTypeDocumentAttribute : NSRTFTextDocumentType}
+            documentAttributes:nil
+                         error:nil];
+        return decoded && [decoded.string isEqualToString:text];
+    } @catch (NSException* exception) {
+        (void)exception;
+        return false;
+    }
+}
+// Unknown fields still fail closed. Rich formatting is an explicitly validated
+// Apple adapter extension, never a platform object in the portable core.
+bool decode(id root, neon::core::Project* project, NSDictionary** richText = nullptr) {
     if (![root isKindOfClass:NSDictionary.class])
         return false;
+    id formatting = root[@"richText"];
+    if (formatting) {
+        if (![formatting isKindOfClass:NSDictionary.class] || ![root[@"schema"] isEqual:@3])
+            return false;
+        NSMutableDictionary* content = [root mutableCopy];
+        [content removeObjectForKey:@"richText"];
+        root = content;
+    }
     BOOL modern = [root[@"schema"] isEqual:@3];
     if (!keys(root, modern ? @[ @"schema", @"revision", @"id", @"title", @"documents", @"preset" ]
                            : @[ @"schema", @"revision", @"id", @"title", @"documents" ]) ||
@@ -98,9 +132,27 @@ bool decode(id root, neon::core::Project* project) {
         document.sections.back().role = modern ? utf8(section[@"role"]) : "chapter";
     }
     project->documents = {document};
+    for (id identifier in formatting) {
+        if (![identifier isKindOfClass:NSString.class])
+            return false;
+        id entry = formatting[identifier];
+        if (!keys(entry, @[ @"text", @"rtf" ]) || !strings(entry, @[ @"text", @"rtf" ]))
+            return false;
+        BOOL found = NO;
+        for (const auto& section : document.sections)
+            if ([identifier isEqual:ns(section.id)]) {
+                found = [entry[@"text"] isEqual:ns(section.blocks[0].text)];
+                break;
+            }
+        NSData* data = [[NSData alloc] initWithBase64EncodedString:entry[@"rtf"] options:0];
+        if (!found || !validRichText(data, entry[@"text"]))
+            return false;
+    }
+    if (richText)
+        *richText = formatting ?: @{};
     return neon::core::validate(*project).ok;
 }
-NSDictionary* projectObject(const neon::core::Project& project) {
+NSDictionary* projectObject(const neon::core::Project& project, NSDictionary* richText) {
     const auto& document = project.documents[0];
     NSMutableArray* sections = [NSMutableArray array];
     for (const auto& section : document.sections) {
@@ -118,7 +170,7 @@ NSDictionary* projectObject(const neon::core::Project& project) {
             } ]
         }];
     }
-    return @{
+    NSMutableDictionary* result = [@{
         @"schema" : @3,
         @"preset" : ns(project.preset),
         @"revision" : ns(std::to_string(project.revision)),
@@ -126,37 +178,45 @@ NSDictionary* projectObject(const neon::core::Project& project) {
         @"title" : ns(project.title),
         @"documents" :
             @[ @{@"id" : ns(document.id), @"title" : ns(document.title), @"sections" : sections} ]
-    };
+    } mutableCopy];
+    if (richText.count)
+        result[@"richText"] = [richText copy];
+    return result;
 }
-NSDictionary* displaySnapshot(const neon::core::Project& project) {
+NSDictionary* displaySnapshot(const neon::core::Project& project, NSDictionary* richText) {
     NSMutableArray* sections = [NSMutableArray array];
     for (const auto& section : project.documents[0].sections) {
-        [sections addObject:@{
+        NSMutableDictionary* entry = [@{
             @"id" : ns(section.id),
             @"title" : ns(section.title),
             @"text" : ns(section.blocks[0].text),
             @"trashed" : @(section.trashed)
-        }];
+        } mutableCopy];
+        NSString* encoded = richText[ns(section.id)][@"rtf"];
+        if (encoded)
+            entry[@"richTextData"] = [[NSData alloc] initWithBase64EncodedString:encoded options:0];
+        [sections addObject:entry];
     }
     return @{@"title" : ns(project.title), @"sections" : sections};
 }
-NSData* encode(const neon::core::Project& project, NSArray* history, NSError** error) {
-    NSMutableDictionary* root = [projectObject(project) mutableCopy];
+NSData* encode(const neon::core::Project& project, NSDictionary* richText, NSArray* history,
+               NSError** error) {
+    NSMutableDictionary* root = [projectObject(project, richText) mutableCopy];
     root[@"history"] = history;
     return
         [NSJSONSerialization dataWithJSONObject:root
                                         options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys
                                           error:error];
 }
-NSDictionary* snapshot(const neon::core::Project& project, NSString* actor, NSString* label,
-                       NSString* kind) {
+NSDictionary* snapshot(const neon::core::Project& project, NSDictionary* richText, NSString* actor,
+                       NSString* label, NSString* kind) {
     return @{
         @"id" : NSUUID.UUID.UUIDString,
         @"createdAt" : @(NSDate.date.timeIntervalSince1970),
         @"actor" : actor,
         @"label" : label,
         @"kind" : kind,
-        @"project" : projectObject(project)
+        @"project" : projectObject(project, richText)
     };
 }
 bool validHistory(id history, const neon::core::Project& project) {
@@ -196,6 +256,7 @@ bool validHistory(id history, const neon::core::Project& project) {
     BOOL _needsMigrationBackup;
     NSUInteger _originalSchema;
     NSArray* _history;
+    NSMutableDictionary* _richText;
     std::size_t _selected;
 }
 - (instancetype)initWithURL:(NSURL*)url actor:(NSString*)actor error:(NSError**)error {
@@ -209,6 +270,7 @@ bool validHistory(id history, const neon::core::Project& project) {
     _url = url;
     _actor = [actor copy];
     _history = @[];
+    _richText = [NSMutableDictionary dictionary];
     if ([[NSFileManager defaultManager] fileExistsAtPath:url.path]) {
         _lastSaved = [NSData dataWithContentsOfURL:url options:0 error:error];
         if (!_lastSaved)
@@ -223,11 +285,13 @@ bool validHistory(id history, const neon::core::Project& project) {
             [content removeObjectForKey:@"history"];
             root = content;
         }
-        if (!decode(root, &_project) || !validHistory(history, _project)) {
+        NSDictionary* formatting = nil;
+        if (!decode(root, &_project, &formatting) || !validHistory(history, _project)) {
             fail(error, @"Unsupported or invalid document. The original file was not changed.");
             return nil;
         }
         _history = [history copy];
+        _richText = [formatting mutableCopy];
     } else {
         auto id = [] { return utf8(NSUUID.UUID.UUIDString); };
         _project = {1,
@@ -448,9 +512,12 @@ bool validHistory(id history, const neon::core::Project& project) {
         copy.trashed = false;
         for (auto& block : copy.blocks)
             block.id = utf8(NSUUID.UUID.UUIDString);
+        NSString* copiedID = ns(copy.id);
         auto result = neon::core::addSection(&_project, _project.documents[0].id, std::move(copy));
         if (!result.ok)
             return fail(error, ns(result.message));
+        if (_richText[identifier])
+            _richText[copiedID] = _richText[identifier];
         _dirty = YES;
         return YES;
     }
@@ -460,18 +527,22 @@ bool validHistory(id history, const neon::core::Project& project) {
     if ([[NSFileManager defaultManager] fileExistsAtPath:url.path])
         return fail(error, @"The destination already exists.");
     auto copy = _project;
+    NSMutableDictionary* copiedRichText = [NSMutableDictionary dictionary];
     copy.id = utf8(NSUUID.UUID.UUIDString);
     copy.title += " copy";
     copy.revision = 0;
     for (auto& document : copy.documents) {
         document.id = utf8(NSUUID.UUID.UUIDString);
         for (auto& section : document.sections) {
+            NSDictionary* formatting = _richText[ns(section.id)];
             section.id = utf8(NSUUID.UUID.UUIDString);
+            if (formatting)
+                copiedRichText[ns(section.id)] = formatting;
             for (auto& block : section.blocks)
                 block.id = utf8(NSUUID.UUID.UUIDString);
         }
     }
-    NSData* data = encode(copy, @[], error);
+    NSData* data = encode(copy, copiedRichText, @[], error);
     return data && [data writeToURL:url options:NSDataWritingAtomic error:error];
 }
 - (BOOL)dirty {
@@ -488,11 +559,40 @@ bool validHistory(id history, const neon::core::Project& project) {
                                 utf8(text), utf8(_actor));
     if (!result.ok)
         return fail(error, ns(result.message));
+    if (previous != _project.revision)
+        [_richText removeObjectForKey:self.selectedSectionID];
     _dirty |= previous != _project.revision;
+    return YES;
+}
+- (NSData*)richTextData {
+    NSString* encoded = _richText[self.selectedSectionID][@"rtf"];
+    return encoded ? [[NSData alloc] initWithBase64EncodedString:encoded options:0] : nil;
+}
+- (BOOL)replaceRichTextData:(NSData*)data text:(NSString*)text error:(NSError**)error {
+    if (!self.selectedSectionID.length)
+        return fail(error, @"Create a section before writing.");
+    if (!validRichText(data, text))
+        return fail(error,
+                    @"The formatted draft could not be read safely. Your writing is unchanged.");
+    if ([self.text isEqualToString:text] && [self.richTextData isEqualToData:data])
+        return YES;
+    if (_project.revision == std::numeric_limits<std::uint64_t>::max())
+        return fail(error, @"The document revision limit has been reached.");
+    auto previous = _project.revision;
+    if (![self replaceText:text error:error])
+        return NO;
+    if (_project.revision == previous) {
+        ++_project.revision;
+        _project.documents[0].sections[_selected].blocks[0].lastEditedBy = utf8(_actor);
+    }
+    _richText[self.selectedSectionID] =
+        @{@"text" : text, @"rtf" : [data base64EncodedStringWithOptions:0]};
+    _dirty = YES;
     return YES;
 }
 - (BOOL)writeProject:(const neon::core::Project&)project
              history:(NSArray*)history
+            richText:(NSDictionary*)richText
                error:(NSError**)error {
     // One atomic document envelope includes both content and history. A failed
     // write cannot commit one without the other. Cross-process coordination is deferred.
@@ -518,7 +618,7 @@ bool validHistory(id history, const neon::core::Project& project) {
             ![_lastSaved writeToURL:backup options:NSDataWritingAtomic error:error])
             return NO;
     }
-    NSData* data = encode(project, history, error);
+    NSData* data = encode(project, richText, history, error);
     if (!data || ![data writeToURL:_url options:NSDataWritingAtomic error:error])
         return NO;
     _lastSaved = data;
@@ -535,8 +635,10 @@ bool validHistory(id history, const neon::core::Project& project) {
                                                                        error:nil] mutableCopy];
         [root removeObjectForKey:@"history"];
         neon::core::Project baseline;
-        if (decode(root, &baseline))
-            [history addObject:snapshot(baseline, _actor, @"Original saved version", @"automatic")];
+        NSDictionary* formatting = nil;
+        if (decode(root, &baseline, &formatting))
+            [history addObject:snapshot(baseline, formatting, _actor, @"Original saved version",
+                                        @"automatic")];
     }
     return history;
 }
@@ -549,8 +651,9 @@ bool validHistory(id history, const neon::core::Project& project) {
     if (enabled &&
         (!history.count ||
          NSDate.date.timeIntervalSince1970 - [history.lastObject[@"createdAt"] doubleValue] >= 60))
-        [history addObject:snapshot(_project, _actor, @"Automatic snapshot", @"automatic")];
-    return [self writeProject:_project history:history error:error];
+        [history
+            addObject:snapshot(_project, _richText, _actor, @"Automatic snapshot", @"automatic")];
+    return [self writeProject:_project history:history richText:_richText error:error];
 }
 - (NSArray<NSDictionary*>*)history {
     NSMutableArray* result = [NSMutableArray array];
@@ -574,16 +677,17 @@ bool validHistory(id history, const neon::core::Project& project) {
     return nil;
 }
 - (NSDictionary*)currentSnapshot {
-    return displaySnapshot(_project);
+    return displaySnapshot(_project, _richText);
 }
 - (NSDictionary*)revisionSnapshot:(NSString*)identifier error:(NSError**)error {
     NSDictionary* entry = [self revision:identifier];
     neon::core::Project project;
-    if (!entry || !decode(entry[@"project"], &project)) {
+    NSDictionary* formatting = nil;
+    if (!entry || !decode(entry[@"project"], &project, &formatting)) {
         fail(error, @"This revision cannot be read safely.");
         return nil;
     }
-    return displaySnapshot(project);
+    return displaySnapshot(project, formatting);
 }
 - (NSString*)previewRevision:(NSString*)identifier error:(NSError**)error {
     NSDictionary* entry = [self revision:identifier];
@@ -611,32 +715,35 @@ bool validHistory(id history, const neon::core::Project& project) {
     if (!name.length)
         return fail(error, @"Give the checkpoint a name.");
     NSMutableArray* history = [self historyIncludingBaseline];
-    NSMutableDictionary* entry = [snapshot(_project, _actor, name, @"checkpoint") mutableCopy];
+    NSMutableDictionary* entry =
+        [snapshot(_project, _richText, _actor, name, @"checkpoint") mutableCopy];
     NSString* cleanNote =
         [note stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (cleanNote.length)
         entry[@"note"] = cleanNote;
     [history addObject:entry];
-    return [self writeProject:_project history:history error:error];
+    return [self writeProject:_project history:history richText:_richText error:error];
 }
 - (BOOL)restoreRevision:(NSString*)identifier error:(NSError**)error {
     NSDictionary* entry = [self revision:identifier];
     neon::core::Project restored;
-    if (!entry || !decode(entry[@"project"], &restored))
+    NSDictionary* restoredRichText = nil;
+    if (!entry || !decode(entry[@"project"], &restored, &restoredRichText))
         return fail(error, @"This revision cannot be restored safely.");
     auto candidate = _project;
     auto result = neon::core::restoreProject(&candidate, restored);
     if (!result.ok)
         return fail(error, ns(result.message));
     NSMutableArray* history = [self historyIncludingBaseline];
-    [history addObject:snapshot(_project, _actor, @"Before restore", @"checkpoint")];
+    [history addObject:snapshot(_project, _richText, _actor, @"Before restore", @"checkpoint")];
     [history
-        addObject:snapshot(candidate, _actor,
+        addObject:snapshot(candidate, restoredRichText, _actor,
                            [@"Restored: " stringByAppendingString:entry[@"label"]], @"restore")];
-    if (![self writeProject:candidate history:history error:error])
+    if (![self writeProject:candidate history:history richText:restoredRichText error:error])
         return NO;
     NSString* selected = self.selectedSectionID;
     _project = std::move(candidate);
+    _richText = [restoredRichText mutableCopy];
     if (![self selectSection:selected error:nil]) {
         _selected = 0;
         while (_selected < _project.documents[0].sections.size() &&

@@ -7,6 +7,7 @@
 #import "LibraryStore.h"
 #import "Preferences.h"
 #import "Settings.h"
+#import "TextFormatting.h"
 #import "UITestFixtures.h"
 #import "WorkspaceController.h"
 #import "WorkspaceRoute.h"
@@ -73,6 +74,52 @@
     if (self.window.firstResponder == self) {
         [NeonAccent() setStroke];
         [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(bounds, 1, 1) xRadius:5
+                                         yRadius:5] stroke];
+    }
+}
+@end
+@interface NeonFormatCommand : NeonPaperCommand
+@end
+@implementation NeonFormatCommand
+- (void)drawRect:(NSRect)rect {
+    (void)rect;
+    if (self.chosen || self.hovered || self.highlighted) {
+        [(self.chosen ? NeonSelection() : [NeonInk() colorWithAlphaComponent:0.06]) setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:5 yRadius:5] fill];
+    }
+    NSColor* ink = self.chosen ? NeonAccent() : NeonInk();
+    if ([@[ @"bullet", @"numbered" ] containsObject:self.identifier]) {
+        [ink setStroke];
+        CGFloat x = NSMidX(self.bounds) - 8, y = NSMidY(self.bounds) - 5;
+        NSBezierPath* lines = [NSBezierPath bezierPath];
+        for (NSInteger i = 0; i < 3; ++i) {
+            [lines moveToPoint:NSMakePoint(x + 6, y + i * 5)];
+            [lines lineToPoint:NSMakePoint(x + 16, y + i * 5)];
+            NSString* marker = [self.identifier isEqual:@"bullet"] ? @"•" : [@(i + 1) stringValue];
+            [marker drawAtPoint:NSMakePoint(x, y + i * 5 - 4)
+                 withAttributes:@{
+                     NSFontAttributeName : NeonUI(7),
+                     NSForegroundColorAttributeName : ink
+                 }];
+        }
+        lines.lineWidth = 1.2;
+        [lines stroke];
+    } else {
+        NSFont* font = [self.identifier isEqual:@"bold"] ? NeonUIBold(14) : NeonUI(14);
+        if ([self.identifier isEqual:@"italic"])
+            font = [NSFontManager.sharedFontManager convertFont:font toHaveTrait:NSItalicFontMask];
+        NSMutableDictionary* attrs =
+            [@{NSFontAttributeName : font, NSForegroundColorAttributeName : ink} mutableCopy];
+        if ([self.identifier isEqual:@"underline"])
+            attrs[NSUnderlineStyleAttributeName] = @1;
+        NSSize size = [self.title sizeWithAttributes:attrs];
+        [self.title drawAtPoint:NSMakePoint(NSMidX(self.bounds) - size.width / 2,
+                                            NSMidY(self.bounds) - size.height / 2)
+                 withAttributes:attrs];
+    }
+    if (self.window.firstResponder == self) {
+        [NeonAccent() setStroke];
+        [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 1, 1) xRadius:5
                                          yRadius:5] stroke];
     }
 }
@@ -449,6 +496,14 @@ NSUInteger words(NSString* text) {
 @property(nonatomic) NSInteger transitionDirection;
 @property(nonatomic, strong) NeonHistoryController* historyController;
 @property(nonatomic, strong) NSTextField* presetDescription;
+@property(nonatomic, strong) NSMutableArray<NeonButton*>* formattingButtons;
+@property(nonatomic, strong) NSPopUpButton* paragraphPicker;
+@property(nonatomic) BOOL applyingFormat;
+@property(nonatomic, strong) NSPopover* insertionPopover;
+@property(nonatomic, strong) NeonField* insertionField;
+@property(nonatomic, copy) NSString* insertionCommand;
+@property(nonatomic) NSRange insertionSelection;
+@property(nonatomic, weak) NSTextView* insertionEditor;
 @property(nonatomic, strong) NSTextField* creationTitle;
 @property(nonatomic, strong) NSView* sectionCreationPage;
 @property(nonatomic, strong) NeonField* sectionCreationField;
@@ -632,7 +687,9 @@ NSUInteger words(NSString* text) {
     [self.window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
     if (self.smoke) {
-        if (NSProcessInfo.processInfo.environment[@"NEON_CREATION_ONLY"]) {
+        if (NSProcessInfo.processInfo.environment[@"NEON_FORMATTING_ONLY"]) {
+            [self performSelector:@selector(runFormattingSmoke) withObject:nil afterDelay:0.1];
+        } else if (NSProcessInfo.processInfo.environment[@"NEON_CREATION_ONLY"]) {
             [self newProject:nil];
             [self performSelector:@selector(captureCreation) withObject:nil afterDelay:2];
         } else
@@ -785,8 +842,10 @@ NSUInteger words(NSString* text) {
     ];
 }
 - (NSArray*)toolbarAllowedItemIdentifiers:(NSToolbar*)toolbar {
-    return [[self toolbarDefaultItemIdentifiers:toolbar]
-        arrayByAddingObjectsFromArray:@[ @"sidebar", @"focus" ]];
+    return [[self toolbarDefaultItemIdentifiers:toolbar] arrayByAddingObjectsFromArray:@[
+        @"sidebar", @"focus", @"formatting", @"formatDivider", @"type", @"link", @"equation",
+        @"citation"
+    ]];
 }
 - (NSToolbarItem*)toolbar:(NSToolbar*)toolbar
         itemForItemIdentifier:(NSString*)identifier
@@ -856,16 +915,100 @@ NSUInteger words(NSString* text) {
         self.toolbarTitleWidth.active = YES;
         return titleItem;
     }
-    if ([identifier isEqual:@"focus"]) {
+    if ([identifier isEqual:@"formatting"]) {
         NSToolbarItem* item = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
-        NeonButton* exit = [NeonButton new];
-        exit.title = @"Exit focus";
-        exit.kind = NeonButtonSecondary;
-        exit.target = self;
-        exit.action = @selector(toggleFocus:);
-        item.view = exit;
-        item.label = @"Exit focus";
+        item.label = @"Text formatting";
         item.bordered = NO;
+        NSStackView* group = [NSStackView new];
+        group.spacing = 2;
+        self.formattingButtons = [NSMutableArray array];
+        self.paragraphPicker = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+        [self.paragraphPicker addItemsWithTitles:@[ @"Body text", @"Heading 1", @"Heading 2" ]];
+        self.paragraphPicker.font = NeonUI(13);
+        self.paragraphPicker.bordered = NO;
+        self.paragraphPicker.accessibilityLabel = @"Paragraph style";
+        self.paragraphPicker.target = self;
+        self.paragraphPicker.action = @selector(applyParagraphStyle:);
+        [self.paragraphPicker.widthAnchor constraintEqualToConstant:92].active = YES;
+        [group addArrangedSubview:self.paragraphPicker];
+        NSMenu* overflow = [NSMenu new];
+        NSArray* commands = @[
+            @"body", @"heading1", @"heading2", @"bold", @"italic", @"underline", @"bullet",
+            @"numbered", @"quote"
+        ];
+        NSArray* titles = @[
+            @"Body text", @"Heading 1", @"Heading 2", @"Bold", @"Italic", @"Underline",
+            @"Bulleted list", @"Numbered list", @"Block quote"
+        ];
+        NSArray* symbols = @[ @"B", @"I", @"U", @"•≡", @"1≡", @"“" ];
+        for (NSUInteger i = 0; i < commands.count; ++i) {
+            NSMenuItem* menu = [[NSMenuItem alloc] initWithTitle:titles[i]
+                                                          action:@selector(applyFormatting:)
+                                                   keyEquivalent:@""];
+            menu.target = self;
+            menu.representedObject = commands[i];
+            [overflow addItem:menu];
+            if (i < 3)
+                continue;
+            NeonPaperCommand* control = [NeonFormatCommand new];
+            control.title = symbols[i - 3];
+            control.identifier = commands[i];
+            control.accessibilityLabel = titles[i];
+            control.toolTip = titles[i];
+            control.target = self;
+            control.action = @selector(applyFormatting:);
+            [control.widthAnchor constraintEqualToConstant:28].active = YES;
+            [control.heightAnchor constraintEqualToConstant:28].active = YES;
+            [group addArrangedSubview:control];
+            [self.formattingButtons addObject:control];
+        }
+        item.view = group;
+        NSMenuItem* representation = [[NSMenuItem alloc] initWithTitle:@"Text formatting"
+                                                                action:nil
+                                                         keyEquivalent:@""];
+        representation.submenu = overflow;
+        item.menuFormRepresentation = representation;
+        return item;
+    }
+    if ([identifier isEqual:@"formatDivider"]) {
+        NSToolbarItem* item = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
+        NSBox* divider = [NSBox new];
+        divider.boxType = NSBoxSeparator;
+        [divider.widthAnchor constraintEqualToConstant:1].active = YES;
+        [divider.heightAnchor constraintEqualToConstant:18].active = YES;
+        item.view = divider;
+        item.bordered = NO;
+        return item;
+    }
+    if ([@[ @"link", @"equation", @"citation", @"focus" ] containsObject:identifier]) {
+        NSDictionary* names = @{
+            @"link" : @"Link",
+            @"equation" : @"Equation",
+            @"citation" : @"Citation",
+            @"focus" : self.focusMode ? @"Exit focus" : @"Focus"
+        };
+        NSToolbarItem* item = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
+        NeonPaperCommand* control = [NeonPaperCommand new];
+        control.title = names[identifier];
+        control.identifier = identifier;
+        control.accessibilityLabel = names[identifier];
+        control.toolTip =
+            [identifier isEqual:@"equation"] ? @"Insert LaTeX source" : names[identifier];
+        control.target = self;
+        control.action =
+            [identifier isEqual:@"focus"] ? @selector(toggleFocus:) : @selector(showInsertion:);
+        [control.heightAnchor constraintEqualToConstant:28].active = YES;
+        [control.widthAnchor constraintEqualToConstant:[identifier isEqual:@"equation"] ? 66 : 60]
+            .active = YES;
+        item.view = control;
+        item.label = names[identifier];
+        item.bordered = NO;
+        NSMenuItem* menu = [[NSMenuItem alloc] initWithTitle:names[identifier]
+                                                      action:control.action
+                                               keyEquivalent:@""];
+        menu.target = self;
+        menu.representedObject = identifier;
+        item.menuFormRepresentation = menu;
         return item;
     }
     if ([identifier isEqual:@"search"]) {
@@ -936,17 +1079,14 @@ NSUInteger words(NSString* text) {
         [self toggleSidebar:nil];
     }
     self.focusMode = !self.focusMode;
-    if (self.focusMode)
-        [self.window.toolbar insertItemWithItemIdentifier:@"focus"
-                                                  atIndex:self.window.toolbar.items.count];
-    else {
-        NSUInteger index = [self.window.toolbar.items
-            indexOfObjectPassingTest:^BOOL(NSToolbarItem* item, NSUInteger, BOOL*) {
-              return [item.itemIdentifier isEqual:@"focus"];
-            }];
-        if (index != NSNotFound)
-            [self.window.toolbar removeItemAtIndex:index];
-    }
+    for (NSToolbarItem* item in self.window.toolbar.items)
+        if ([item.itemIdentifier isEqual:@"focus"]) {
+            ((NSButton*)item.view).title = self.focusMode ? @"Exit focus" : @"Focus";
+            item.label = ((NSButton*)item.view).title;
+            item.view.accessibilityLabel = item.label;
+            item.view.toolTip = item.label;
+            item.menuFormRepresentation.title = item.label;
+        }
     [self.window makeFirstResponder:self.editor];
 }
 - (void)toggleSidebar:(id)sender {
@@ -1324,27 +1464,26 @@ NSUInteger words(NSString* text) {
         self.windowTitle.hidden = library;
     }
     NSToolbar* toolbar = self.window.toolbar;
-    if (library) {
-        for (NSInteger index = (NSInteger)toolbar.items.count - 1; index >= 0; --index)
-            if ([@[ @"workspace", @"type", @"focus" ]
-                    containsObject:toolbar.items[index].itemIdentifier])
-                [toolbar removeItemAtIndex:index];
-    } else {
-        for (NSString* name in @[ @"workspace" ]) {
-            BOOL found = NO;
-            for (NSToolbarItem* item in toolbar.items)
-                found = found || [item.itemIdentifier isEqual:name];
-            if (!found) {
-                NSString* before = [name isEqual:@"workspace"] ? @"search" : @"more";
-                NSUInteger index = [toolbar.items
-                    indexOfObjectPassingTest:^BOOL(NSToolbarItem* item, NSUInteger, BOOL*) {
-                      return [item.itemIdentifier isEqual:before];
-                    }];
-                [toolbar
-                    insertItemWithItemIdentifier:name
-                                         atIndex:index == NSNotFound ? toolbar.items.count : index];
-            }
-        }
+    NSArray* commands = @[
+        @"formatting", @"formatDivider", @"link", @"equation", @"citation", @"workspace", @"type",
+        @"focus"
+    ];
+    for (NSInteger index = (NSInteger)toolbar.items.count - 1; index >= 0; --index)
+        if ([commands containsObject:toolbar.items[index].itemIdentifier])
+            [toolbar removeItemAtIndex:index];
+    if (!library) {
+        NSMutableArray* actions =
+            [NSMutableArray arrayWithArray:@[ @"formatting", @"formatDivider" ]];
+        NSString* preset = self.session.preset[@"id"];
+        if ([@[ @"article", @"newsletter", @"blank" ] containsObject:preset])
+            [actions addObject:@"link"];
+        if ([preset isEqual:@"research"])
+            [actions addObject:@"equation"];
+        if ([@[ @"research", @"essay" ] containsObject:preset])
+            [actions addObject:@"citation"];
+        [actions addObjectsFromArray:@[ @"type", @"focus", @"workspace" ]];
+        for (NSString* name in actions)
+            [toolbar insertItemWithItemIdentifier:name atIndex:toolbar.items.count];
     }
 }
 - (void)setChromeHeight:(CGFloat)height {
@@ -1621,10 +1760,17 @@ NSUInteger words(NSString* text) {
     self.editor.textContainer.widthTracksTextView = YES;
     self.editor.textContainerInset = NSMakeSize(0, 0);
     self.editor.textContainer.lineFragmentPadding = 0;
-    self.editor.richText = NO;
+    self.editor.richText = YES;
     self.editor.allowsUndo = YES;
-    if (!resume)
-        self.editor.string = self.session.text;
+    if (!resume) {
+        NSData* rich = self.session.richTextData;
+        NSAttributedString* saved =
+            rich ? [[NSAttributedString alloc] initWithRTF:rich documentAttributes:nil] : nil;
+        if (saved && [saved.string isEqual:self.session.text])
+            [self.editor.textStorage setAttributedString:saved];
+        else
+            self.editor.string = self.session.text;
+    }
     self.editor.delegate = self;
     if ([self.editor isKindOfClass:NeonTextView.class]) {
         __weak NeonApp* app = self;
@@ -1672,6 +1818,7 @@ NSUInteger words(NSString* text) {
     [self.workspaceController refreshLayout];
     [self.window makeFirstResponder:self.editor];
     [self updateStatus:YES];
+    [self refreshFormattingState];
     if (resume) {
         [self.content.view layoutSubtreeIfNeeded];
         [scroll.contentView scrollToPoint:self.historyScroll];
@@ -1699,6 +1846,232 @@ NSUInteger words(NSString* text) {
     });
     return YES;
 }
+- (BOOL)storeEditorFormatting:(NSError**)error {
+    if (!self.editor)
+        return YES;
+    NSData* rtf = [self.editor.textStorage RTFFromRange:NSMakeRange(0, self.editor.string.length)
+                                     documentAttributes:@{}];
+    if (!rtf) {
+        if (error)
+            *error = [NSError
+                errorWithDomain:@"Neon"
+                           code:14
+                       userInfo:@{
+                           NSLocalizedDescriptionKey : @"Could not encode manuscript formatting."
+                       }];
+        return NO;
+    }
+    return [self.session replaceRichTextData:rtf text:self.editor.string error:error];
+}
+- (void)restoreFormatting:(NSAttributedString*)text
+                selection:(NSRange)selection
+                   typing:(NSDictionary*)typing
+                   editor:(NSTextView*)editor {
+    if (self.editor != editor)
+        return;
+    NSAttributedString* before = [editor.textStorage copy];
+    NSRange previous = editor.selectedRange;
+    NSDictionary* previousTyping = editor.typingAttributes;
+    [[editor undoManager] registerUndoWithTarget:self
+                                         handler:^(NeonApp* app) {
+                                           [app restoreFormatting:before
+                                                        selection:previous
+                                                           typing:previousTyping
+                                                           editor:editor];
+                                         }];
+    self.applyingFormat = YES;
+    [editor.textStorage setAttributedString:text];
+    editor.selectedRange = selection;
+    editor.typingAttributes = typing;
+    self.applyingFormat = NO;
+    [self textDidChange:[NSNotification notificationWithName:NSTextDidChangeNotification
+                                                      object:self.editor]];
+    [self refreshFormattingState];
+}
+- (void)applyParagraphStyle:(NSPopUpButton*)sender {
+    NSString* command = @[ @"body", @"heading1", @"heading2" ][sender.indexOfSelectedItem];
+    [self applyFormattingCommand:command];
+}
+- (void)applyFormatting:(id)sender {
+    NSString* command =
+        [sender isKindOfClass:NSMenuItem.class] ? [sender representedObject] : [sender identifier];
+    [self applyFormattingCommand:command];
+}
+- (void)applyFormattingCommand:(NSString*)command {
+    if (!self.editor || self.sectionCreationPage || self.historyController)
+        return;
+    if (self.editor.hasMarkedText)
+        [self.editor unmarkText];
+    NSRange selection = self.editor.selectedRange;
+    NSFont* base =
+        self.manuscriptTypingAttributes[NSFontAttributeName] ?: NeonSerif(NeonTextSize());
+    if (!selection.length && [@[ @"bold", @"italic", @"underline" ] containsObject:command]) {
+        NSDictionary* next = NeonFormatTyping(self.editor.typingAttributes, command, base);
+        [self restoreFormatting:self.editor.textStorage
+                      selection:selection
+                         typing:next
+                         editor:self.editor];
+    } else {
+        NeonFormattingResult* result =
+            NeonFormatText(self.editor.textStorage, selection, command, base);
+        BOOL emptyParagraph =
+            !selection.length && [self.editor.string paragraphRangeForRange:selection].length == 0;
+        NSDictionary* typing =
+            result.typingAttributes
+                ?: (emptyParagraph ? NeonFormatTyping(self.editor.typingAttributes, command, base)
+                    : result.text.length
+                        ? [result.text attributesAtIndex:MIN(result.selection.location,
+                                                             result.text.length - 1)
+                                          effectiveRange:nil]
+                        : NeonFormatTyping(self.editor.typingAttributes, command, base));
+        [self restoreFormatting:result.text
+                      selection:result.selection
+                         typing:typing
+                         editor:self.editor];
+    }
+    [self.editor.undoManager setActionName:@"Format text"];
+    [self.window makeFirstResponder:self.editor];
+}
+- (void)updateFormattingAvailability {
+    BOOL enabled = self.editor && !self.sectionCreationPage && !self.historyController;
+    self.paragraphPicker.enabled = enabled;
+    for (NeonButton* button in self.formattingButtons)
+        button.enabled = enabled;
+    for (NSToolbarItem* item in self.window.toolbar.items)
+        if ([@[ @"link", @"equation", @"citation", @"type", @"focus" ]
+                containsObject:item.itemIdentifier]) {
+            ((NSControl*)item.view).enabled = enabled;
+            item.menuFormRepresentation.enabled = enabled;
+        }
+}
+- (void)refreshFormattingState {
+    [self updateFormattingAvailability];
+    if (!self.editor || self.applyingFormat)
+        return;
+    NSAttributedString* probe =
+        self.editor.selectedRange.length
+            ? self.editor.textStorage
+            : [[NSAttributedString alloc] initWithString:@"x"
+                                              attributes:self.editor.typingAttributes];
+    NSRange range =
+        self.editor.selectedRange.length ? self.editor.selectedRange : NSMakeRange(0, 1);
+    for (NeonButton* control in self.formattingButtons) {
+        control.chosen = NeonFormatActive(probe, range, control.identifier);
+        control.kind = control.chosen ? NeonButtonSelection : NeonButtonQuiet;
+        control.needsDisplay = YES;
+    }
+    [self.paragraphPicker selectItemAtIndex:NeonFormatActive(probe, range, @"heading1")   ? 1
+                                            : NeonFormatActive(probe, range, @"heading2") ? 2
+                                                                                          : 0];
+}
+- (void)showInsertion:(id)sender {
+    if (!self.editor || self.sectionCreationPage || self.historyController)
+        return;
+    NSString* command =
+        [sender isKindOfClass:NSMenuItem.class] ? [sender representedObject] : [sender identifier];
+    self.insertionCommand = command;
+    self.insertionSelection = self.editor.selectedRange;
+    self.insertionEditor = self.editor;
+    [self.insertionPopover close];
+    self.insertionPopover = [NSPopover new];
+    self.insertionPopover.behavior = NSPopoverBehaviorTransient;
+    NSViewController* controller = [NSViewController new];
+    controller.view = [[NeonSurface alloc] initWithFrame:NSMakeRect(0, 0, 360, 220)];
+    NSString* title = [command isEqual:@"link"]       ? @"Insert link"
+                      : [command isEqual:@"equation"] ? @"Insert LaTeX source"
+                                                      : @"Insert citation";
+    NSString* fieldTitle = [command isEqual:@"link"]       ? @"URL"
+                           : [command isEqual:@"equation"] ? @"LaTeX source"
+                                                           : @"Citation text";
+    self.insertionField = [[NeonField alloc] initWithMultiline:NO label:fieldTitle];
+    if ([command isEqual:@"link"] && self.editor.string.length) {
+        id link = [self.editor.textStorage
+                 attribute:NSLinkAttributeName
+                   atIndex:MIN(self.insertionSelection.location, self.editor.string.length - 1)
+            effectiveRange:nil];
+        if (link)
+            self.insertionField.singleLine.stringValue = [link description];
+    }
+    NeonPaperCommand* cancel = [NeonPaperCommand new];
+    cancel.title = @"Cancel";
+    cancel.target = self;
+    cancel.action = @selector(cancelInsertion:);
+    NeonButton* insert = [NeonButton new];
+    insert.title = @"Insert";
+    insert.kind = NeonButtonPrimary;
+    insert.compact = YES;
+    insert.target = self;
+    insert.action = @selector(commitInsertion:);
+    self.insertionField.singleLine.target = self;
+    self.insertionField.singleLine.action = @selector(commitInsertion:);
+    NSStackView* actions = [NSStackView stackViewWithViews:@[ cancel, insert ]];
+    actions.spacing = 16;
+    NSStackView* form =
+        column(@[ label(title, NeonSerif(20), NeonInk()), self.insertionField, actions ], 16);
+    form.edgeInsets = NSEdgeInsetsMake(16, 16, 16, 16);
+    pin(form, controller.view);
+    [self.insertionField.widthAnchor constraintEqualToConstant:328].active = YES;
+    self.insertionPopover.contentViewController = controller;
+    NSView* anchor = [sender isKindOfClass:NSView.class] ? sender : self.editor;
+    [self.insertionPopover showRelativeToRect:anchor.bounds ofView:anchor preferredEdge:NSMinYEdge];
+    [controller.view.window makeFirstResponder:self.insertionField.singleLine];
+}
+- (void)cancelInsertion:(id)sender {
+    (void)sender;
+    [self.insertionPopover close];
+    [self.window makeFirstResponder:self.editor];
+}
+- (void)commitInsertion:(id)sender {
+    (void)sender;
+    if (self.editor != self.insertionEditor) {
+        [self.insertionPopover close];
+        return;
+    }
+    NSString* value = [self.insertionField.singleLine.stringValue
+        stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (!value.length) {
+        self.insertionField.errorMessage = @"Enter a value to continue.";
+        return;
+    }
+    NSMutableAttributedString* text = [self.editor.textStorage mutableCopy];
+    NSRange range = self.insertionSelection;
+    if (NSMaxRange(range) > text.length) {
+        [self.insertionPopover close];
+        return;
+    }
+    NSMutableDictionary* attrs = [self.editor.typingAttributes mutableCopy];
+    [attrs removeObjectForKey:NSLinkAttributeName];
+    if ([self.insertionCommand isEqual:@"link"]) {
+        NSURL* url = [NSURL URLWithString:value];
+        if (![@[ @"http", @"https", @"mailto" ] containsObject:url.scheme.lowercaseString] ||
+            (!url.host.length && ![url.scheme.lowercaseString isEqual:@"mailto"])) {
+            self.insertionField.errorMessage = @"Enter an http, https, or mailto URL.";
+            return;
+        }
+        if (range.length) {
+            [text addAttribute:NSLinkAttributeName value:url range:range];
+        } else {
+            attrs[NSLinkAttributeName] = url;
+            [text insertAttributedString:[[NSAttributedString alloc] initWithString:value
+                                                                         attributes:attrs]
+                                 atIndex:range.location];
+            range.length = value.length;
+        }
+    } else {
+        NSString* inserted = [self.insertionCommand isEqual:@"equation"]
+                                 ? [NSString stringWithFormat:@"\\(%@\\)", value]
+                                 : value;
+        [text replaceCharactersInRange:range
+                  withAttributedString:[[NSAttributedString alloc] initWithString:inserted
+                                                                       attributes:attrs]];
+        range.length = inserted.length;
+    }
+    [attrs removeObjectForKey:NSLinkAttributeName];
+    [self restoreFormatting:text selection:range typing:attrs editor:self.editor];
+    [self.editor.undoManager setActionName:@"Insert text"];
+    [self cancelInsertion:nil];
+}
+
 - (void)styleEditor {
     if (!self.editor)
         return;
@@ -1708,7 +2081,7 @@ NSUInteger words(NSString* text) {
     }
     self.pendingTypography = NO;
     NSRange selection = self.editor.selectedRange;
-    self.editor.font = ([NeonPreferences() objectForKey:@"manuscriptFont"]
+    NSFont* baseFont = ([NeonPreferences() objectForKey:@"manuscriptFont"]
                             ? NeonManuscriptFont(NeonTextSize())
                             : NeonFontNamed(self.session.preset[@"font"], NeonTextSize()));
     NSMutableParagraphStyle* paragraph = [NSMutableParagraphStyle new];
@@ -1748,14 +2121,10 @@ NSUInteger words(NSString* text) {
     self.editor.automaticQuoteSubstitutionEnabled = NeonWritingPreference(@"smartQuotes");
     self.editor.automaticDashSubstitutionEnabled = NeonWritingPreference(@"smartDashes");
     self.editor.defaultParagraphStyle = paragraph;
-    [self.editor.textStorage addAttributes:@{
-        NSFontAttributeName : ([NeonPreferences() objectForKey:@"manuscriptFont"]
-                                   ? NeonManuscriptFont(NeonTextSize())
-                                   : NeonFontNamed(self.session.preset[@"font"], NeonTextSize())),
-        NSParagraphStyleAttributeName : paragraph,
-        NSForegroundColorAttributeName : NeonInk()
-    }
-                                     range:NSMakeRange(0, self.editor.string.length)];
+    NeonRestyleText(self.editor.textStorage, baseFont, paragraph);
+    [self.editor.textStorage addAttribute:NSForegroundColorAttributeName
+                                    value:NeonInk()
+                                    range:NSMakeRange(0, self.editor.string.length)];
     // Plain-text manuscripts can contain explicit blank separator lines. Give
     // those separators the paragraph gap once, rather than adding paragraph
     // spacing to both the preceding text and every empty line. Text is untouched.
@@ -1774,6 +2143,14 @@ NSUInteger words(NSString* text) {
                               next < text.length && [text characterAtIndex:next] == '\n';
                           if ([self.session.preset[@"id"] isEqual:@"book"] &&
                               (blank || followedByBlank)) {
+                              NSParagraphStyle* existing =
+                                  [self.editor.textStorage attribute:NSParagraphStyleAttributeName
+                                                             atIndex:enclosing.location
+                                                      effectiveRange:nil];
+                              if (existing.textLists.count ||
+                                  existing.headIndent != paragraph.headIndent ||
+                                  existing.paragraphSpacingBefore > 0)
+                                  return;
                               NSMutableParagraphStyle* separated = [paragraph mutableCopy];
                               separated.paragraphSpacing = 0;
                               if (blank) {
@@ -1795,16 +2172,37 @@ NSUInteger words(NSString* text) {
         NSParagraphStyleAttributeName : paragraph,
         NSForegroundColorAttributeName : NeonInk()
     };
+    NSDictionary* retainedTyping = self.editor.typingAttributes;
     self.editor.selectedRange = selection;
-    self.editor.typingAttributes = self.manuscriptTypingAttributes;
+    self.editor.typingAttributes = NeonRestyleTyping(retainedTyping, baseFont, paragraph);
     [self.workspaceController refreshLayout];
 }
+- (BOOL)textView:(NSTextView*)view doCommandBySelector:(SEL)command {
+    if (view != self.editor || command != @selector(insertNewline:) || view.hasMarkedText)
+        return NO;
+    NeonFormattingResult* result =
+        NeonContinueList(view.textStorage, view.selectedRange, view.typingAttributes,
+                         self.manuscriptTypingAttributes[NSFontAttributeName]);
+    if (!result)
+        return NO;
+    [self restoreFormatting:result.text
+                  selection:result.selection
+                     typing:result.typingAttributes
+                     editor:view];
+    [view.undoManager setActionName:@"Continue list"];
+    return YES;
+}
 - (void)textViewDidChangeSelection:(NSNotification*)notification {
+    if (self.applyingFormat)
+        return;
     // Blank separator styles only control layout; never inherit their compressed
     // line height when the caret moves or selected text is replaced.
     if (notification.object == self.editor && !self.editor.hasMarkedText &&
         self.manuscriptTypingAttributes)
-        self.editor.typingAttributes = self.manuscriptTypingAttributes;
+        self.editor.typingAttributes = NeonRestyleTyping(
+            self.editor.typingAttributes, self.manuscriptTypingAttributes[NSFontAttributeName],
+            self.manuscriptTypingAttributes[NSParagraphStyleAttributeName]);
+    [self refreshFormattingState];
 }
 - (void)updateStatus:(BOOL)saved {
     self.sidebarSummary.stringValue =
@@ -1819,12 +2217,12 @@ NSUInteger words(NSString* text) {
 }
 - (void)textDidChange:(NSNotification*)notification {
     (void)notification;
-    if (self.editor.hasMarkedText)
+    if (self.editor.hasMarkedText || self.applyingFormat)
         return;
     if (self.pendingTypography || [self.session.preset[@"id"] isEqual:@"book"])
         [self styleEditor];
     NSError* error = nil;
-    if (![self.session replaceText:self.editor.string error:&error]) {
+    if (![self storeEditorFormatting:&error]) {
         [self showError:error];
         return;
     }
@@ -1850,8 +2248,7 @@ NSUInteger words(NSString* text) {
     if (self.editor.hasMarkedText)
         [self.editor unmarkText];
     NSError* error = nil;
-    if ((self.editor && ![self.session replaceText:self.editor.string error:&error]) ||
-        ![self.session save:&error]) {
+    if ((self.editor && ![self storeEditorFormatting:&error]) || ![self.session save:&error]) {
         [self showError:error];
         return NO;
     }
@@ -2104,7 +2501,7 @@ NSUInteger words(NSString* text) {
     control.accessibilityLabel = title;
     control.toolTip = title;
     control.enabled = self.session != nil;
-    [control.heightAnchor constraintEqualToConstant:NeonMinimumTouchTarget].active = YES;
+    [control.heightAnchor constraintEqualToConstant:28].active = YES;
     [control.widthAnchor constraintGreaterThanOrEqualToConstant:NeonMinimumTouchTarget].active =
         YES;
     self.workspaceItem.view = control;
@@ -2161,6 +2558,7 @@ NSUInteger words(NSString* text) {
     NeonSurface* page = [[NeonSurface alloc] initWithFrame:self.content.view.bounds];
     page.identifier = @"new-section-screen";
     self.sectionCreationPage = page;
+    [self updateFormattingAvailability];
     for (NSView* child in self.content.view.subviews)
         child.hidden = YES;
     [self.content.view addSubview:page];
@@ -2208,6 +2606,7 @@ NSUInteger words(NSString* text) {
         return;
     [self.sectionCreationPage removeFromSuperview];
     self.sectionCreationPage = nil;
+    [self updateFormattingAvailability];
     self.sectionCreationField = nil;
     for (NSView* child in self.content.view.subviews)
         child.hidden = NO;
@@ -2895,6 +3294,106 @@ NSUInteger words(NSString* text) {
     [self newProject:nil];
     [self performSelector:@selector(captureCreation) withObject:nil afterDelay:1];
 }
+- (void)runFormattingSmoke {
+    [self openProjectRecord:self.projects.firstObject];
+    [self verifyToolbarFormatting];
+    [NSApp terminate:nil];
+}
+- (void)verifyToolbarFormatting {
+    self.editor.string = @"First paragraph\nSecond paragraph";
+    [self styleEditor];
+    [self.editor.undoManager removeAllActions];
+    self.editor.selectedRange = NSMakeRange(0, 5);
+    [self applyFormattingCommand:@"bold"];
+    if (!NeonFormatActive(self.editor.textStorage, NSMakeRange(0, 5), @"bold")) {
+        fprintf(stderr, "Mac formatting regression at line %d\n", __LINE__);
+        exit(15);
+    }
+    [self styleEditor];
+    if (!NeonFormatActive(self.editor.textStorage, NSMakeRange(0, 5), @"bold")) {
+        fprintf(stderr, "Mac formatting regression at line %d\n", __LINE__);
+        exit(15);
+    }
+    [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+    [self.editor.undoManager undo];
+    if (NeonFormatActive(self.editor.textStorage, NSMakeRange(0, 5), @"bold")) {
+        fprintf(stderr, "Mac formatting regression at line %d\n", __LINE__);
+        exit(15);
+    }
+    [self.editor.undoManager redo];
+    if (!NeonFormatActive(self.editor.textStorage, NSMakeRange(0, 5), @"bold")) {
+        fprintf(stderr, "Mac formatting regression at line %d\n", __LINE__);
+        exit(15);
+    }
+    [self applyFormattingCommand:@"italic"];
+    [self applyFormattingCommand:@"underline"];
+    [self applyFormattingCommand:@"heading1"];
+    if (![self flush]) {
+        fprintf(stderr, "Mac formatting regression at line %d\n", __LINE__);
+        exit(15);
+    }
+    NSError* error = nil;
+    NeonDocumentSession* saved = [self.library openURL:self.selectedURL error:&error];
+    NSAttributedString* restored = [[NSAttributedString alloc] initWithRTF:saved.richTextData
+                                                        documentAttributes:nil];
+    for (NSString* command in @[ @"bold", @"italic", @"underline", @"heading1" ])
+        if (!NeonFormatActive(restored, NSMakeRange(0, 5), command)) {
+            fprintf(stderr, "Mac formatting regression at line %d\n", __LINE__);
+            exit(15);
+        }
+    self.editor.selectedRange = NSMakeRange(0, self.editor.string.length);
+    [self applyFormattingCommand:@"bullet"];
+    if (!NeonFormatActive(self.editor.textStorage, self.editor.selectedRange, @"bullet")) {
+        fprintf(stderr, "Mac formatting regression at line %d\n", __LINE__);
+        exit(15);
+    }
+    [self applyFormattingCommand:@"numbered"];
+    if (!NeonFormatActive(self.editor.textStorage, self.editor.selectedRange, @"numbered")) {
+        fprintf(stderr, "Mac formatting regression at line %d\n", __LINE__);
+        exit(15);
+    }
+    self.editor.selectedRange = NSMakeRange(self.editor.string.length, 0);
+    [self.editor doCommandBySelector:@selector(insertNewline:)];
+    if (![self.editor.string hasSuffix:@"3.\t"]) {
+        fprintf(stderr, "Mac formatting regression at line %d\n", __LINE__);
+        exit(15);
+    }
+    [self.editor doCommandBySelector:@selector(insertNewline:)];
+    if ([self.editor.string hasSuffix:@"3.\t"] ||
+        ((NSParagraphStyle*)self.editor.typingAttributes[NSParagraphStyleAttributeName])
+            .textLists.count) {
+        fprintf(stderr, "Mac formatting regression at line %d\n", __LINE__);
+        exit(15);
+    }
+    self.editor.selectedRange = NSMakeRange(0, 5);
+    [self applyFormattingCommand:@"quote"];
+    if (!NeonFormatActive(self.editor.textStorage, self.editor.selectedRange, @"quote")) {
+        fprintf(stderr, "Mac formatting regression at line %d\n", __LINE__);
+        exit(15);
+    }
+    [self applyFormattingCommand:@"body"];
+    [self flush];
+    self.insertionEditor = self.editor;
+    self.insertionSelection = NSMakeRange(0, 5);
+    self.insertionCommand = @"link";
+    self.insertionField = [[NeonField alloc] initWithMultiline:NO label:@"URL"];
+    self.insertionField.singleLine.stringValue = @"javascript:alert(1)";
+    [self commitInsertion:nil];
+    if (!self.insertionField.errorMessage.length)
+        exit(15);
+    self.insertionField.singleLine.stringValue = @"https://example.com";
+    [self commitInsertion:nil];
+    if (![[[self.editor.textStorage attribute:NSLinkAttributeName atIndex:0
+                               effectiveRange:nil] description] isEqual:@"https://example.com"] ||
+        ![self flush])
+        exit(15);
+    NeonDocumentSession* linked = [self.library openURL:self.selectedURL error:&error];
+    NSAttributedString* linkedText = [[NSAttributedString alloc] initWithRTF:linked.richTextData
+                                                          documentAttributes:nil];
+    if (![linkedText attribute:NSLinkAttributeName atIndex:0 effectiveRange:nil])
+        exit(15);
+    printf("Mac toolbar formatting, undo, link insertion and RTF reopen passed\n");
+}
 - (void)captureCreation {
     [self capture:@"native-new-project.png"];
     NSUInteger choices = 0;
@@ -2938,6 +3437,7 @@ NSUInteger words(NSString* text) {
         exit(13);
     }
     [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.5]];
+    [self verifyToolbarFormatting];
     NSUInteger previousCount = self.session.sections.count;
     NSTextView* previousEditor = self.editor;
     NSString* previousSection = self.session.selectedSectionID;
