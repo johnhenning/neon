@@ -17,9 +17,23 @@ NeonColor* NeonMuted();
 NeonColor* NeonAccent();
 NeonColor* NeonSelection();
 NeonColor* NeonLine();
+NeonColor* NeonDanger();
+NeonColor* NeonActionText();
 NeonFont* NeonSerif(CGFloat size);
 NeonFont* NeonUI(CGFloat size);
+NeonFont* NeonUISemibold(CGFloat size);
+NeonFont* NeonUIBold(CGFloat size);
+BOOL NeonReduceMotion();
+BOOL NeonReduceTransparency();
+BOOL NeonGlassEnabled();
+#if TARGET_OS_IPHONE
+void NeonApplyGlassBackdrop(UIView* view, CGFloat radius);
+#else
+void NeonApplyGlassBackdrop(NSView* view, CGFloat radius);
+#endif
 CGFloat NeonTextSize();
+// Uses the responsive default only when there is no valid explicit size preference.
+CGFloat NeonTextSizeForViewport(CGFloat width);
 CGFloat NeonLineSpacing();
 NSInteger NeonAppearance();
 

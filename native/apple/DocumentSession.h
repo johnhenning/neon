@@ -11,11 +11,19 @@ NS_ASSUME_NONNULL_BEGIN
 // Only valid before a new project has been saved. Never replaces an existing manuscript.
 - (BOOL)initializePreset:(NSString*)identifier error:(NSError**)error;
 @property(nonatomic, readonly) NSArray<NSDictionary*>* history;
+@property(nonatomic, readonly) NSDictionary* currentSnapshot;
+- (nullable NSDictionary*)revisionSnapshot:(NSString*)identifier error:(NSError**)error;
+- (BOOL)createCheckpoint:(NSString*)name note:(NSString*)note error:(NSError**)error;
 - (nullable NSString*)previewRevision:(NSString*)identifier error:(NSError**)error;
 - (BOOL)createCheckpoint:(NSString*)name error:(NSError**)error;
 - (BOOL)restoreRevision:(NSString*)identifier error:(NSError**)error;
 @property(nonatomic, readonly) NSString* text;
+// Optional Apple-adapter RTF; semantic plain text remains available to the core.
+@property(nonatomic, readonly, nullable) NSData* richTextData;
+- (BOOL)replaceRichTextData:(NSData*)data text:(NSString*)text error:(NSError**)error;
 @property(nonatomic, readonly) BOOL dirty;
+@property(nonatomic, readonly) NSString* projectID;
+@property(nonatomic, readonly) NSUInteger projectWordCount;
 @property(nonatomic, readonly) NSString* title;
 @property(nonatomic, readonly) NSString* sectionTitle;
 @property(nonatomic, readonly) NSString* selectedSectionID;

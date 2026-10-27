@@ -1,6 +1,8 @@
 #include "EditorialTheme.h"
+#import "Controls.h"
 #import "Preferences.h"
 #import <CoreText/CoreText.h>
+#import <objc/runtime.h>
 
 namespace {
 NeonColor* tone(CGFloat r, CGFloat g, CGFloat b, CGFloat dr, CGFloat dg, CGFloat db,
@@ -35,7 +37,8 @@ NeonFont* regular(NeonFont* font, CGFloat size) {
 }
 } // namespace
 void NeonRegisterFonts() {
-    for (NSString* name in @[ @"literata", @"sourcesans3" ]) {
+    for (NSString* name in
+         @[ @"literata", @"sourcesans3", @"literata-italic", @"sourcesans3-italic" ]) {
         NSURL* url = [NSBundle.mainBundle URLForResource:name withExtension:@"ttf"];
         if (url)
             CTFontManagerRegisterFontsForURL((__bridge CFURLRef)url, kCTFontManagerScopeProcess,
@@ -43,27 +46,33 @@ void NeonRegisterFonts() {
     }
 }
 NeonColor* NeonPaper() {
-    return tone(249.0 / 255, 246.0 / 255, 239.0 / 255, 32.0 / 255, 33.0 / 255, 31.0 / 255);
+    return tone(249.0 / 255, 246.0 / 255, 239.0 / 255, 32.0 / 255, 34.0 / 255, 31.0 / 255);
 }
 NeonColor* NeonPanel() {
-    return tone(243.0 / 255, 239.0 / 255, 231.0 / 255, 40.0 / 255, 40.0 / 255, 38.0 / 255);
+    return tone(243.0 / 255, 239.0 / 255, 231.0 / 255, 39.0 / 255, 41.0 / 255, 37.0 / 255);
 }
 NeonColor* NeonInk() {
-    return tone(32.0 / 255, 30.0 / 255, 25.0 / 255, 240.0 / 255, 236.0 / 255, 227.0 / 255);
+    return tone(32.0 / 255, 30.0 / 255, 25.0 / 255, 237.0 / 255, 231.0 / 255, 218.0 / 255);
 }
 NeonColor* NeonMuted() {
-    return tone(99.0 / 255, 94.0 / 255, 84.0 / 255, 178.0 / 255, 176.0 / 255, 166.0 / 255);
+    return tone(99.0 / 255, 94.0 / 255, 84.0 / 255, 184.0 / 255, 181.0 / 255, 170.0 / 255);
 }
 NeonColor* NeonAccent() {
-    return tone(117.0 / 255, 82.0 / 255, 38.0 / 255, 204.0 / 255, 171.0 / 255, 115.0 / 255);
+    return tone(117.0 / 255, 82.0 / 255, 38.0 / 255, 199.0 / 255, 163.0 / 255, 103.0 / 255);
 }
 NeonColor* NeonSelection() {
-    return tone(117.0 / 255, 82.0 / 255, 38.0 / 255, 204.0 / 255, 171.0 / 255, 115.0 / 255, .14,
-                .18);
+    return tone(117.0 / 255, 82.0 / 255, 38.0 / 255, 199.0 / 255, 163.0 / 255, 103.0 / 255, .12,
+                .12);
 }
 NeonColor* NeonLine() {
-    return tone(32.0 / 255, 30.0 / 255, 25.0 / 255, 240.0 / 255, 236.0 / 255, 227.0 / 255, .16,
-                .18);
+    return tone(32.0 / 255, 30.0 / 255, 25.0 / 255, 237.0 / 255, 231.0 / 255, 218.0 / 255,
+                36.0 / 255, 36.0 / 255);
+}
+NeonColor* NeonDanger() {
+    return tone(.630, .200, .160, .950, .530, .460);
+}
+NeonColor* NeonActionText() {
+    return NeonPaper();
 }
 NeonFont* NeonSerif(CGFloat size) {
 #if TARGET_OS_IPHONE
@@ -77,15 +86,61 @@ NeonFont* NeonSerif(CGFloat size) {
 #endif
 }
 NeonFont* NeonUI(CGFloat size) {
-    return [NeonFont systemFontOfSize:size];
+    return regular([NeonFont fontWithName:@"SourceSans3-Roman" size:size]
+                       ?: [NeonFont systemFontOfSize:size],
+                   size);
+}
+NeonFont* NeonUISemibold(CGFloat size) {
+    NeonFont* font = NeonUI(size);
+    NSDictionary* axes = @{@(0x77676874) : @600};
+    return [NeonFont fontWithDescriptor:[font.fontDescriptor fontDescriptorByAddingAttributes:@{
+                         (__bridge NSString*)kCTFontVariationAttribute : axes
+                     }]
+                                   size:size]
+               ?: font;
+}
+NeonFont* NeonUIBold(CGFloat size) {
+    NeonFont* font = NeonUI(size);
+    NSDictionary* axes = @{@(0x77676874) : @700};
+    return [NeonFont fontWithDescriptor:[font.fontDescriptor fontDescriptorByAddingAttributes:@{
+                         (__bridge NSString*)kCTFontVariationAttribute : axes
+                     }]
+                                   size:size]
+               ?: font;
+}
+BOOL NeonReduceMotion() {
+#if TARGET_OS_IPHONE
+    BOOL system = UIAccessibilityIsReduceMotionEnabled();
+#else
+    BOOL system = NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion;
+#endif
+    return system || [NeonPreferences() boolForKey:@"reduceMotion"];
+}
+BOOL NeonReduceTransparency() {
+#if TARGET_OS_IPHONE
+    BOOL system = UIAccessibilityIsReduceTransparencyEnabled();
+#else
+    BOOL system = NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceTransparency;
+#endif
+    return system || [NeonPreferences() boolForKey:@"reduceTransparency"];
+}
+BOOL NeonGlassEnabled() {
+    NSNumber* enabled = [NeonPreferences() objectForKey:@"liquidGlass"];
+    return (!enabled || enabled.boolValue) && !NeonReduceTransparency();
 }
 CGFloat NeonTextSize() {
+    return NeonTextSizeForViewport(0);
+}
+CGFloat NeonTextSizeForViewport(CGFloat width) {
+#if !TARGET_OS_IPHONE
+    (void)width;
+#endif
     double size = [NeonPreferences() doubleForKey:@"manuscriptSize"];
     return size >= 16 && size <= 32 ? size :
 #if TARGET_OS_IPHONE
-                                    18;
+                                    (width > 600 ? 19 : 17);
 #else
-                                    20;
+                                    19;
 #endif
 }
 CGFloat NeonLineSpacing() {
@@ -126,100 +181,108 @@ CGFloat NeonParagraphSpacing() {
 }
 CGFloat NeonTextMeasure() {
     double value = [NeonPreferences() doubleForKey:@"textMeasure"];
-    return value >= 480 && value <= 960 ? value : 640;
+    return value >= 480 && value <= 960 ? value : 760;
 }
 BOOL NeonWritingPreference(NSString* key) {
     NSNumber* value = [NeonPreferences() objectForKey:key];
     return value ? value.boolValue : YES;
 }
 
-#if !TARGET_OS_IPHONE
-@interface NeonPillTrack : NSStackView
-@end
-@implementation NeonPillTrack
-- (void)drawRect:(NSRect)rect {
-    (void)rect;
-    [NeonPanel() setFill];
-    [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:18 yRadius:18] fill];
-}
-- (void)viewDidChangeEffectiveAppearance {
-    [super viewDidChangeEffectiveAppearance];
-    self.needsDisplay = YES;
-}
-@end
-@interface NeonPillButton : NSButton
-@end
-@implementation NeonPillButton
-- (void)drawRect:(NSRect)rect {
-    (void)rect;
-    BOOL selected = self.state == NSControlStateValueOn;
-    [(selected ? [NeonAccent() colorWithAlphaComponent:0.22] : NSColor.clearColor) setFill];
-    [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 1, 1) xRadius:16
-                                     yRadius:16] fill];
-    NSDictionary* attributes = @{
-        NSFontAttributeName : NeonUI(14),
-        NSForegroundColorAttributeName : selected ? NeonAccent() : NeonMuted()
-    };
-    NSSize size = [self.title sizeWithAttributes:attributes];
-    [self.title drawAtPoint:NSMakePoint((self.bounds.size.width - size.width) / 2,
-                                        (self.bounds.size.height - size.height) / 2)
-             withAttributes:attributes];
-}
-- (void)viewDidChangeEffectiveAppearance {
-    [super viewDidChangeEffectiveAppearance];
-    self.needsDisplay = YES;
-}
-@end
-#endif
 #if TARGET_OS_IPHONE
 UIView* NeonPillSelector(NSArray<NSString*>* titles, NSInteger selected, id target, SEL action) {
     UIStackView* stack = [UIStackView new];
-    stack.backgroundColor = NeonPanel();
-    stack.layer.cornerRadius = 18;
-    stack.layoutMargins = UIEdgeInsetsMake(2, 2, 2, 2);
-    stack.layoutMarginsRelativeArrangement = YES;
-    stack.spacing = 0;
+#else
+NSView* NeonPillSelector(NSArray<NSString*>* titles, NSInteger selected, id target, SEL action) {
+    NSStackView* stack = [NSStackView new];
+#endif
+    stack.spacing = NeonBreadcrumbGap;
     for (NSUInteger i = 0; i < titles.count; ++i) {
-        UIButton* button = [UIButton buttonWithType:UIButtonTypeSystem];
-        UIButtonConfiguration* config = UIButtonConfiguration.filledButtonConfiguration;
-        config.title = titles[i];
-        config.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
-        config.baseBackgroundColor =
-            i == selected ? [NeonAccent() colorWithAlphaComponent:0.22] : UIColor.clearColor;
-        config.baseForegroundColor = i == selected ? NeonAccent() : NeonMuted();
-        config.contentInsets = NSDirectionalEdgeInsetsMake(7, 16, 7, 16);
-        button.configuration = config;
+        NeonButton* button = [NeonButton new];
+        button.kind = NeonButtonSelection;
+        button.chosen = (NSInteger)i == selected;
         button.tag = i;
-        button.accessibilityTraits =
-            UIAccessibilityTraitButton | (i == selected ? UIAccessibilityTraitSelected : 0);
+#if TARGET_OS_IPHONE
+        [button setTitle:titles[i] forState:UIControlStateNormal];
+        [button setNeedsUpdateConfiguration];
         [button addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+#else
+        button.title = titles[i];
+        button.target = target;
+        button.action = action;
+        button.state = (NSInteger)i == selected ? NSControlStateValueOn : NSControlStateValueOff;
+#endif
         [stack addArrangedSubview:button];
     }
     return stack;
 }
-#else
-NSView* NeonPillSelector(NSArray<NSString*>* titles, NSInteger selected, id target, SEL action) {
-    NSStackView* stack = [NeonPillTrack new];
-    stack.edgeInsets = NSEdgeInsetsMake(2, 2, 2, 2);
-    stack.spacing = 0;
-    for (NSUInteger i = 0; i < titles.count; ++i) {
-        NeonPillButton* button = [NeonPillButton new];
-        button.title = titles[i];
-        button.bordered = NO;
-        button.target = target;
-        button.action = action;
-        button.tag = i;
-        button.state = i == selected ? NSControlStateValueOn : NSControlStateValueOff;
-        button.accessibilityValue = i == selected ? @"Selected" : @"Not selected";
-        [button.widthAnchor constraintEqualToConstant:MAX(90, [titles[i] sizeWithAttributes:@{
-                                                                  NSFontAttributeName : NeonUI(14)
-                                                              }]
-                                                                      .width +
-                                                                  32)]
-            .active = YES;
-        [button.heightAnchor constraintEqualToConstant:34].active = YES;
-        [stack addArrangedSubview:button];
+
+#if !TARGET_OS_IPHONE
+API_AVAILABLE(macos(26.0))
+@interface NeonGlassBackdrop : NSGlassEffectView
+@end
+@implementation NeonGlassBackdrop
+- (NSView*)hitTest:(NSPoint)point {
+    (void)point;
+    return nil;
+}
+@end
+#endif
+static char NeonGlassBackdropKey;
+#if TARGET_OS_IPHONE
+void NeonApplyGlassBackdrop(UIView* view, CGFloat radius) {
+    UIView* previous = objc_getAssociatedObject(view, &NeonGlassBackdropKey);
+    if (previous && NeonGlassEnabled()) {
+        previous.frame = view.bounds;
+        previous.layer.cornerRadius = radius;
+        return;
     }
-    return stack;
+    [previous removeFromSuperview];
+    objc_setAssociatedObject(view, &NeonGlassBackdropKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    view.backgroundColor = NeonPanel();
+    if (!NeonGlassEnabled())
+        return;
+    if (@available(iOS 26.0, *)) {
+        UIGlassEffect* effect = [UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
+        effect.tintColor = [NeonPanel() colorWithAlphaComponent:.35];
+        UIVisualEffectView* glass = [[UIVisualEffectView alloc] initWithEffect:effect];
+        glass.frame = view.bounds;
+        glass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        glass.userInteractionEnabled = NO;
+        glass.layer.cornerRadius = radius;
+        glass.clipsToBounds = YES;
+        [view insertSubview:glass atIndex:0];
+        objc_setAssociatedObject(view, &NeonGlassBackdropKey, glass,
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+#else
+void NeonApplyGlassBackdrop(NSView* view, CGFloat radius) {
+    NSView* previous = objc_getAssociatedObject(view, &NeonGlassBackdropKey);
+    if (previous && NeonGlassEnabled()) {
+        previous.frame = view.bounds;
+        view.layer.backgroundColor = NeonPanel().CGColor;
+        if (@available(macOS 26.0, *)) {
+            NeonGlassBackdrop* glass = (NeonGlassBackdrop*)previous;
+            glass.cornerRadius = radius;
+            glass.tintColor = [NeonPanel() colorWithAlphaComponent:.35];
+        }
+        return;
+    }
+    [previous removeFromSuperview];
+    objc_setAssociatedObject(view, &NeonGlassBackdropKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    view.wantsLayer = YES;
+    view.layer.backgroundColor = NeonPanel().CGColor;
+    if (!NeonGlassEnabled())
+        return;
+    if (@available(macOS 26.0, *)) {
+        NeonGlassBackdrop* glass = [[NeonGlassBackdrop alloc] initWithFrame:view.bounds];
+        glass.style = NSGlassEffectViewStyleRegular;
+        glass.tintColor = [NeonPanel() colorWithAlphaComponent:.35];
+        glass.cornerRadius = radius;
+        glass.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        [view addSubview:glass positioned:NSWindowBelow relativeTo:nil];
+        objc_setAssociatedObject(view, &NeonGlassBackdropKey, glass,
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
 }
 #endif

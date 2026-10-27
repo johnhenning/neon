@@ -2,6 +2,7 @@
 """Build an external-app XCTest driver and record actual UI input on Apple runners."""
 import argparse
 import json
+import math
 import pathlib
 import plistlib
 import shutil
@@ -18,14 +19,62 @@ def run(*args, **kwargs):
     return subprocess.run(args, check=True, timeout=600, **kwargs)
 
 
+def validate_preference_profile(profile):
+    """Validate launcher-owned fixture profiles; optional overrides may be absent."""
+    if not isinstance(profile, dict):
+        raise ValueError('Fixture preference profile must be a dictionary')
+    if not isinstance(profile.get('manuscriptFont'), str) or not profile['manuscriptFont'].strip():
+        raise ValueError('Fixture manuscriptFont must be a nonempty string')
+    appearance = profile.get('appearance')
+    if type(appearance) is not int or appearance not in (0, 1, 2):
+        raise ValueError('Fixture appearance must be 0, 1 or 2')
+    for key in ('manuscriptSize', 'manuscriptSpacing', 'textMeasure'):
+        if key != 'manuscriptSize' and key not in profile:
+            continue
+        value = profile.get(key)
+        if type(value) not in (int, float) or not math.isfinite(value):
+            raise ValueError(f'Fixture {key} must be a finite number')
+        if value < 0 or (key != 'manuscriptSpacing' and value == 0):
+            raise ValueError(f'Fixture {key} is outside its valid range')
+    return profile
+
+
+def export_validated_recording(recordings, fallback, movie, log_path, platform):
+    """Prefer XCTest footage, then validate the independent simulator backup."""
+    if len(recordings) > 1 or (platform == 'macOS' and len(recordings) != 1):
+        raise RuntimeError(f'Expected one XCTest recording, found {len(recordings)}')
+    candidates = [(recordings[0], 'XCTest system attachment')] if recordings else []
+    if platform != 'macOS' and fallback.exists():
+        candidates.append((fallback, 'simctl recordVideo (XCTest recording unavailable or invalid)'))
+    attempts = []
+    for original, source in candidates:
+        try:
+            with log_path.open('a') as record_log:
+                record_log.write(f'\nRecording source: {source}\n')
+                record_log.flush()
+                run('ffmpeg', '-y', '-i', str(original), '-an',
+                    '-vf', 'scale=960:960:force_original_aspect_ratio=decrease:force_divisible_by=2,fps=24',
+                    '-c:v', 'libx264', '-b:v', '500k', '-maxrate', '650k', '-bufsize', '1300k',
+                    '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(movie),
+                    stdout=record_log, stderr=subprocess.STDOUT)
+            validation = validate_video(movie)
+            attempts.append({'source': source, 'validation': validation})
+            if validation['status'] == 'passed':
+                return {'media_validation': validation, 'recording_status': 'passed',
+                        'recording_source': source, 'recording_attempts': attempts}
+        except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, KeyError, IndexError) as error:
+            attempts.append({'source': source, 'error': str(error)})
+    raise RuntimeError(f'No validated recording: {json.dumps(attempts)}')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('platform', choices=['macOS', 'iPhone', 'iPad'])
     parser.add_argument('app', type=pathlib.Path)
     parser.add_argument('output', type=pathlib.Path)
     parser.add_argument('--device')
-    parser.add_argument('--fixture', choices=['0', '1', '3', 'many', '24chapters', 'longtext'], default='3')
-    parser.add_argument('--profile', choices=['desktop', 'mobile'], help='Default: desktop on Mac, mobile on iPhone/iPad')
+    parser.add_argument('--fixture', choices=['0', '1', '3', 'many', '24chapters', 'canonical-editor', 'longtext'], default='3')
+    parser.add_argument('--profile', choices=['desktop', 'mobile', 'legacy-desktop'], help='Default: desktop on Mac, mobile on iPhone/iPad')
     parser.add_argument('--figma-node', help='Override reviewed canonical editor Figma node ID')
     args = parser.parse_args()
     output = args.output.resolve()
@@ -35,10 +84,11 @@ def main():
     platform = 'macOS' if args.platform == 'macOS' else 'iOS'
     source = pathlib.Path(__file__).resolve().parents[1] / 'uitests/Walkthrough.swift'
     shutil.copy(source, work / source.name)
+    shutil.copy(source.parent / "ControlStates.swift", work / "ControlStates.swift")
     fixtures = json.loads((source.parent / 'Fixtures.json').read_text())
     args.figma_node = args.figma_node or {'macOS': '34:72', 'iPhone': '34:81', 'iPad': '144:16148'}[args.platform]
     args.profile = args.profile or ('desktop' if platform == 'macOS' else 'mobile')
-    preferences = fixtures['preference_profiles'][args.profile]
+    preferences = validate_preference_profile(fixtures['preference_profiles'][args.profile])
     fixture = fixtures['variants'][args.fixture]
     context = capture_context(source.parents[2], args.fixture, args.profile, args.figma_node, args.platform, args.device)
     environment = {'NEON_UI_FIXTURE_JSON': json.dumps(fixture),
@@ -63,7 +113,7 @@ def main():
             'Walkthrough': {'type': 'bundle.ui-testing', 'platform': platform,
             'dependencies': [{'target': 'NeonHost'}],
             'deploymentTarget': '14.0' if platform == 'macOS' else '17.0',
-            'sources': ['Walkthrough.swift'], 'settings': {'base': {
+            'sources': ['Walkthrough.swift', 'ControlStates.swift'], 'settings': {'base': {
                 'PRODUCT_BUNDLE_IDENTIFIER': 'com.johnhenning.neon.walkthrough',
                 'TEST_TARGET_NAME': 'NeonHost'}}}},
         'schemes': {'Walkthrough': {'build': {'targets': {'Walkthrough': ['test']}},
@@ -108,6 +158,23 @@ def main():
             'source_app': str(args.app.resolve()), 'test_app': str(host),
             'bundle_id': app_info['CFBundleIdentifier'],
             'executable': app_info['CFBundleExecutable']}, indent=2))
+        # Keep XCTest attachments and our app logs, but avoid simulator-wide
+        # sysdiagnose collection: it can stall after a completed rotation test.
+        try:
+            component_tests = ['-only-testing:Walkthrough/ControlStates']
+            if args.platform == 'iPad' and args.fixture == '3':
+                # Keep adaptive checks in the component result bundle. The
+                # separately recorded baseline journey and its video stay unchanged.
+                component_tests.append('-only-testing:Walkthrough/Walkthrough/testIPadAdaptiveEditorOrientation')
+            run('xcodebuild', 'test-without-building', '-xctestrun', str(test_run),
+                '-destination', destination, '-parallel-testing-enabled', 'NO',
+                '-collect-test-diagnostics', 'never',
+                *component_tests,
+                '-resultBundlePath', str(output / 'controls.xcresult'))
+            result['controls_status'] = 'passed'
+        except subprocess.SubprocessError as error:
+            result['controls_status'] = 'failed'
+            result['controls_error'] = str(error)
         movie = output / f'{args.platform}-walkthrough.mov'
         if platform == 'macOS':
             # XCTest already records the real UI session. Keep its recording on
@@ -115,11 +182,15 @@ def main():
             # SIGINT shutdown can discard the movie on hosted Mac runners.
             run('xcodebuild', 'test-without-building', '-xctestrun', str(test_run),
                 '-destination', destination, '-parallel-testing-enabled', 'NO',
+                '-collect-test-diagnostics', 'never',
+                '-only-testing:Walkthrough/Walkthrough/testRecordedEditorJourney',
                 '-resultBundlePath', str(output / 'walkthrough.xcresult'))
             result['status'] = 'passed'
         else:
             record_args = ['xcrun', 'simctl', 'io', args.device, 'recordVideo', '--codec=h264', str(movie)]
         if platform != 'macOS':
+            # A failed recorder must never reuse footage from an earlier run.
+            movie.unlink(missing_ok=True)
             with (output / 'recording.log').open('w') as record_log:
                 recorder = subprocess.Popen(record_args, stdout=record_log, stderr=subprocess.STDOUT)
                 time.sleep(2)
@@ -128,6 +199,8 @@ def main():
                 try:
                     run('xcodebuild', 'test-without-building', '-xctestrun', str(test_run),
                         '-destination', destination, '-parallel-testing-enabled', 'NO',
+                        '-collect-test-diagnostics', 'never',
+                        '-only-testing:Walkthrough/Walkthrough/testRecordedEditorJourney',
                         '-resultBundlePath', str(output / 'walkthrough.xcresult'))
                     result['status'] = 'passed'
                 finally:
@@ -142,7 +215,16 @@ def main():
         result['error'] = str(error)
         result['status'] = 'failed'
     finally:
+        if result.get('controls_status') == 'failed':
+            result['status'] = 'failed'
         result['ui_status'] = result['status']
+        controls_bundle = output / 'controls.xcresult'
+        if (controls_bundle / 'Info.plist').exists():
+            try:
+                run('xcrun', 'xcresulttool', 'export', 'attachments', '--path', str(controls_bundle),
+                    '--output-path', str(output / 'controls-attachments'))
+            except subprocess.SubprocessError as error:
+                result['controls_attachment_error'] = str(error)
         movie = output / f'{args.platform}-walkthrough.mov'
         bundle = output / 'walkthrough.xcresult'
         if (bundle / 'Info.plist').exists():
@@ -153,28 +235,10 @@ def main():
                 result['attachment_error'] = str(error)
         try:
             recordings = list((output / 'attachments').glob('*.mp4'))
-            if len(recordings) == 1:
-                # XCTest bounds footage to the actual test session. Simulator
-                # recording also contains test-runner setup and teardown holds.
-                original = recordings[0]
-                recording_source = 'XCTest system attachment'
-            elif platform == 'macOS' or len(recordings) > 1:
-                raise RuntimeError(f'Expected one XCTest recording, found {len(recordings)}')
-            else:
-                original = movie
-                recording_source = 'simctl recordVideo (XCTest recording unavailable)'
+            fallback = movie
             movie = output / f'{args.platform}-walkthrough.mp4'
-            with (output / 'video-export.log').open('w') as record_log:
-                run('ffmpeg', '-y', '-i', str(original), '-an',
-                    '-vf', 'scale=960:960:force_original_aspect_ratio=decrease:force_divisible_by=2,fps=24',
-                    '-c:v', 'libx264', '-b:v', '500k', '-maxrate', '650k', '-bufsize', '1300k',
-                    '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(movie),
-                    stdout=record_log, stderr=subprocess.STDOUT)
-            result['media_validation'] = validate_video(movie)
-            result['recording_status'] = result['media_validation']['status']
-            if result['recording_status'] != 'passed':
-                raise RuntimeError('Video decoded but did not demonstrate multiple visual changes')
-            result['recording_source'] = recording_source
+            result.update(export_validated_recording(
+                recordings, fallback, movie, output / 'video-export.log', platform))
         except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, KeyError, IndexError) as error:
             result['recording_error'] = str(error)
             result['status'] = 'failed'

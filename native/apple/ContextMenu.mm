@@ -38,7 +38,7 @@ void NeonDismissMenu() {
         config.image = [UIImage systemImageNamed:item.symbol];
         config.imagePadding = 12;
         config.contentInsets = NSDirectionalEdgeInsetsMake(8, 12, 8, 12);
-        config.baseForegroundColor = item.destructive ? UIColor.systemRedColor : NeonInk();
+        config.baseForegroundColor = item.destructive ? NeonDanger() : NeonInk();
         row.configuration = config;
         row.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
         row.titleLabel.font = NeonUI(16);
@@ -151,15 +151,15 @@ void NeonDismissMenu() {
         [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:6 yRadius:6] fill];
     }
     NSColor* color = !self.enabled              ? NeonMuted()
-                     : self.command.destructive ? NSColor.systemRedColor
+                     : self.command.destructive ? NeonDanger()
                                                 : NeonInk();
     NSImage* icon = [NSImage imageWithSystemSymbolName:self.command.symbol
                               accessibilityDescription:nil];
     icon = [icon imageWithSymbolConfiguration:[NSImageSymbolConfiguration
                                                   configurationWithPaletteColors:@[ color ]]];
-    [icon drawInRect:NSMakeRect(12, 10, 16, 16)];
+    [icon drawInRect:NSMakeRect(12, 14, 16, 16)];
     [self.command.title
-            drawInRect:NSMakeRect(40, 8, self.bounds.size.width - 48, 24)
+            drawInRect:NSMakeRect(40, 12, self.bounds.size.width - 48, 24)
         withAttributes:@{NSFontAttributeName : NeonUI(15), NSForegroundColorAttributeName : color}];
 }
 - (void)keyDown:(NSEvent*)event {
@@ -194,13 +194,13 @@ void NeonDismissMenu() {
 @implementation NeonMenuController
 - (void)loadView {
     self.view =
-        [[NeonMenuSurface alloc] initWithFrame:NSMakeRect(0, 0, 280, self.actions.count * 36 + 16)];
+        [[NeonMenuSurface alloc] initWithFrame:NSMakeRect(0, 0, 280, self.actions.count * 44 + 16)];
 
     NSMutableArray<NSButton*>* rows = [NSMutableArray array];
     NSInteger i = 0;
     for (NeonMenuAction* item in self.actions) {
         NeonMenuButton* row = [[NeonMenuButton alloc]
-            initWithFrame:NSMakeRect(8, self.view.bounds.size.height - 44 - i++ * 36, 264, 36)];
+            initWithFrame:NSMakeRect(8, self.view.bounds.size.height - 52 - i++ * 44, 264, 44)];
         row.command = item;
         row.title = item.title;
         row.enabled = item.enabled;

@@ -36,10 +36,21 @@
         NeonDocumentSession* session = [self openURL:file error:&problem];
         NSDate* modified = nil;
         [file getResourceValue:&modified forKey:NSURLContentModificationDateKey error:nil];
+        NSString* projectID =
+            session.projectID ?: [@"unreadable:" stringByAppendingString:file.lastPathComponent];
+        NSUserDefaults* preferences = NeonPreferences();
         [projects addObject:@{
             @"url" : file,
+            @"projectID" : projectID,
+            @"favorite" : @(
+                [preferences boolForKey:[@"library.favorite." stringByAppendingString:projectID]]),
+            @"lastOpened" : [preferences
+                objectForKey:[@"library.opened." stringByAppendingString:projectID]]
+                ?: NSDate.distantPast,
+            @"trashed" : @NO,
             @"title" : session.title ?: file.lastPathComponent,
             @"sections" : @(session.sections.count),
+            @"wordCount" : session ? @(session.projectWordCount) : NSNull.null,
             @"sectionLabel" : session.preset[@"sectionsLabel"] ?: @"Sections",
             @"preset" : session.preset[@"title"] ?: @"Project",
             @"modified" : modified ?: NSDate.distantPast,
@@ -48,7 +59,8 @@
     }
     [projects sortUsingDescriptors:@[
         [NSSortDescriptor sortDescriptorWithKey:@"modified" ascending:NO],
-        [NSSortDescriptor sortDescriptorWithKey:@"title" ascending:YES]
+        [NSSortDescriptor sortDescriptorWithKey:@"title" ascending:YES],
+        [NSSortDescriptor sortDescriptorWithKey:@"projectID" ascending:YES]
     ]];
     return projects;
 }
@@ -65,6 +77,18 @@
         return nil;
     }
     return [[NeonDocumentSession alloc] initWithURL:url actor:self.actor error:error];
+}
+- (NeonDocumentSession*)openProjectURL:(NSURL*)url error:(NSError**)error {
+    NeonDocumentSession* session = [self openURL:url error:error];
+    if (session)
+        [NeonPreferences()
+            setObject:NSDate.date
+               forKey:[@"library.opened." stringByAppendingString:session.projectID]];
+    return session;
+}
+- (void)setFavorite:(BOOL)favorite projectID:(NSString*)projectID {
+    [NeonPreferences() setBool:favorite
+                        forKey:[@"library.favorite." stringByAppendingString:projectID]];
 }
 - (NSURL*)createProject:(NSString*)title error:(NSError**)error {
     return [self createProject:title preset:@"book" error:error];
@@ -86,7 +110,16 @@
 - (NSArray<NSDictionary*>*)trashedProjects:(NSError**)error {
     NeonLibraryStore* trash = [[NeonLibraryStore alloc]
         initWithDirectory:[self.directory URLByAppendingPathComponent:@"Trash" isDirectory:YES]];
-    return [trash projects:error];
+    NSArray<NSDictionary*>* projects = [trash projects:error];
+    if (!projects)
+        return nil;
+    NSMutableArray<NSDictionary*>* result = [NSMutableArray arrayWithCapacity:projects.count];
+    for (NSDictionary* project in projects) {
+        NSMutableDictionary* record = [project mutableCopy];
+        record[@"trashed"] = @YES;
+        [result addObject:[record copy]];
+    }
+    return result;
 }
 - (BOOL)validURL:(NSURL*)url parent:(NSURL*)parent error:(NSError**)error {
     if (url.isFileURL &&
