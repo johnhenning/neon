@@ -141,7 +141,7 @@ NeonButton* button(UIView* parent, NSString* title, CGRect frame, void (^block)(
     UIImage* root = [UIImage imageWithCGImage:pixels.CGImage
                                         scale:3
                                   orientation:UIImageOrientationUp];
-    // Assets preserve their24pt SVG roots at3x. The native wrapper is20pt;
+    // Assets preserve their 24pt SVG roots at 3x. The native wrapper is 20pt;
     // changing point scale fits the untouched raster without altering proportions.
     CGFloat pointScale = root.scale * root.size.width / 20;
     return [[UIImage imageWithCGImage:root.CGImage

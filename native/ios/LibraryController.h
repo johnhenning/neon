@@ -15,7 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, copy) NSDictionary<NSString*, NSString*>* fixtureIDs;
 // Shell sets YES when hosting the wide Library sidebar.
 @property(nonatomic) BOOL usesSidebarNavigation;
-// Exact bundled Figma artwork in a20pt native template slot; no SF substitute.
+// Exact bundled Figma artwork in a 20pt native template slot; no SF substitute.
 + (nullable UIImage*)navigationImageForFilter:(NeonLibraryFilter)filter;
 + (NeonButton*)navigationButtonForFilter:(NeonLibraryFilter)filter;
 - (UIMenu*)navigationMenu;

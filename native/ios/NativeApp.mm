@@ -1086,9 +1086,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     self.typographyPending = NO;
     NSRange selection = self.editor.selectedRange;
     NSMutableParagraphStyle* style = [NSMutableParagraphStyle new];
-    BOOL explicitSize = [NeonPreferences() objectForKey:@"manuscriptSize"] != nil;
-    CGFloat size =
-        explicitSize ? NeonTextSize() : (self.coordinator.view.bounds.size.width > 600 ? 19 : 17);
+    CGFloat size = NeonTextSizeForViewport(self.coordinator.view.bounds.size.width);
     UIFont* bodyFont = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
         scaledFontForFont:([NeonPreferences() objectForKey:@"manuscriptFont"]
                                ? NeonManuscriptFont(size)
@@ -1392,7 +1390,7 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
     UISlider* size = [UISlider new];
     size.minimumValue = 16;
     size.maximumValue = 32;
-    size.value = NeonTextSize();
+    size.value = NeonTextSizeForViewport(self.editor.coordinator.view.bounds.size.width);
     size.accessibilityLabel = @"Text size";
     [size addTarget:self
                   action:@selector(sizeChanged:)
@@ -3142,6 +3140,47 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         NeonSettingsController* controller = (id)navigation.topViewController;
         [controller loadViewIfNeeded];
         BOOL valid = controller.visibleSettingCount == 14;
+        id originalSize = [NeonPreferences() objectForKey:@"manuscriptSize"];
+        [NeonPreferences() removeObjectForKey:@"manuscriptSize"];
+        for (NSNumber* viewport in @[ @335, @600, @768 ]) {
+            NeonSettingsController* probe = [NeonSettingsController new];
+            [probe loadViewIfNeeded];
+            probe.view.frame = CGRectMake(0, 0, viewport.doubleValue, 768);
+            UITableViewCell* sizeCell = [probe tableView:probe.tableView
+                                   cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0
+                                                                            inSection:1]];
+            UIButton* sizeControl = (id)settingControl(sizeCell, @"manuscriptSize");
+            CGFloat expectedSize = viewport.doubleValue > 600 ? 19 : 17;
+            NSString* expectedTitle =
+                expectedSize == 19 ? @"Standard · 19 pt ▾" : @"Small · 17 pt ▾";
+            valid = valid && [sizeControl.currentTitle isEqual:expectedTitle] &&
+                    NeonTextSizeForViewport(viewport.doubleValue) == expectedSize &&
+                    [NeonPreferences() objectForKey:@"manuscriptSize"] == nil;
+            [NeonPreferences() setDouble:22 forKey:@"manuscriptSize"];
+            sizeCell = [probe tableView:probe.tableView
+                  cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:1]];
+            sizeControl = (id)settingControl(sizeCell, @"manuscriptSize");
+            valid = valid && [sizeControl.currentTitle isEqual:@"Large · 22 pt ▾"] &&
+                    NeonTextSizeForViewport(viewport.doubleValue) == 22 &&
+                    [NeonPreferences() doubleForKey:@"manuscriptSize"] == 22;
+            [NeonPreferences() removeObjectForKey:@"manuscriptSize"];
+        }
+        NeonSettingsController* resizingProbe = [NeonSettingsController new];
+        [resizingProbe loadViewIfNeeded];
+        for (NSNumber* viewport in @[ @335, @1024, @335 ]) {
+            resizingProbe.view.frame = CGRectMake(0, 0, viewport.doubleValue, 768);
+            [resizingProbe.view setNeedsLayout];
+            [resizingProbe.view layoutIfNeeded];
+            for (UIView* container in @[
+                     resizingProbe.tableView.tableHeaderView,
+                     resizingProbe.tableView.tableFooterView
+                 ])
+                for (UIView* content in container.subviews)
+                    valid = valid && fabs(content.frame.size.width -
+                                          resizingProbe.tableView.bounds.size.width) < .5;
+        }
+        if (originalSize)
+            [NeonPreferences() setObject:originalSize forKey:@"manuscriptSize"];
         if (@available(iOS 26.0, *)) {
             if (NeonGlassEnabled()) {
                 UIView* host = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 200, 56)];

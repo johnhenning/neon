@@ -128,10 +128,16 @@ BOOL NeonGlassEnabled() {
     return (!enabled || enabled.boolValue) && !NeonReduceTransparency();
 }
 CGFloat NeonTextSize() {
+    return NeonTextSizeForViewport(0);
+}
+CGFloat NeonTextSizeForViewport(CGFloat width) {
+#if !TARGET_OS_IPHONE
+    (void)width;
+#endif
     double size = [NeonPreferences() doubleForKey:@"manuscriptSize"];
     return size >= 16 && size <= 32 ? size :
 #if TARGET_OS_IPHONE
-                                    17;
+                                    (width > 600 ? 19 : 17);
 #else
                                     19;
 #endif

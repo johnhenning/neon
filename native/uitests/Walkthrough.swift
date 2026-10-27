@@ -211,14 +211,11 @@ final class Walkthrough: XCTestCase {
             XCTAssertTrue(chapterRow.waitForExistence(timeout: 5))
             XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "section-row-0").count, 1)
             let title = chapterRow.descendants(matching: .any).matching(identifier: "section-0").firstMatch
-            let actions = chapterRow.buttons["section-actions-0"]
             XCTAssertTrue(title.exists, "Chapter title must remain independently accessible in its row")
-            XCTAssertTrue(actions.exists, "Chapter Actions must remain independently accessible in its row")
             XCTAssertTrue(chapterRow.frame.contains(title.frame), "Chapter row must contain its title bounds")
-            XCTAssertTrue(chapterRow.frame.contains(actions.frame), "Chapter row must contain its Actions bounds")
             XCTAssertEqual(app.buttons.matching(identifier: "Toggle sidebar").count, 1)
             XCTAssertEqual(toggle.frame.midY, history.frame.midY, accuracy: 8)
-            XCTAssertGreaterThan(toggle.frame.midX, chapterRow.frame.midX)
+            XCTAssertGreaterThanOrEqual(toggle.frame.minX, chapterRow.frame.minX)
             XCTAssertLessThanOrEqual(toggle.frame.maxX, chapterRow.frame.maxX + 24)
         }
         assertSidebarTogglePlacement()
@@ -250,7 +247,14 @@ final class Walkthrough: XCTestCase {
         #endif
         #if os(macOS)
         assertUniqueChapterRows()
-        XCTAssertTrue(app.buttons["section-actions-0"].exists)
+        XCTAssertFalse(app.buttons["section-actions-0"].exists,
+                       "Quiet chapter rows expose actions through their context menu")
+        element("section-0").rightClick()
+        XCTAssertTrue(app.buttons["Rename…"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Duplicate"].exists)
+        XCTAssertTrue(app.buttons["Move to Trash…"].exists)
+        app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
+        XCTAssertTrue(editor.isHittable)
         for _ in 0..<3 {
             activate(app.buttons["Toggle sidebar"])
             XCTAssertFalse(element("section-1").isHittable)
@@ -310,11 +314,7 @@ final class Walkthrough: XCTestCase {
         activate(historySearch)
         historySearch.typeText("NoSuchRevisionForWalkthrough")
         let revisionPreview = element("Read-only revision preview")
-        #if os(macOS)
-        let noMatchesMessage = "No versions match this filter."
-        #else
         let noMatchesMessage = "No matching revisions."
-        #endif
         XCTAssertTrue((revisionPreview.value as? String ?? "").contains(noMatchesMessage))
         activate(app.buttons["Search History"])
         XCTAssertFalse(historySearch.isHittable)
@@ -336,7 +336,10 @@ final class Walkthrough: XCTestCase {
         app.typeKey(",", modifierFlags: .command)
         let settings = element("settings-page")
         XCTAssertTrue(settings.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.searchFields["Search settings"].exists)
+        XCTAssertTrue(app.buttons["settings-back"].exists)
+        XCTAssertTrue(app.staticTexts["Settings"].exists)
+        XCTAssertFalse(app.searchFields["Search settings"].exists,
+                       "Advanced search is not part of the primary Settings page")
         capture("07-settings")
         activate(element("settings-back"))
         let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: settings)

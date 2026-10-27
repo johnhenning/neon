@@ -30,3 +30,17 @@ Native AppKit/UIKit text rasterization, system window controls, safe areas, keyb
 - iPhone recorded journey passed; the final isolated iPad recorded journey passed (1 test, 0 failures, 65.718 seconds). The first iPad attempt timed out waiting for animation quiescence; its app stack was idle, and the isolated retry used unchanged assertions. Both device families previously passed controls checks, and actual iPad rotation passed.
 - The latest same-content capture run had 25 route passes and five picker assertion failures caused by testing UILabel’s permitted line count rather than the rendered line count. The corrected bounded 335-point picker/Settings checks pass and confirm actual attributed Source Sans 15, single-line layout, rapid appearance toggles, and typing-state preservation. This is not reported as a fresh 30-of-30 run.
 - Final formatting, lint, dependency checks and `git diff --check` pass.
+
+## PR review follow-up (2026-10-26)
+
+The hosted Mac walkthrough still expected removed chapter ellipsis buttons, the old right-aligned sidebar toggle, an obsolete History empty-state string, and always-visible Settings search. It now verifies the replacement chapter context menu and current navigation while retaining editing, persistence, undo, and redo assertions.
+
+Parallel review found and corrected:
+
+- Standards/correctness: menu-bar Project actions passed an NSMenuItem where the popover required a view anchor. The smoke now dispatches the installed menu command.
+- Spec: Mac blank-separator layout formatting leaked into new typing. A real AppKit selection/insertion regression failed before normalization and passes after it; IME composition remains protected.
+- Spec: wide iPad Settings displayed the compact 17pt default while the manuscript used 19pt. Both now share viewport-aware resolution, preserving explicit preferences and leaving defaults unset.
+- Additional validation: Settings header/footer child frames did not follow UITableView resizing. A 335→1024→335 regression now verifies the contents as well as the outer containers.
+- Copilot: corrected two comment spacing nits and removed a redundant nested condition. No functional Copilot findings remained.
+
+Local validation: all 20 Mac/core tests pass; native Mac and iOS builds, pinned quality checks, and the iPad Settings regression pass. The recorded Mac XCTest driver compiles locally but is killed before bootstrap on this host; the hosted Mac job is the authoritative recorded-walkthrough verification for this correction.

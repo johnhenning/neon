@@ -32,6 +32,8 @@ void NeonApplyGlassBackdrop(UIView* view, CGFloat radius);
 void NeonApplyGlassBackdrop(NSView* view, CGFloat radius);
 #endif
 CGFloat NeonTextSize();
+// Uses the responsive default only when there is no valid explicit size preference.
+CGFloat NeonTextSizeForViewport(CGFloat width);
 CGFloat NeonLineSpacing();
 NSInteger NeonAppearance();
 

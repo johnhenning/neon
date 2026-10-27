@@ -412,6 +412,7 @@ NSUInteger words(NSString* text) {
 @property(nonatomic, strong) NSTitlebarAccessoryViewController* chromeSpacer;
 @property(nonatomic) BOOL focusMode;
 @property(nonatomic) BOOL pendingTypography;
+@property(nonatomic, copy) NSDictionary* manuscriptTypingAttributes;
 @property(nonatomic) BOOL immediateSidebarTransition;
 @property(nonatomic) BOOL focusSidebarWasCollapsed;
 @property(nonatomic, strong) NSView* sidebarBody;
@@ -1739,7 +1740,7 @@ NSUInteger words(NSString* text) {
                           }
                           (void)range;
                         }];
-    self.editor.typingAttributes = @{
+    self.manuscriptTypingAttributes = @{
         NSFontAttributeName : ([NeonPreferences() objectForKey:@"manuscriptFont"]
                                    ? NeonManuscriptFont(NeonTextSize())
                                    : NeonFontNamed(self.session.preset[@"font"], NeonTextSize())),
@@ -1747,7 +1748,15 @@ NSUInteger words(NSString* text) {
         NSForegroundColorAttributeName : NeonInk()
     };
     self.editor.selectedRange = selection;
+    self.editor.typingAttributes = self.manuscriptTypingAttributes;
     [self.workspaceController refreshLayout];
+}
+- (void)textViewDidChangeSelection:(NSNotification*)notification {
+    // Blank separator styles only control layout; never inherit their compressed
+    // line height when the caret moves or selected text is replaced.
+    if (notification.object == self.editor && !self.editor.hasMarkedText &&
+        self.manuscriptTypingAttributes)
+        self.editor.typingAttributes = self.manuscriptTypingAttributes;
 }
 - (void)updateStatus:(BOOL)saved {
     self.sidebarSummary.stringValue =
@@ -2276,9 +2285,18 @@ NSUInteger words(NSString* text) {
 }
 - (void)currentProjectMenu:(id)sender {
     [self.typography close];
+    id anchor = sender;
     NSRect rect = [sender isKindOfClass:NSView.class] ? ((NSView*)sender).bounds : NSZeroRect;
+    if (![anchor isKindOfClass:NSView.class] && ![anchor isKindOfClass:NSToolbarItem.class]) {
+        // Menu-bar actions have no view; anchor them to the currently visible window content.
+        NSView* content = self.window.contentView;
+        anchor = content;
+        rect = NSMakeRect(
+            NSMaxX(content.bounds) - 24,
+            content.isFlipped ? NSMinY(content.bounds) + 24 : NSMaxY(content.bounds) - 24, 1, 1);
+    }
     if (self.session)
-        [self projectMenu:self.selectedURL title:self.session.title anchor:sender rect:rect];
+        [self projectMenu:self.selectedURL title:self.session.title anchor:anchor rect:rect];
     else if (self.libraryController) {
         NSMenu* menu = [self.libraryController navigationMenu];
         [menu
@@ -2287,7 +2305,7 @@ NSUInteger words(NSString* text) {
                                                  MAX(24, self.content.view.bounds.size.height - 24))
                               inView:self.content.view];
     } else
-        NeonShowMenu(sender, rect, @[
+        NeonShowMenu(anchor, rect, @[
             NeonAction(@"New Project…", @"plus", YES, NO,
                        ^{
                          [self newProject:nil];
@@ -2482,6 +2500,35 @@ NSUInteger words(NSString* text) {
     }
     [self performSelector:@selector(captureEditor) withObject:nil afterDelay:1];
 }
+- (void)checkSeparatorTypingTypography {
+    NSTextView* original = self.editor;
+    NSTextView* probe = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 640, 300)];
+    probe.string = @"First\n\nSecond";
+    self.editor = probe;
+    probe.delegate = self;
+    [self styleEditor];
+    probe.selectedRange = NSMakeRange(6, 0);
+    NSParagraphStyle* typing = probe.typingAttributes[NSParagraphStyleAttributeName];
+    if (![typing isEqual:probe.defaultParagraphStyle]) {
+        fprintf(stderr, "Blank separator selection inherited layout-only typography\n");
+        exit(19);
+    }
+    // Keep the probe's insertion out of the document session; selection above
+    // deliberately uses the real editor delegate and AppKit notification.
+    probe.delegate = nil;
+    [probe insertText:@"Typed" replacementRange:probe.selectedRange];
+    NSParagraphStyle* inserted = [probe.textStorage attribute:NSParagraphStyleAttributeName
+                                                      atIndex:7
+                                               effectiveRange:nil];
+    if (![inserted isEqual:probe.defaultParagraphStyle] ||
+        ![probe.string isEqual:@"First\nTyped\nSecond"] ||
+        !NSEqualRanges(probe.selectedRange, NSMakeRange(11, 0))) {
+        fprintf(stderr, "Text typed on a blank separator lost manuscript typography\n");
+        exit(19);
+    }
+    self.editor = original;
+    [self styleEditor];
+}
 - (void)checkCompositionTypography {
     NSTextView* original = self.editor;
     NeonTextView* composition = [[NeonTextView alloc] initWithFrame:NSMakeRect(0, 0, 640, 300)];
@@ -2493,6 +2540,7 @@ NSUInteger words(NSString* text) {
           [app styleEditor];
     };
     self.editor = composition;
+    composition.delegate = self;
     [composition setMarkedText:@"漢字"
                  selectedRange:NSMakeRange(2, 0)
               replacementRange:NSMakeRange(5, 0)];
@@ -2506,9 +2554,12 @@ NSUInteger words(NSString* text) {
         exit(17);
     if (!NSEqualRanges(selected, composition.selectedRange))
         exit(18);
+    composition.delegate = nil;
     self.editor = original;
+    [self styleEditor];
 }
 - (void)captureEditor {
+    [self checkSeparatorTypingTypography];
     [self checkCompositionTypography];
     [self capture:@"native-editor.png"];
     [self.editor insertText:@"\n\nA new beginning."
@@ -2550,6 +2601,19 @@ NSUInteger words(NSString* text) {
 - (void)captureActions {
     [self capture:@"native-context-menu.png"];
     NeonDismissMenu();
+    BOOL invokedProjectMenu = NO;
+    for (NSMenuItem* topLevel in NSApp.mainMenu.itemArray) {
+        for (NSMenuItem* item in topLevel.submenu.itemArray) {
+            if (item.action == @selector(currentProjectMenu:)) {
+                invokedProjectMenu = [NSApp sendAction:item.action to:item.target from:item];
+                NeonDismissMenu();
+            }
+        }
+    }
+    if (!invokedProjectMenu) {
+        fprintf(stderr, "Menu-bar project action did not open\n");
+        exit(8);
+    }
     for (NSToolbarItem* item in self.window.toolbar.items) {
         if ([item.itemIdentifier isEqual:@"more"]) {
             if (![NSApp sendAction:item.action to:item.target from:item])

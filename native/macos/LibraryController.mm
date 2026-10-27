@@ -57,10 +57,8 @@
         NSBezierPath* path = [NSBezierPath bezierPathWithRoundedRect:self.bounds
                                                              xRadius:NeonControlRadius
                                                              yRadius:NeonControlRadius];
-        if (self.paperCommand) {
-            [NeonPaper() setFill];
-            [path fill];
-        }
+        [NeonPaper() setFill];
+        [path fill];
         if (self.window.firstResponder == self) {
             [NeonInk() setStroke];
             path.lineWidth = 2;

@@ -171,9 +171,9 @@ NSArray* choices(NSString* key) {
         return @[ @"Comfortable", @"Wide" ];
     return @[ @"Literata", @"Source Sans 3", @"System Serif" ];
 }
-NSString* choiceLabel(NSString* key) {
+NSString* choiceLabel(NSString* key, CGFloat viewportWidth) {
     if ([key isEqual:@"manuscriptSize"]) {
-        NSInteger size = (NSInteger)NeonTextSize();
+        NSInteger size = (NSInteger)NeonTextSizeForViewport(viewportWidth);
         return size == 17   ? choices(key)[0]
                : size == 19 ? choices(key)[1]
                : size == 22 ? choices(key)[2]
@@ -283,6 +283,8 @@ void setChoice(NSString* key, NSUInteger index) {
     UILabel* _headerTitle;
     UILabel* _headerSubtitle;
     UIView* _intro;
+    CGFloat _introLayoutWidth;
+    CGFloat _footerLayoutWidth;
 #else
     NSView* _header;
     NSButton* _back;
@@ -494,7 +496,7 @@ void setChoice(NSString* key, NSUInteger index) {
     if ([primaryKeys() containsObject:key] || [item[@"kind"] isEqual:@"font"]) {
         UIButton* menu = [UIButton buttonWithType:UIButtonTypeSystem];
         menu.showsMenuAsPrimaryAction = YES;
-        [menu setTitle:[choiceLabel(key) stringByAppendingString:@" ▾"]
+        [menu setTitle:[choiceLabel(key, self.view.bounds.size.width) stringByAppendingString:@" ▾"]
               forState:UIControlStateNormal];
         menu.titleLabel.font = NeonUI(self.view.bounds.size.width <= 600 ? 12 : 14);
         [menu setTitleColor:NeonInk() forState:UIControlStateNormal];
@@ -503,6 +505,7 @@ void setChoice(NSString* key, NSUInteger index) {
         menu.layer.borderWidth = 1;
         menu.layer.cornerRadius = 5;
         menu.accessibilityLabel = item[@"title"];
+        menu.accessibilityIdentifier = key;
         NSMutableArray* actions = [NSMutableArray array];
         __weak NeonSettingsController* weak = self;
         NSArray* titles = choices(key);
@@ -518,7 +521,8 @@ void setChoice(NSString* key, NSUInteger index) {
         menu.menu = [UIMenu menuWithChildren:actions];
         CGFloat menuWidth =
             MIN(self.view.bounds.size.width <= 600 ? 145 : 180,
-                [choiceLabel(key) sizeWithAttributes:@{NSFontAttributeName : menu.titleLabel.font}]
+                [choiceLabel(key, self.view.bounds.size.width)
+                    sizeWithAttributes:@{NSFontAttributeName : menu.titleLabel.font}]
                         .width +
                     30);
         [menu.widthAnchor constraintEqualToConstant:menuWidth].active = YES;
@@ -676,7 +680,37 @@ void setChoice(NSString* key, NSUInteger index) {
         (width - outer) / 2 + pad, top + headerHeight, outer - pad * 2,
         self.view.bounds.size.height - top - headerHeight - self.view.safeAreaInsets.bottom);
     CGFloat textWidth = self.tableView.bounds.size.width;
-    if (!_intro || fabs(_intro.bounds.size.width - textWidth) > .5) {
+    // A page can be resized after its cells are created. Refresh the displayed
+    // responsive default without saving it as an explicit writing preference.
+    for (UITableViewCell* cell in self.tableView.visibleCells)
+        for (UIView* child in cell.contentView.subviews)
+            if ([child isKindOfClass:UIStackView.class]) {
+                UIView* control = ((UIStackView*)child).arrangedSubviews.lastObject;
+                if (![control isKindOfClass:UIButton.class] ||
+                    ![control.accessibilityIdentifier isEqual:@"manuscriptSize"])
+                    continue;
+                UIButton* menu = (UIButton*)control;
+                NSString* title = choiceLabel(@"manuscriptSize", width);
+                NSString* buttonTitle = [title stringByAppendingString:@" ▾"];
+                if (![menu.currentTitle isEqual:buttonTitle])
+                    [menu setTitle:buttonTitle forState:UIControlStateNormal];
+                UIFont* font = NeonUI(narrow ? 12 : 14);
+                if (![menu.titleLabel.font isEqual:font])
+                    menu.titleLabel.font = font;
+                CGFloat menuWidth = MIN(
+                    narrow ? 145 : 180,
+                    [title sizeWithAttributes:@{NSFontAttributeName : menu.titleLabel.font}].width +
+                        30);
+                for (NSLayoutConstraint* constraint in menu.constraints)
+                    if (constraint.firstAttribute == NSLayoutAttributeWidth &&
+                        !constraint.secondItem && fabs(constraint.constant - menuWidth) > .01)
+                        constraint.constant = menuWidth;
+            }
+    // UITableView resizes header/footer containers before their child frames.
+    // Compare the width used to lay out their contents, not the resized container.
+    if (!_intro || fabs(_introLayoutWidth - textWidth) > .5 ||
+        _intro.bounds.size.height != (narrow ? 108 : 116)) {
+        _introLayoutWidth = textWidth;
         _intro = [[UIView alloc] initWithFrame:CGRectMake(0, 0, textWidth, narrow ? 108 : 116)];
         UILabel* heading =
             [[UILabel alloc] initWithFrame:CGRectMake(0, narrow ? 24 : 28, textWidth, 42)];
@@ -695,7 +729,7 @@ void setChoice(NSString* key, NSUInteger index) {
         self.tableView.tableHeaderView = _intro;
     }
     UIView* existingFooter = self.tableView.tableFooterView;
-    if (existingFooter && fabs(existingFooter.bounds.size.width - textWidth) < .5 &&
+    if (existingFooter && fabs(_footerLayoutWidth - textWidth) < .5 &&
         existingFooter.tag == (self.advanced ? 1 : 0))
         return;
     UIView* footer =
@@ -736,6 +770,7 @@ void setChoice(NSString* key, NSUInteger index) {
               forControlEvents:UIControlEventTouchUpInside];
         [footer addSubview:resetButton];
     }
+    _footerLayoutWidth = textWidth;
     self.tableView.tableFooterView = footer;
 }
 #else
@@ -779,7 +814,8 @@ void setChoice(NSString* key, NSUInteger index) {
         return check;
     }
     if ([primaryKeys() containsObject:key] || [item[@"kind"] isEqual:@"font"]) {
-        NSButton* menu = [NSButton buttonWithTitle:[choiceLabel(key) stringByAppendingString:@" ▾"]
+        NSButton* menu = [NSButton buttonWithTitle:[choiceLabel(key, self.view.bounds.size.width)
+                                                       stringByAppendingString:@" ▾"]
                                             target:self
                                             action:@selector(choose:)];
         menu.bordered = NO;
@@ -970,7 +1006,7 @@ void setChoice(NSString* key, NSUInteger index) {
                 ([item[@"kind"] isEqual:@"toggle"] || [item[@"key"] isEqual:@"appearance"])
                     ? 18
                     : MIN(narrow ? 145 : 180,
-                          [choiceLabel(item[@"key"])
+                          [choiceLabel(item[@"key"], width)
                               sizeWithAttributes:@{NSFontAttributeName : NeonUI(narrow ? 12 : 14)}]
                                   .width +
                               30);
