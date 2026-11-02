@@ -88,6 +88,10 @@ int main() {
               neon::core::writingPreset("newsletter")->sectionLabel == "Section" &&
               !neon::core::writingPreset("unknown"),
           "use-case specific catalog");
+    check(neon::core::writingPreset("article")->sectionLabel == "Section" &&
+              neon::core::writingPreset("blank")->sections.size() == 1 &&
+              neon::core::writingPreset("book")->sectionLabel == "Chapter",
+          "approved preset labels and blank structure");
     project.schemaVersion = 4;
     check(!replaceText(&project, "block", "bad", "editor").ok, "future schema read-only");
     project.schemaVersion = 1;

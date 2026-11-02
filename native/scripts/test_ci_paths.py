@@ -36,7 +36,14 @@ class SelectionTests(unittest.TestCase):
     def test_platform_concurrency_is_independent(self):
         root = pathlib.Path(__file__).resolve().parents[2]
         workflow = (root / '.github/workflows/native-macos.yml').read_text()
-        self.assertNotIn('concurrency:', workflow.split('jobs:', 1)[0])
+        global_scope = workflow.split('jobs:', 1)[0]
+        # A PR run must neither cancel nor queue behind an earlier workflow:
+        # even cancel-in-progress:false replaces pending runs in the same group.
+        # A unique run ID lets only the affected platform job supersede its peer.
+        self.assertIn(
+            "group: native-${{ github.event_name == 'pull_request' && github.run_id || github.ref }}",
+            global_scope)
+        self.assertIn('cancel-in-progress: false', global_scope)
         for job, platform in [('portable-core', 'core'), ('macos-native', 'macos'),
                               ('ios-native', 'ios')]:
             section = workflow.split(f'  {job}:', 1)[1].split('    runs-on:', 1)[0]

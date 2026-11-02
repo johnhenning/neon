@@ -102,3 +102,66 @@ build changes select both. Markdown-only changes skip expensive native jobs.
 Manual dispatch selects all targets. Concurrency is per platform/core job, so a new
 Mac-only push does not cancel an independent UIKit validation. Classification tests
 run before selecting jobs; skipped platform jobs are not fresh runtime evidence.
+
+## Shared control contract (Task 2, 25 October 2026)
+
+Design authority: component nodes `283:30668` (actions), `283:30694`
+(selection), `283:30685` (fields), read with high-fidelity context and screenshots.
+These nodes contain no static image assets. Native system typography is the
+production interface contract. Source Sans 3 at 14/20 or 16/24 in Figma is a
+preview fallback, not an instruction to replace native UI fonts. Literata remains
+the manuscript/title font; Source Sans 3 remains a manuscript choice. Bundled font
+registration and Georgia/system fallback remain in force; user font/size/spacing
+preferences win. Native font metrics and OS-owned chrome are exact-match exceptions.
+
+`DesignMetrics.h` names the 44 pt minimum target, 12 pt control radius, 8 pt image
+radius, 8 pt breadcrumb gap and 32 pt scroll-bottom clearance. Fields deliberately
+use radius 8, padding 12 and a 52 pt single-line minimum. Component widths 152/280
+are examples, not fixed runtime widths. Multiline editors scroll real native text.
+`Controls.h` provides native action/selection buttons, input wrappers and a numeric
+stepper with visible value, accessible native stepper label, clamped bounds and a
+callback. Read-only metadata should use paper/panel, ink text and a line border;
+it must expose text rather than masquerade as a disabled editable field.
+
+The PR integer RGB palette is preserved. `NeonDanger` maps live semantic danger
+(.630,.200,.160)/(.950,.530,.460); `NeonActionText` maps light white and dark
+(.120,.120,.110). Focus uses existing accent for fields, a 3 pt ink action outline
+plus the native focus ring. This resolves the action sheet's ink stroke versus its
+bronze-outline description explicitly. No dedicated focus or disabled Figma variable
+exists. Disabled action opacity is .65 from the newer interaction sheet (older base
+buttons use .50); fields use .50. Hover/pressed action opacity is .90/.75. Loading
+suppresses activation and exposes a loading accessibility value; error uses visible
+text as well as danger color. Selection uses selection fill, accent border and ink
+text, never a solid primary-action fill. Menus keep native keyboard routing and now
+use semantic danger and 44 pt rows. Numeric steppers retain native bounds/keyboard
+semantics; input editors retain native delegates, selection, undo and IME APIs.
+
+Launch the actual app with `--control-states` for a non-persistent catalog, action
+counter, selection toggle, theme switch, fields and bounded numeric stepper.
+`ControlStates.swift` is included in the generated XCTest driver alongside the
+existing journey. `apple_controls_test` exercises native activation suppression,
+selection accessibility, input state preservation, value bounds/callbacks and hit
+bounds. Platform acceptance still requires XCTest on macOS and UIKit; these source
+registrations alone are not evidence of an iOS run or VoiceOver/IME acceptance.
+
+### Resolved handoff decisions
+
+1. Compose S05 title/kicker hierarchy with the X19 destination inventory; preserve
+   native window/navigation ownership. Later shell consumers implement that layout.
+2. Add a versioned line-height multiple in the typography slice. Existing additive
+   `manuscriptSpacing` values remain intact until explicit migration; this control
+   foundation changes no saved preference or manuscript.
+3. Default measure is 640 pt on Mac/wide iPad and 680 pt on portrait iPad when its
+   adaptive layout ships; explicit user measure overrides take priority.
+4. Production font intent and preview/native exceptions are stated above.
+5. Add Article and Blank deliberately in the creation slice, preserving Meeting
+   Notes and all existing preset IDs; no preset reinterpretation occurs here.
+6. Remove design-only proposal/after-completion notes when those surfaces ship;
+   rich-format descriptions must reflect supported content.
+7. Counts, statuses, filenames, identities and revision destinations come from real
+   state. Save-success Continue/Done require distinct behavior or a single action.
+8. Optional sync/team/Git providers remain capability-gated later work. These shared
+   controls do not imply provider availability or fabricate account state.
+9. OS owns window buttons, keyboards, status bars and home indicators. Runtime focus,
+   AX announcements, contrast, larger text, hardware keyboard and IME remain explicit
+   cross-platform acceptance work, not guarantees inferred from Figma examples.

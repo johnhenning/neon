@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "fixtureArtwork": {
+    "neon.fixture.quiet-sea": {
+      "resource": "quiet-sea-hires.png",
+      "source": "outputs/neon-deep-review/assets/quiet-sea-hires.png",
+      "figmaFile": "DOW2IVUIDIt2Z4cM4XtM8I",
+      "gridLayer": "104:7245",
+      "slots": [
+        "grid",
+        "list"
+      ],
+      "sha256": "e2a69c99d7da38c10fff729025f79c1d2bd58b370a2b99eb3ca6575945048cc8",
+      "pixelWidth": 1037,
+      "pixelHeight": 1516
+    },
+    "neon.fixture.stone-paths": {
+      "resource": "stone-paths-hires.png",
+      "source": "outputs/neon-deep-review/assets/stone-paths-hires.png",
+      "figmaFile": "DOW2IVUIDIt2Z4cM4XtM8I",
+      "gridLayer": "I86:201;104:7245",
+      "slots": [
+        "grid",
+        "list"
+      ],
+      "sha256": "1703c24165322555d1698064a62389192d7bbef926487021cf870d5c37877396",
+      "pixelWidth": 1056,
+      "pixelHeight": 1489
+    },
+    "neon.fixture.glass-field": {
+      "resource": "glass-field-hires.png",
+      "source": "outputs/neon-deep-review/assets/glass-field-hires.png",
+      "figmaFile": "DOW2IVUIDIt2Z4cM4XtM8I",
+      "gridLayer": "I86:205;104:7245",
+      "slots": [
+        "grid",
+        "list"
+      ],
+      "sha256": "0c9f7b2b2ae5eb89525f2604f851b0b73f9013038e78bf727a22438aac4f4b82",
+      "pixelWidth": 1055,
+      "pixelHeight": 1491
+    }
+  },
+  "fallback": {
+    "kind": "neutral",
+    "description": "Unselected or unreadable covers use the neutral Library cover; never sample artwork."
+  },
+  "slots": {
+    "grid": {
+      "aspectHeightOverWidth": 1.46,
+      "fill": "centered-aspect-fill"
+    },
+    "list": {
+      "width": 70,
+      "height": 104,
+      "fill": "centered-aspect-fill"
+    }
+  }
+}

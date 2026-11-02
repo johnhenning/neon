@@ -35,8 +35,9 @@ final class Walkthrough: XCTestCase {
         Thread.sleep(forTimeInterval: 0.7)
     }
 
-    func capture(_ name: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+    func capture(_ name: String, wholeScreen: Bool = false) {
+        let screenshot = wholeScreen ? XCUIScreen.main.screenshot() : app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
@@ -86,6 +87,85 @@ final class Walkthrough: XCTestCase {
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "section-1").count, 1)
     }
 
+    func testIPadAdaptiveEditorOrientation() throws {
+        #if os(macOS)
+        throw XCTSkip("UIKit orientation coverage")
+        #else
+        guard UIDevice.current.userInterfaceIdiom == .pad else {
+            throw XCTSkip("Requires an iPad")
+        }
+        XCUIDevice.shared.orientation = .portrait
+        app.terminate()
+        app.launch()
+        let window = app.windows.firstMatch
+        let project = app.buttons["The Quiet Sea"]
+        activate(project)
+        let manuscript = element("manuscript")
+        XCTAssertTrue(manuscript.waitForExistence(timeout: 15))
+        guard window.frame.width >= 1000 && window.frame.height > window.frame.width else {
+            throw XCTSkip("Requires the 13-inch portrait regression viewport")
+        }
+        let draft = manuscript.value as? String
+        func waitForOrientation(_ landscape: Bool) {
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                landscape ? window.frame.width > window.frame.height
+                          : window.frame.height > window.frame.width
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed)
+        }
+        func assertSidebar(_ visible: Bool) {
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                let row = self.element("section-0")
+                let sidebarVisible = row.exists && row.isHittable
+                let leading = manuscript.frame.minX - window.frame.minX
+                return visible ? sidebarVisible && leading > 200
+                               : !sidebarVisible && leading < 100
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+            if visible {
+                assertUniqueChapterRows()
+                XCTAssertTrue(window.frame.contains(element("section-0").frame))
+            }
+            XCTAssertEqual(manuscript.value as? String, draft)
+            XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "manuscript").count, 1)
+        }
+        func selectChapter(_ index: Int, expectedText: String?) {
+            let row = element("section-\(index)")
+            XCTAssertTrue(row.waitForExistence(timeout: 10))
+            // XCTest can report a visible iPad row as non-hittable after rotation.
+            // Exercise a real touch at its current frame and verify the document
+            // changes; no app-side selector or synthetic session switch is used.
+            row.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)).tap()
+            let selected = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                manuscript.value as? String == expectedText
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 10), .completed)
+        }
+        assertSidebar(true)
+        capture("adaptive-13-portrait-default", wholeScreen: true)
+        XCUIDevice.shared.orientation = .landscapeRight
+        waitForOrientation(true)
+        assertSidebar(true)
+        selectChapter(1, expectedText: "By noon the water had drawn back from the old stone steps.")
+        selectChapter(0, expectedText: draft)
+        capture("adaptive-13-landscape-default", wholeScreen: true)
+        XCUIDevice.shared.orientation = .portrait
+        waitForOrientation(false)
+        assertSidebar(true)
+        activate(element("navigation-toggle"))
+        assertSidebar(false)
+        XCUIDevice.shared.orientation = .landscapeRight
+        waitForOrientation(true)
+        assertSidebar(false)
+        XCUIDevice.shared.orientation = .portrait
+        waitForOrientation(false)
+        assertSidebar(false) // Explicit writer choice survives later rotations.
+        capture("adaptive-13-portrait-manual-hidden", wholeScreen: true)
+        activate(element("navigation-toggle"))
+        assertSidebar(true)
+        #endif
+    }
+
     func testRecordedEditorJourney() {
         let variant = ProcessInfo.processInfo.environment["NEON_UI_FIXTURE"] ?? "3"
         if variant == "0" {
@@ -100,15 +180,16 @@ final class Walkthrough: XCTestCase {
         let projectTitle = variant == "longtext"
             ? "The Quiet Sea — a long project title for narrow window and accessibility coverage"
             : "The Quiet Sea"
-        #if os(macOS)
-        // AppKit exposes the title button's title, while its separate cover has
-        // the label "Open …". XCTest's named lookup includes native titles.
+        // Both native Library title controls retain button activation semantics;
+        // the separate cover button has the distinct label "Open …".
         let project = app.buttons[projectTitle]
-        #else
-        let project = app.staticTexts[projectTitle]
-        #endif
         XCTAssertTrue(project.waitForExistence(timeout: 15))
         capture("01-library")
+        #if !os(macOS)
+        project.press(forDuration: 0.7)
+        XCTAssertTrue(app.buttons["Rename"].waitForExistence(timeout: 5), "Project actions remain available by long press")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap()
+        #endif
         activate(project)
         #if !os(macOS)
         XCTAssertFalse(app.buttons["Move to Trash…"].exists, "A normal tap must open the project, not its context menu")
@@ -130,14 +211,11 @@ final class Walkthrough: XCTestCase {
             XCTAssertTrue(chapterRow.waitForExistence(timeout: 5))
             XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "section-row-0").count, 1)
             let title = chapterRow.descendants(matching: .any).matching(identifier: "section-0").firstMatch
-            let actions = chapterRow.buttons["section-actions-0"]
             XCTAssertTrue(title.exists, "Chapter title must remain independently accessible in its row")
-            XCTAssertTrue(actions.exists, "Chapter Actions must remain independently accessible in its row")
             XCTAssertTrue(chapterRow.frame.contains(title.frame), "Chapter row must contain its title bounds")
-            XCTAssertTrue(chapterRow.frame.contains(actions.frame), "Chapter row must contain its Actions bounds")
             XCTAssertEqual(app.buttons.matching(identifier: "Toggle sidebar").count, 1)
             XCTAssertEqual(toggle.frame.midY, history.frame.midY, accuracy: 8)
-            XCTAssertGreaterThan(toggle.frame.midX, chapterRow.frame.midX)
+            XCTAssertGreaterThanOrEqual(toggle.frame.minX, chapterRow.frame.minX)
             XCTAssertLessThanOrEqual(toggle.frame.maxX, chapterRow.frame.maxX + 24)
         }
         assertSidebarTogglePlacement()
@@ -169,7 +247,14 @@ final class Walkthrough: XCTestCase {
         #endif
         #if os(macOS)
         assertUniqueChapterRows()
-        XCTAssertTrue(app.buttons["section-actions-0"].exists)
+        XCTAssertFalse(app.buttons["section-actions-0"].exists,
+                       "Quiet chapter rows expose actions through their context menu")
+        element("section-0").rightClick()
+        XCTAssertTrue(app.buttons["Rename…"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Duplicate"].exists)
+        XCTAssertTrue(app.buttons["Move to Trash…"].exists)
+        app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
+        XCTAssertTrue(editor.isHittable)
         for _ in 0..<3 {
             activate(app.buttons["Toggle sidebar"])
             XCTAssertFalse(element("section-1").isHittable)
@@ -210,11 +295,14 @@ final class Walkthrough: XCTestCase {
         // Create an undo operation in this editor instance, after section changes.
         // Section navigation intentionally gives each section its own undo scope.
         activate(element("manuscript"))
+        // Clicking the resized viewport can land inside the earlier persistence
+        // marker. Append at the native document end so this edit cannot bisect it.
+        app.typeKey(XCUIKeyboardKey.downArrow, modifierFlags: .command)
         element("manuscript").typeText("\nHistory undo scope marker.")
         XCTAssertTrue((element("manuscript").value as? String ?? "").contains("History undo scope marker."))
-        #else
-        chapters()
         #endif
+        // History belongs to the editor toolbar. On compact UIKit layouts,
+        // navigating back to chapters removes that toolbar from the screen.
         activate(app.buttons["Version history"].firstMatch)
         XCTAssertTrue(app.buttons["Back to editor"].waitForExistence(timeout: 10))
         XCTAssertFalse(element("manuscript").exists)
@@ -226,10 +314,11 @@ final class Walkthrough: XCTestCase {
         activate(historySearch)
         historySearch.typeText("NoSuchRevisionForWalkthrough")
         let revisionPreview = element("Read-only revision preview")
-        XCTAssertTrue((revisionPreview.value as? String ?? "").contains("No matching revisions"))
+        let noMatchesMessage = "No matching revisions."
+        XCTAssertTrue((revisionPreview.value as? String ?? "").contains(noMatchesMessage))
         activate(app.buttons["Search History"])
         XCTAssertFalse(historySearch.isHittable)
-        XCTAssertFalse((revisionPreview.value as? String ?? "").contains("No matching revisions"))
+        XCTAssertFalse((revisionPreview.value as? String ?? "").contains(noMatchesMessage))
         activate(app.buttons["Back to editor"])
         XCTAssertTrue(element("manuscript").waitForExistence(timeout: 10))
         XCTAssertTrue((element("manuscript").value as? String ?? "").contains("Neon recorded UI persistence check."))
@@ -245,24 +334,28 @@ final class Walkthrough: XCTestCase {
         XCTAssertTrue((element("manuscript").value as? String ?? "")
             .contains("History undo scope marker."), "History return must preserve current editor redo")
         app.typeKey(",", modifierFlags: .command)
-        // AppKit exposes the Settings NSPanel as an accessibility dialog.
-        let settings = app.dialogs["Settings"]
+        let settings = element("settings-page")
         XCTAssertTrue(settings.waitForExistence(timeout: 10))
-        XCTAssertTrue(settings.searchFields["Search settings"].exists)
+        XCTAssertTrue(app.buttons["settings-back"].exists)
+        XCTAssertTrue(app.staticTexts["Settings"].exists)
+        XCTAssertFalse(app.searchFields["Search settings"].exists,
+                       "Advanced search is not part of the primary Settings page")
         capture("07-settings")
-        activate(settings.buttons[XCUIIdentifierCloseWindow])
+        activate(element("settings-back"))
         let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: settings)
         XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 5), .completed)
+        XCTAssertTrue(element("manuscript").isHittable)
+        XCTAssertTrue((element("manuscript").value as? String ?? "")
+            .contains("History undo scope marker."), "Settings return must preserve the editor draft")
         #else
         chapters()
-        // A narrow iPad sidebar moves native bar items into its overflow menu.
-        if !element("Settings").isHittable {
-            activate(app.buttons["OverflowBarButtonItem"])
-        }
         activate(element("Settings"))
-        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["settings-back"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Settings"].exists)
         capture("07-settings")
-        activate(app.buttons["Done"])
+        activate(app.buttons["settings-back"])
+        XCTAssertTrue(element("manuscript").waitForExistence(timeout: 10))
+        XCTAssertTrue((element("manuscript").value as? String ?? "").contains("Neon recorded UI persistence check."))
         #endif
     }
 }

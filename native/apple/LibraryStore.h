@@ -14,6 +14,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)setProject:(NSURL*)url trashed:(BOOL)trashed error:(NSError**)error;
 - (nullable NSURL*)duplicateProject:(NSURL*)url error:(NSError**)error;
 - (BOOL)deleteTrashedProject:(NSURL*)url error:(NSError**)error;
+- (nullable NeonDocumentSession*)openProjectURL:(NSURL*)url error:(NSError**)error;
+- (void)setFavorite:(BOOL)favorite projectID:(NSString*)projectID;
 - (BOOL)seedPreview:(NSError**)error;
 @end
 NS_ASSUME_NONNULL_END
