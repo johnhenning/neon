@@ -79,7 +79,7 @@ def main():
                 raise SystemExit(f'{family}: process relaunch lost document text')
             run('io', udid, 'screenshot', str(output / f'{family}-reopened.png'))
             run('terminate', udid, bundle)
-            for mode in ['library', 'focus', 'typography', 'menu', 'settings', 'history']:
+            for mode in ['library', 'focus', 'typography', 'menu', 'settings', 'history', 'transitions']:
                 if mode == 'focus' and family != 'iPad':
                     continue
                 mode_marker = marker.with_name(f'smoke-{mode}.txt')

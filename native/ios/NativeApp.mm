@@ -2469,7 +2469,8 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         [args containsObject:@"--smoke-focus"] || [args containsObject:@"--smoke-typography"] ||
         [args containsObject:@"--smoke-menu"] || [args containsObject:@"--smoke-settings"] ||
         [args containsObject:@"--smoke-history"] || [args containsObject:@"--smoke-preset"] ||
-        [args containsObject:@"--smoke-picker"] || [args containsObject:@"--smoke-navigation"];
+        [args containsObject:@"--smoke-picker"] || [args containsObject:@"--smoke-navigation"] ||
+        [args containsObject:@"--smoke-transitions"];
     NSURL* support = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
                                                             inDomains:NSUserDomainMask]
                          .firstObject;
@@ -2763,8 +2764,12 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         changes();
         return;
     }
+    [self.navigationSnapshot.layer removeAllAnimations];
     [self.navigationSnapshot removeFromSuperview];
     self.navigationSnapshot = nil;
+    // Retire text input before snapshotting and detaching its controller. UIKit
+    // must finish the outgoing caret/keyboard lifecycle before navigation.
+    [self.view endEditing:YES];
     BOOL chapterOnly = self.chapterTransition && self.editor;
     CGFloat direction = self.navigationDirection ?: 1;
     NSTimeInterval duration = self.navigationDuration ?: 0.44;
@@ -2810,6 +2815,10 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         completion:^(BOOL finished) {
           (void)finished;
           [snapshot removeFromSuperview];
+          // Do not retain a UIKit snapshot after its transition, or let an
+          // interrupted transition clear the newer snapshot.
+          if (self.navigationSnapshot == snapshot)
+              self.navigationSnapshot = nil;
         }];
 }
 - (void)openProject:(NSInteger)index {
@@ -3908,6 +3917,36 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
                          next.titleLabel.bounds.size.height <= renderedFont.lineHeight + 1 &&
                          titleWidth <= next.titleLabel.bounds.size.width + 1 &&
                          fabs(renderedFont.pointSize - 15) < 0.1);
+            });
+    } else if ([args containsObject:@"--smoke-transitions"]) {
+        dispatch_after(
+            dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
+            dispatch_get_main_queue(), ^{
+              UITextView* outgoing = self.editor.editor;
+              [outgoing becomeFirstResponder];
+              [outgoing insertText:@" Navigation lifecycle check."];
+              NSString* draft = outgoing.text;
+              [self openSection:1];
+              BOOL animated = self.navigationSnapshot != nil;
+              dispatch_after(
+                  dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
+                  dispatch_get_main_queue(), ^{
+                    BOOL cleaned = animated && !self.navigationSnapshot &&
+                                   !outgoing.isFirstResponder && !outgoing.window;
+                    [self openSection:0];
+                    // Interrupt an in-flight chapter transition, as a rapid sidebar click can.
+                    [self openSection:1];
+                    [self openSection:0];
+                    dispatch_after(
+                        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
+                        dispatch_get_main_queue(), ^{
+                          marker(support, @"smoke-transitions.txt",
+                                 cleaned && !self.navigationSnapshot &&
+                                     [self.editor.editor.text isEqual:draft] &&
+                                     self.editor.editor.alpha == 1 &&
+                                     CGAffineTransformIsIdentity(self.editor.editor.transform));
+                        });
+                  });
             });
     } else if ([args containsObject:@"--smoke-navigation"]) {
         [self toggleChapters];
