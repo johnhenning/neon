@@ -3881,8 +3881,26 @@ void marker(NSURL* directory, NSString* name, BOOL pass) {
         NeonHistoryController* controller = self.historyController;
         [controller loadViewIfNeeded];
         [controller selectRevisionAtIndex:1];
+        // History labels must remain inside their own row after UIKit resizes cells.
+        [controller.view layoutIfNeeded];
+        NSUInteger checkedRows = 0;
+        for (UIView* child in controller.view.subviews) {
+            if (![child isKindOfClass:UITableView.class])
+                continue;
+            UITableView* table = (UITableView*)child;
+            [table layoutIfNeeded];
+            for (UITableViewCell* cell in table.visibleCells) {
+                [cell layoutIfNeeded];
+                for (UIView* label in cell.contentView.subviews) {
+                    if (![label isKindOfClass:UILabel.class])
+                        continue;
+                    ++checkedRows;
+                    valid = valid && CGRectContainsRect(cell.contentView.bounds, label.frame);
+                }
+            }
+        }
         marker(support, @"smoke-history.txt",
-               valid && [controller isKindOfClass:NeonHistoryController.class]);
+               valid && checkedRows > 0 && [controller isKindOfClass:NeonHistoryController.class]);
     } else if ([args containsObject:@"--smoke-picker"]) {
         [self newProject];
         dispatch_after(

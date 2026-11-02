@@ -1342,10 +1342,10 @@ NSAttributedString* rowText(NSDictionary* entry, BOOL narrow) {
     UILabel* text = [UILabel new];
     text.numberOfLines = narrow ? 2 : 3;
     text.attributedText = rowText(_entries[path.row], narrow);
-    text.frame =
-        CGRectMake(narrow ? 28 : 36, 8, MAX(40, tableView.bounds.size.width - (narrow ? 40 : 56)),
-                   tableView.rowHeight - 16);
-    text.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    // A newly allocated cell still has UIKit's default height. Pin the label to
+    // its final content bounds instead of stretching a row-height-sized frame
+    // again when the table lays out the cell.
+    text.translatesAutoresizingMaskIntoConstraints = NO;
     UIView* dot =
         [[UIView alloc] initWithFrame:CGRectMake(narrow ? 13 : 19, narrow ? 15 : 24, 6, 6)];
     dot.layer.cornerRadius = 3;
@@ -1353,6 +1353,14 @@ NSAttributedString* rowText(NSDictionary* entry, BOOL narrow) {
     dot.layer.borderColor = NeonAccent().CGColor;
     [cell.contentView addSubview:dot];
     [cell.contentView addSubview:text];
+    [NSLayoutConstraint activateConstraints:@[
+        [text.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor
+                                           constant:narrow ? 28 : 36],
+        [text.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor
+                                            constant:narrow ? -12 : -20],
+        [text.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:8],
+        [text.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-8]
+    ]];
     cell.backgroundColor = NeonPanel();
     UIView* selected = [UIView new];
     selected.backgroundColor = [NeonAccent() colorWithAlphaComponent:0.16];
