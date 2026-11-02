@@ -187,7 +187,7 @@ def main():
                 '-resultBundlePath', str(output / 'walkthrough.xcresult'))
             result['status'] = 'passed'
         else:
-            record_args = ['xcrun', 'simctl', 'io', args.device, 'recordVideo', '--codec=h264', str(movie)]
+            record_args = ['xcrun', 'simctl', 'io', args.device, 'recordVideo', '--display=1', '--codec=h264', str(movie)]
         if platform != 'macOS':
             # A failed recorder must never reuse footage from an earlier run.
             movie.unlink(missing_ok=True)
